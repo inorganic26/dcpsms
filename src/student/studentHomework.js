@@ -18,12 +18,13 @@ export const studentHomework = {
         this.app.elements.uploadBtn?.addEventListener('click', () => this.handleUpload());
     },
 
-    // 숙제 목록 화면 표시
+    // 숙제 목록 화면 표시 (최적화됨)
     async showHomeworkScreen() {
         this.app.showScreen(this.app.elements.loadingScreen);
-        const q = query(collection(db, 'homeworks'), where('classId', '==', this.app.state.classId), orderBy('dueDate', 'desc'));
+        const homeworksQuery = query(collection(db, 'homeworks'), where('classId', '==', this.app.state.classId), orderBy('dueDate', 'desc'));
+        
         try {
-            const homeworkSnapshot = await getDocs(q);
+            const homeworkSnapshot = await getDocs(homeworksQuery);
             const homeworks = homeworkSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
             
             const twoWeeksAgo = new Date();
@@ -34,10 +35,17 @@ export const studentHomework = {
             if (recentHomeworks.length === 0) {
                 this.app.elements.homeworkList.innerHTML = '<p class="text-center text-slate-500 py-8">최근 2주 내에 출제된 숙제가 없습니다.</p>';
             } else {
-                for (const hw of recentHomeworks) {
-                    const submissionDoc = await getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.studentId));
+                // 각 숙제에 대한 학생의 제출 정보를 병렬로 조회
+                const submissionPromises = recentHomeworks.map(hw => 
+                    getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.studentId))
+                );
+                const submissionSnapshots = await Promise.all(submissionPromises);
+
+                // 조회된 제출 정보를 바탕으로 숙제 목록 렌더링
+                recentHomeworks.forEach((hw, index) => {
+                    const submissionDoc = submissionSnapshots[index];
                     this.renderHomeworkItem(hw, submissionDoc.exists() ? submissionDoc.data() : null);
-                }
+                });
             }
         } catch (error) {
             console.error("숙제 로딩 실패:", error);
@@ -51,25 +59,27 @@ export const studentHomework = {
         const item = document.createElement('div');
         const isSubmitted = !!submissionData;
         const submittedPages = submissionData?.imageUrls?.length || 0;
-        const totalPages = hw.pages || 0;
-        const isComplete = submittedPages >= totalPages;
+        const totalPages = hw.pages;
+        const isComplete = totalPages > 0 && submittedPages >= totalPages;
 
         item.className = `p-4 border rounded-lg flex items-center justify-between ${isComplete ? 'bg-green-50 border-green-200' : 'bg-white'}`;
         
+        const pagesInfo = totalPages ? `(${submittedPages}/${totalPages}p)` : `(${submittedPages}p)`;
         const statusHtml = isSubmitted 
             ? `<div class="flex items-center gap-2">
-                 <span class="text-sm font-semibold ${isComplete ? 'text-green-700' : 'text-yellow-600'}">${isComplete ? '제출 완료' : '제출 중'} (${submittedPages}/${totalPages}p)</span>
+                 <span class="text-sm font-semibold ${isComplete ? 'text-green-700' : 'text-yellow-600'}">${isComplete ? '제출 완료' : '제출 중'} ${pagesInfo}</span>
                  <button class="edit-homework-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">수정하기</button>
                </div>`
             : `<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg">숙제 올리기</button>`;
         
         const displayDate = hw.dueDate || '기한없음';
+        const titlePages = totalPages ? `(${totalPages}p)` : '';
         item.innerHTML = `
             <div>
                 <p class="text-xs text-slate-500">기한: ${displayDate}</p>
-                <h3 class="font-bold text-slate-800">${hw.textbookName} (${totalPages}p)</h3>
+                <h3 class="font-bold text-slate-800">${hw.textbookName} ${titlePages}</h3>
             </div>
-            <div data-id="${hw.id}" data-textbook="${hw.textbookName}" data-pages="${totalPages}">${statusHtml}</div>`;
+            <div data-id="${hw.id}" data-textbook="${hw.textbookName}" data-pages="${totalPages || 0}">${statusHtml}</div>`;
         this.app.elements.homeworkList.appendChild(item);
 
         item.querySelector('.upload-homework-btn')?.addEventListener('click', (e) => {
@@ -135,7 +145,8 @@ export const studentHomework = {
     updateUploadButtonText(uploadedCount) {
         const { uploadBtnText } = this.app.elements;
         const totalPages = this.app.state.currentHomeworkPages;
-        uploadBtnText.textContent = `${uploadedCount} / ${totalPages} 페이지 업로드`;
+        const totalText = totalPages > 0 ? `/ ${totalPages}` : '';
+        uploadBtnText.textContent = `${uploadedCount} ${totalText} 페이지 업로드`;
     },
 
     // 선택된 파일 미리보기 렌더링

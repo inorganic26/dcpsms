@@ -18,34 +18,21 @@ export const classManager = {
     },
 
     async addNewClass() {
-        const { newClassNameInput, classSubjectsOptions } = this.app.elements;
-        const { selectedSubjectsForNewClass } = this.app.state;
-
+        const { newClassNameInput } = this.app.elements;
         const className = newClassNameInput.value.trim();
         if (!className) { 
             showToast("반 이름을 입력해주세요."); 
             return; 
         }
-        if (selectedSubjectsForNewClass.size === 0) {
-            showToast("반에 연결할 과목을 하나 이상 선택해주세요.");
-            return;
-        }
-
-        const subjectsData = {};
-        selectedSubjectsForNewClass.forEach(subjectId => {
-            subjectsData[subjectId] = { textbooks: [] };
-        });
 
         try {
             await addDoc(collection(db, 'classes'), { 
                 name: className, 
-                subjects: subjectsData,
+                subjects: {}, // 빈 과목으로 반 생성
                 createdAt: serverTimestamp() 
             });
-            showToast("새로운 반이 추가되었습니다.", false);
+            showToast("새로운 반이 추가되었습니다. '수정' 버튼으로 과목을 설정하세요.", false);
             newClassNameInput.value = '';
-            selectedSubjectsForNewClass.clear();
-            classSubjectsOptions.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
         } catch (error) { 
             console.error("반 추가 실패:", error); 
             showToast("반 추가에 실패했습니다."); 
@@ -129,13 +116,19 @@ export const classManager = {
         
         const container = document.getElementById('admin-edit-class-subjects-and-textbooks');
         container.innerHTML = '불러오는 중...';
-        
+        this.app.elements.editClassModal.style.display = 'flex';
+
         const currentSubjects = classData.subjects || {};
+        
+        const textbookPromises = this.app.state.subjects.map(subject => 
+            getDocs(collection(db, `subjects/${subject.id}/textbooks`))
+        );
+        const textbookSnapshots = await Promise.all(textbookPromises);
+        
         const allTextbooksBySubject = {};
-        for (const subject of this.app.state.subjects) {
-            const textbooksSnapshot = await getDocs(collection(db, `subjects/${subject.id}/textbooks`));
-            allTextbooksBySubject[subject.id] = textbooksSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        }
+        this.app.state.subjects.forEach((subject, index) => {
+            allTextbooksBySubject[subject.id] = textbookSnapshots[index].docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        });
         
         container.innerHTML = '';
         this.app.state.subjects.forEach(subject => {
@@ -161,7 +154,6 @@ export const classManager = {
             `;
             container.appendChild(subjectGroup);
         });
-        this.app.elements.editClassModal.style.display = 'flex';
     },
 
     closeEditClassModal() {

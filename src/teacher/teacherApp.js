@@ -1,25 +1,38 @@
 // src/teacher/teacherApp.js
 
-import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore"; // 'where'를 여기에 추가했습니다.
+import { doc, getDoc, getDocs, collection, query, where, onSnapshot } from "firebase/firestore";
 import { db, ensureAuth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 // 분리된 기능 모듈들을 가져옵니다.
 import { lessonDashboard } from './lessonDashboard.js';
 import { homeworkDashboard } from './homeworkDashboard.js';
+// 관리자 앱에서 가져올 기능 모듈 (새로 생성하거나 복사해야 함)
+import { lessonManager } from './lessonManager.js'; 
+import { classEditor } from './classEditor.js'; 
 
 const TeacherApp = {
     isInitialized: false,
     elements: {},
     state: {
+        // 공통 State
         selectedClassId: null,
         selectedClassName: null,
         selectedClassData: null,
+        studentsInClass: new Map(),
+        subjects: [], // 전체 과목 목록
+        
+        // 대시보드 State
         selectedSubjectId: null,
         selectedLessonId: null,
         selectedHomeworkId: null,
-        editingHomeworkId: null,
-        studentsInClass: new Map(),
+        
+        // 관리 기능 State
+        selectedSubjectIdForMgmt: null,
+        lessons: [],
+        editingLesson: null,
+        generatedQuiz: null,
+        editingClass: null,
     },
 
     init() {
@@ -29,34 +42,45 @@ const TeacherApp = {
         this.cacheElements();
         this.addEventListeners();
 
-        // 각 기능 모듈을 초기화하고, state와 elements 객체를 전달합니다.
-        lessonDashboard.init(this.state, this.elements);
-        homeworkDashboard.init(this.state, this.elements);
+        // 기능 모듈 초기화
+        lessonDashboard.init(this);
+        homeworkDashboard.init(this);
+        lessonManager.init(this);
+        classEditor.init(this);
 
         this.populateClassSelect();
+        this.listenForSubjects(); // 앱 시작 시 전체 과목 정보 구독
     },
 
     cacheElements() {
         this.elements = {
             loadingScreen: document.getElementById('teacher-loading-screen'),
             classSelect: document.getElementById('teacher-class-select'),
-            viewSelect: document.getElementById('teacher-view-select'),
-            lessonsDashboard: document.getElementById('teacher-lessons-dashboard'),
-            subjectSelect: document.getElementById('teacher-subject-select'),
+            mainContent: document.getElementById('teacher-main-content'),
+            navButtons: document.querySelectorAll('.teacher-nav-btn'),
+            views: {
+                'lesson-dashboard': document.getElementById('view-lesson-dashboard'),
+                'homework-dashboard': document.getElementById('view-homework-dashboard'),
+                'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
+                'class-mgmt': document.getElementById('view-class-mgmt'),
+            },
+
+            // 대시보드 Elements
+            subjectSelectLesson: document.getElementById('teacher-subject-select-lesson'),
             lessonSelect: document.getElementById('teacher-lesson-select'),
-            dashboardContent: document.getElementById('teacher-dashboard-content'),
+            lessonDashboardContent: document.getElementById('teacher-lesson-dashboard-content'),
             selectedLessonTitle: document.getElementById('teacher-selected-lesson-title'),
             resultsTableBody: document.getElementById('teacher-results-table-body'),
-            homeworkDashboard: document.getElementById('teacher-homework-dashboard'),
-            assignHomeworkBtnContainer: document.getElementById('teacher-assign-homework-btn-container'),
-            assignHomeworkBtn: document.getElementById('teacher-assign-homework-btn'),
             homeworkSelect: document.getElementById('teacher-homework-select'),
             homeworkContent: document.getElementById('teacher-homework-content'),
             selectedHomeworkTitle: document.getElementById('teacher-selected-homework-title'),
+            homeworkTableBody: document.getElementById('teacher-homework-table-body'),
+            
+            // 숙제 관리 Modal
+            assignHomeworkBtn: document.getElementById('teacher-assign-homework-btn'),
             homeworkManagementButtons: document.getElementById('teacher-homework-management-buttons'),
             editHomeworkBtn: document.getElementById('teacher-edit-homework-btn'),
             deleteHomeworkBtn: document.getElementById('teacher-delete-homework-btn'),
-            homeworkTableBody: document.getElementById('teacher-homework-table-body'),
             assignHomeworkModal: document.getElementById('teacher-assign-homework-modal'),
             homeworkModalTitle: document.getElementById('teacher-homework-modal-title'),
             closeHomeworkModalBtn: document.getElementById('teacher-close-homework-modal-btn'),
@@ -65,80 +89,111 @@ const TeacherApp = {
             homeworkSubjectSelect: document.getElementById('teacher-homework-subject-select'),
             homeworkTextbookSelect: document.getElementById('teacher-homework-textbook-select'),
             homeworkDueDateInput: document.getElementById('teacher-homework-due-date'),
+
+            // 학습 관리 Elements
+            subjectSelectForMgmt: document.getElementById('teacher-subject-select-mgmt'),
+            lessonsManagementContent: document.getElementById('teacher-lessons-management-content'),
+            lessonPrompt: document.getElementById('teacher-lesson-prompt'),
+            lessonsList: document.getElementById('teacher-lessons-list'),
+            saveOrderBtn: document.getElementById('teacher-save-lesson-order-btn'),
+
+            // 학습 관리 Modal
+            modal: document.getElementById('teacher-new-lesson-modal'), 
+            modalTitle: document.getElementById('teacher-lesson-modal-title'),
+            lessonTitle: document.getElementById('teacher-lesson-title'),
+            video1Url: document.getElementById('teacher-video1-url'),
+            video2Url: document.getElementById('teacher-video2-url'),
+            quizJsonInput: document.getElementById('teacher-quiz-json-input'), 
+            previewQuizBtn: document.getElementById('teacher-preview-quiz-btn'),
+            questionsPreviewContainer: document.getElementById('teacher-questions-preview-container'), 
+            questionsPreviewTitle: document.getElementById('teacher-questions-preview-title'),
+            questionsPreviewList: document.getElementById('teacher-questions-preview-list'), 
+            saveLessonBtn: document.getElementById('teacher-save-lesson-btn'),
+            saveBtnText: document.getElementById('teacher-save-btn-text'), 
+            saveLoader: document.getElementById('teacher-save-loader'),
+            
+            // 반 설정 Elements
+            editClassBtn: document.getElementById('teacher-edit-class-btn'),
+            editClassModal: document.getElementById('teacher-edit-class-modal'),
+            editClassName: document.getElementById('teacher-edit-class-name'),
+            closeEditClassModalBtn: document.getElementById('teacher-close-edit-class-modal-btn'),
+            cancelEditClassBtn: document.getElementById('teacher-cancel-edit-class-btn'),
+            saveClassEditBtn: document.getElementById('teacher-save-class-edit-btn'),
         };
     },
 
-    // 앱의 메인 컨트롤러 역할만 하는 이벤트 리스너들을 남겨둡니다.
     addEventListeners() { 
         this.elements.classSelect?.addEventListener('change', (e) => this.handleClassSelection(e));
-        this.elements.viewSelect?.addEventListener('change', (e) => this.handleViewChange(e.target.value));
+        this.elements.navButtons.forEach(btn => {
+            btn.addEventListener('click', () => this.handleViewChange(btn.dataset.view));
+        });
     },
 
-    resetAllSelections() {
-        this.state.selectedClassId = null; this.state.selectedClassName = null;
-        this.state.selectedClassData = null; this.state.selectedSubjectId = null;
-        this.state.selectedLessonId = null; this.state.selectedHomeworkId = null;
-        this.state.studentsInClass.clear();
-        this.elements.viewSelect.disabled = true;
-        this.elements.lessonsDashboard.style.display = 'none';
-        this.elements.homeworkDashboard.style.display = 'none';
-        this.elements.assignHomeworkBtnContainer.style.display = 'none';
+    handleViewChange(viewName) {
+        // 네비게이션 버튼 스타일 업데이트
+        this.elements.navButtons.forEach(btn => {
+            const isSelected = btn.dataset.view === viewName;
+            btn.classList.toggle('border-blue-600', isSelected);
+            btn.classList.toggle('text-blue-600', isSelected);
+            btn.classList.toggle('font-semibold', isSelected);
+            btn.classList.toggle('border-transparent', !isSelected);
+            btn.classList.toggle('text-slate-500', !isSelected);
+            btn.classList.toggle('font-medium', !isSelected);
+        });
+
+        // 모든 뷰 숨기기
+        Object.values(this.elements.views).forEach(view => view.style.display = 'none');
+        // 선택된 뷰만 보이기
+        if (this.elements.views[viewName]) {
+            this.elements.views[viewName].style.display = 'block';
+        }
+
+        // 뷰에 따른 초기화 작업
+        if (viewName === 'lesson-dashboard') {
+            this.populateSubjectSelectForLessonDashboard();
+        } else if (viewName === 'homework-dashboard') {
+            homeworkDashboard.populateHomeworkSelect();
+        } else if (viewName === 'lesson-mgmt') {
+             this.populateSubjectSelectForMgmt();
+        }
     },
 
     async handleClassSelection(event) {
         const selectedOption = event.target.options[event.target.selectedIndex];
         this.state.selectedClassId = selectedOption.value;
         this.state.selectedClassName = selectedOption.text;
+
         if (!this.state.selectedClassId) {
-            this.resetAllSelections();
+            this.elements.mainContent.classList.add('hidden');
             return;
         }
-        this.elements.viewSelect.disabled = false;
+
+        this.elements.mainContent.classList.remove('hidden');
         await this.fetchClassData(this.state.selectedClassId);
-        this.handleViewChange(this.elements.viewSelect.value);
+        this.handleViewChange('lesson-dashboard'); // 반 선택 시 기본으로 학습 현황 뷰 표시
     },
 
     async fetchClassData(classId) {
-        await this.fetchStudentsInClass(classId);
-        const classDoc = await getDoc(doc(db, 'classes', classId));
-        this.state.selectedClassData = classDoc.exists() ? classDoc.data() : null;
-    },
-
-    async fetchStudentsInClass(classId) {
         this.state.studentsInClass.clear();
         const studentsQuery = query(collection(db, 'students'), where('classId', '==', classId));
-        const snapshot = await getDocs(studentsQuery);
-        snapshot.forEach(doc => this.state.studentsInClass.set(doc.id, doc.data().name));
+        const studentsSnapshot = await getDocs(studentsQuery);
+        studentsSnapshot.forEach(doc => this.state.studentsInClass.set(doc.id, doc.data().name));
+        
+        const classDoc = await getDoc(doc(db, 'classes', classId));
+        this.state.selectedClassData = classDoc.exists() ? { id: classDoc.id, ...classDoc.data() } : null;
     },
 
-    // '학습' 또는 '숙제' 뷰를 전환하는 역할
-    handleViewChange(view) {
-        this.elements.lessonsDashboard.style.display = 'none';
-        this.elements.homeworkDashboard.style.display = 'none';
-        this.elements.assignHomeworkBtnContainer.style.display = 'none';
-        this.elements.dashboardContent.style.display = 'none';
-        this.elements.homeworkContent.style.display = 'none';
-        this.elements.homeworkManagementButtons.style.display = 'none';
-
-        if (lessonDashboard.unsubscribe) lessonDashboard.unsubscribe();
-        if (homeworkDashboard.unsubscribe) homeworkDashboard.unsubscribe();
-
-        if (view === 'lessons') {
-            this.elements.lessonsDashboard.style.display = 'block';
-            this.populateSubjectSelect();
-        } else if (view === 'homework') {
-            this.elements.homeworkDashboard.style.display = 'block';
-            this.elements.assignHomeworkBtnContainer.style.display = 'block';
-            homeworkDashboard.populateHomeworkSelect(); // 숙제 모듈의 함수 호출
-        }
+    listenForSubjects() {
+        onSnapshot(query(collection(db, 'subjects')), (snapshot) => {
+            this.state.subjects = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        });
     },
 
     async populateClassSelect() {
         this.elements.loadingScreen.style.display = 'flex';
-        this.elements.classSelect.innerHTML = '<option value="">-- 반 선택 --</option>';
+        this.elements.classSelect.innerHTML = '<option value="">-- 반을 선택하세요 --</option>';
         try {
-            const q = query(collection(db, 'classes'));
-            const snapshot = await getDocs(q);
+            const snapshot = await getDocs(query(collection(db, 'classes')));
             snapshot.forEach(doc => {
                 const option = document.createElement('option');
                 option.value = doc.id; option.textContent = doc.data().name;
@@ -151,29 +206,37 @@ const TeacherApp = {
         }
     },
 
-    async populateSubjectSelect() {
-        this.elements.subjectSelect.innerHTML = '<option value="">-- 과목 선택 --</option>';
+    populateSubjectSelectForLessonDashboard() {
+        const select = this.elements.subjectSelectLesson;
+        select.innerHTML = '<option value="">-- 과목 선택 --</option>';
         this.elements.lessonSelect.innerHTML = '<option value="">-- 학습 선택 --</option>';
-        this.elements.lessonSelect.disabled = true; this.elements.dashboardContent.style.display = 'none';
+        this.elements.lessonSelect.disabled = true; 
+        this.elements.lessonDashboardContent.style.display = 'none';
         
         if (!this.state.selectedClassData || !this.state.selectedClassData.subjects) { 
-            this.elements.subjectSelect.disabled = true; 
-            return; 
+            select.disabled = true; return; 
         }
         
         const subjectIds = Object.keys(this.state.selectedClassData.subjects);
         if(subjectIds.length === 0) { 
-            this.elements.subjectSelect.disabled = true; 
-            return; 
+            select.disabled = true; return; 
         }
 
-        const subjectDocs = await Promise.all(subjectIds.map(id => getDoc(doc(db, 'subjects', id))));
-        subjectDocs.forEach(subjectDoc => {
-            if(subjectDoc.exists()) {
-                this.elements.subjectSelect.innerHTML += `<option value="${subjectDoc.id}">${subjectDoc.data().name}</option>`;
+        subjectIds.forEach(id => {
+            const subject = this.state.subjects.find(s => s.id === id);
+            if (subject) {
+                select.innerHTML += `<option value="${subject.id}">${subject.name}</option>`;
             }
         });
-        this.elements.subjectSelect.disabled = false;
+        select.disabled = false;
+    },
+
+    populateSubjectSelectForMgmt() {
+        const select = this.elements.subjectSelectForMgmt;
+        select.innerHTML = '<option value="">-- 과목 선택 --</option>';
+        this.state.subjects.forEach(sub => {
+            select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`;
+        });
     },
 };
 

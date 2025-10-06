@@ -17,7 +17,6 @@ const AdminApp = {
         subjects: [],
         classes: [],
         lessons: [],
-        selectedSubjectsForNewClass: new Set(),
         editingClass: null,
         selectedSubjectIdForLesson: null,
         editingLesson: null,
@@ -70,7 +69,6 @@ const AdminApp = {
             newClassNameInput: document.getElementById('admin-new-class-name'),
             addClassBtn: document.getElementById('admin-add-class-btn'),
             classesList: document.getElementById('admin-classes-list'),
-            classSubjectsOptions: document.getElementById('admin-class-subjects-options'),
             classSelectForStudent: document.getElementById('admin-class-select-for-student'),
             newStudentNameInput: document.getElementById('admin-new-student-name'),
             newStudentPasswordInput: document.getElementById('admin-new-student-phone'),
@@ -118,7 +116,7 @@ const AdminApp = {
         
         // 과목 목록이 업데이트될 때마다 다른 UI(드롭다운 등)를 다시 그립니다.
         document.addEventListener('subjectsUpdated', () => {
-            this.renderSubjectOptionsForClass();
+            // renderSubjectOptionsForClass() 호출 제거
             this.renderSubjectOptionsForTextbook();
             this.renderSubjectOptionsForLesson();
         });
@@ -142,33 +140,6 @@ const AdminApp = {
         if (viewMap[sectionName]) {
             viewMap[sectionName].style.display = 'block';
         }
-    },
-
-    // 여러 모듈에서 공통으로 사용하는 과목 목록 렌더링 함수들
-    renderSubjectOptionsForClass() {
-        const { classSubjectsOptions, subjects } = this.elements;
-        classSubjectsOptions.innerHTML = '';
-        if (this.state.subjects.length === 0) {
-            classSubjectsOptions.innerHTML = '<p class="text-slate-400">먼저 공통 과목을 생성해주세요.</p>';
-            return;
-        }
-        this.state.subjects.forEach(subjectData => {
-            const optionDiv = document.createElement('div');
-            optionDiv.className = "subject-option";
-            optionDiv.dataset.id = subjectData.id;
-            optionDiv.textContent = subjectData.name;
-            optionDiv.addEventListener('click', () => {
-                const id = subjectData.id;
-                if (this.state.selectedSubjectsForNewClass.has(id)) {
-                    this.state.selectedSubjectsForNewClass.delete(id);
-                    optionDiv.classList.remove('selected');
-                } else {
-                    this.state.selectedSubjectsForNewClass.add(id);
-                    optionDiv.classList.add('selected');
-                }
-            });
-            classSubjectsOptions.appendChild(optionDiv);
-        });
     },
     
     renderSubjectOptionsForTextbook() {
