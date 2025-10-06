@@ -30,10 +30,13 @@ export const homeworkDashboard = {
         this.elements.saveHomeworkBtn.textContent = isEditing ? '수정하기' : '출제하기';
 
         const subjectSelect = this.elements.homeworkSubjectSelect;
+        const pagesInput = document.getElementById('teacher-homework-pages');
+        
         subjectSelect.innerHTML = '<option value="">-- 과목 선택 --</option>';
         this.elements.homeworkTextbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
         this.elements.homeworkTextbookSelect.disabled = true;
         this.elements.homeworkDueDateInput.value = '';
+        if(pagesInput) pagesInput.value = '';
 
         if (!this.state.selectedClassData || !this.state.selectedClassData.subjects) {
             this.elements.assignHomeworkModal.style.display = 'flex';
@@ -61,6 +64,7 @@ export const homeworkDashboard = {
                 await this.populateTextbooksForHomework(hwData.subjectId);
                 this.elements.homeworkTextbookSelect.value = hwData.textbookId;
                 this.elements.homeworkDueDateInput.value = hwData.dueDate;
+                if(pagesInput) pagesInput.value = hwData.pages || '';
             }
         }
 
@@ -103,8 +107,10 @@ export const homeworkDashboard = {
         const textbookId = textbookSelect.value;
         const textbookName = textbookSelect.options[textbookSelect.selectedIndex].text;
         const dueDate = this.elements.homeworkDueDateInput.value;
+        const pages = document.getElementById('teacher-homework-pages').value;
 
-        if (!subjectId || !textbookId || !dueDate) { showToast("과목, 교재, 제출 기한을 모두 선택해주세요."); return; }
+        if (!subjectId || !textbookId || !dueDate || !pages) { showToast("과목, 교재, 제출 기한, 총 페이지 수를 모두 입력해주세요."); return; }
+        if (parseInt(pages, 10) <= 0) { showToast("페이지 수는 1 이상의 숫자를 입력해주세요."); return; }
 
         const homeworkData = {
             classId: this.state.selectedClassId,
@@ -112,6 +118,7 @@ export const homeworkDashboard = {
             textbookId,
             textbookName,
             dueDate,
+            pages: parseInt(pages, 10),
         };
 
         try {
@@ -144,7 +151,7 @@ export const homeworkDashboard = {
         snapshot.forEach(doc => {
             const hw = doc.data();
             const displayDate = hw.dueDate || '기한없음';
-            this.elements.homeworkSelect.innerHTML += `<option value="${doc.id}">[${displayDate}] ${hw.textbookName}</option>`;
+            this.elements.homeworkSelect.innerHTML += `<option value="${doc.id}">[${displayDate}] ${hw.textbookName} (${hw.pages}p)</option>`;
         });
     },
 
@@ -191,7 +198,9 @@ export const homeworkDashboard = {
         const tbody = this.elements.homeworkTableBody;
         tbody.innerHTML = '';
         const homeworkDoc = await getDoc(doc(db, 'homeworks', this.state.selectedHomeworkId));
-        const textbookName = homeworkDoc.data()?.textbookName || '';
+        const homeworkData = homeworkDoc.data();
+        const textbookName = homeworkData?.textbookName || '';
+        const totalPages = homeworkData?.pages || 0;
         
         this.state.studentsInClass.forEach((name, id) => {
             const row = document.createElement('tr');
@@ -202,8 +211,12 @@ export const homeworkDashboard = {
                 const submissionData = submissionDoc.data();
                 const submittedAtRaw = submissionData.submittedAt;
                 const submittedAt = (submittedAtRaw && typeof submittedAtRaw.toDate === 'function') ? submittedAtRaw.toDate().toLocaleString() : '정보 없음';
-                const statusClass = 'text-green-600 font-semibold';
-                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class.px-6 py-4 ${statusClass}">제출 완료</td><td class="px-6 py-4">${submittedAt}</td><td class="px-6 py-4"></td>`;
+                const submittedPages = submissionData.imageUrls?.length || 0;
+                const isComplete = submittedPages >= totalPages;
+                const statusClass = isComplete ? 'text-green-600 font-semibold' : 'text-yellow-600 font-semibold';
+                const statusText = isComplete ? `제출 완료 (${submittedPages}/${totalPages}p)` : `제출 중 (${submittedPages}/${totalPages}p)`;
+
+                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">${statusText}</td><td class="px-6 py-4">${submittedAt}</td><td class="px-6 py-4"></td>`;
                 
                 const downloadBtn = document.createElement('button');
                 downloadBtn.className = 'download-btn text-xs bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg';
@@ -212,7 +225,7 @@ export const homeworkDashboard = {
                 row.cells[3].appendChild(downloadBtn);
             } else {
                 const statusClass = 'text-slate-400';
-                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">미제출</td><td class="px-6 py-4">미제출</td><td class="px-6 py-4"></td>`;
+                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">미제출 (0/${totalPages}p)</td><td class="px-6 py-4">미제출</td><td class="px-6 py-4"></td>`;
             }
             tbody.appendChild(row);
         });

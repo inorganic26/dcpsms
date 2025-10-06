@@ -36,7 +36,7 @@ export const studentHomework = {
             } else {
                 for (const hw of recentHomeworks) {
                     const submissionDoc = await getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.studentId));
-                    this.renderHomeworkItem(hw, submissionDoc.exists());
+                    this.renderHomeworkItem(hw, submissionDoc.exists() ? submissionDoc.data() : null);
                 }
             }
         } catch (error) {
@@ -47,24 +47,29 @@ export const studentHomework = {
     },
 
     // 개별 숙제 항목 렌더링
-    renderHomeworkItem(hw, isSubmitted) {
+    renderHomeworkItem(hw, submissionData) {
         const item = document.createElement('div');
-        item.className = `p-4 border rounded-lg flex items-center justify-between ${isSubmitted ? 'bg-green-50 border-green-200' : ''}`;
+        const isSubmitted = !!submissionData;
+        const submittedPages = submissionData?.imageUrls?.length || 0;
+        const totalPages = hw.pages || 0;
+        const isComplete = submittedPages >= totalPages;
+
+        item.className = `p-4 border rounded-lg flex items-center justify-between ${isComplete ? 'bg-green-50 border-green-200' : 'bg-white'}`;
         
         const statusHtml = isSubmitted 
             ? `<div class="flex items-center gap-2">
-                 <span class="text-sm font-semibold text-green-700">제출 완료</span>
+                 <span class="text-sm font-semibold ${isComplete ? 'text-green-700' : 'text-yellow-600'}">${isComplete ? '제출 완료' : '제출 중'} (${submittedPages}/${totalPages}p)</span>
                  <button class="edit-homework-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">수정하기</button>
                </div>`
-            : '<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg">숙제 올리기</button>';
+            : `<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg">숙제 올리기</button>`;
         
         const displayDate = hw.dueDate || '기한없음';
         item.innerHTML = `
             <div>
                 <p class="text-xs text-slate-500">기한: ${displayDate}</p>
-                <h3 class="font-bold text-slate-800">${hw.textbookName}</h3>
+                <h3 class="font-bold text-slate-800">${hw.textbookName} (${totalPages}p)</h3>
             </div>
-            <div data-id="${hw.id}" data-textbook="${hw.textbookName}">${statusHtml}</div>`;
+            <div data-id="${hw.id}" data-textbook="${hw.textbookName}" data-pages="${totalPages}">${statusHtml}</div>`;
         this.app.elements.homeworkList.appendChild(item);
 
         item.querySelector('.upload-homework-btn')?.addEventListener('click', (e) => {
@@ -86,8 +91,13 @@ export const studentHomework = {
         state.filesToUpload = [];
         state.initialImageUrls = [];
 
+        const homeworkDocRef = doc(db, 'homeworks', homeworkId);
+        const homeworkDoc = await getDoc(homeworkDocRef);
+        const totalPages = homeworkDoc.data()?.pages || 0;
+        state.currentHomeworkPages = totalPages;
+
         elements.uploadModalTitle.textContent = `[${textbookName}] 숙제 ${isEditing ? '수정' : '업로드'}`;
-        elements.uploadBtnText.textContent = isEditing ? '수정하기' : '업로드하기';
+        this.updateUploadButtonText(0);
         elements.previewContainer.innerHTML = '';
         elements.filesInput.value = '';
 
@@ -99,6 +109,8 @@ export const studentHomework = {
                 state.filesToUpload = existingUrls.map(url => ({ type: 'existing', url }));
                 this.renderImagePreviews();
             }
+        } else {
+             this.renderImagePreviews();
         }
 
         elements.uploadModal.style.display = 'flex';
@@ -118,6 +130,12 @@ export const studentHomework = {
         const newFiles = Array.from(event.target.files).map(file => ({ type: 'new', file }));
         this.app.state.filesToUpload.push(...newFiles);
         this.renderImagePreviews();
+    },
+
+    updateUploadButtonText(uploadedCount) {
+        const { uploadBtnText } = this.app.elements;
+        const totalPages = this.app.state.currentHomeworkPages;
+        uploadBtnText.textContent = `${uploadedCount} / ${totalPages} 페이지 업로드`;
     },
 
     // 선택된 파일 미리보기 렌더링
@@ -150,6 +168,7 @@ export const studentHomework = {
             }
             this.app.elements.previewContainer.appendChild(previewWrapper);
         });
+        this.updateUploadButtonText(this.app.state.filesToUpload.length);
     },
 
     // 파일 업로드 및 DB 저장 처리
