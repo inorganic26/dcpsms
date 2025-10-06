@@ -191,8 +191,10 @@
                         <h3 class="font-bold text-lg mb-4 text-slate-700">학습 정보</h3>
                         <div class="space-y-4">
                             <div><label for="admin-lesson-title" class="block text-sm font-medium text-slate-600 mb-1">학습 제목</label><input type="text" id="admin-lesson-title" class="w-full p-2 border rounded-md"></div>
-                            <div><label for="admin-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label><input type="url" id="admin-video1-url" class="w-full p-2 border rounded-md"></div>
-                            <div><label for="admin-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label><input type="url" id="admin-video2-url" class="w-full p-2 border rounded-md"></div>
+                            <div><label for="admin-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label><input type="url" id="admin-video1-url" class="w-full p-2 border rounded-md" placeholder="https://youtube.com/watch?v=..."></div>
+                            <div><label for="admin-video1-rev-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 수정/보충 영상 URL (선택)</label><input type="url" id="admin-video1-rev-url" class="w-full p-2 border rounded-md" placeholder="URL 입력 시 추가 영상 버튼 생성"></div>
+                            <div><label for="admin-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label><input type="url" id="admin-video2-url" class="w-full p-2 border rounded-md" placeholder="https://youtube.com/watch?v=..."></div>
+                            <div><label for="admin-video2-rev-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 수정/보충 영상 URL (선택)</label><input type="url" id="admin-video2-rev-url" class="w-full p-2 border rounded-md" placeholder="URL 입력 시 추가 영상 버튼 생성"></div>
                         </div>
                     </div>
                     <div>
@@ -338,7 +340,10 @@
                 <button id="student-back-to-lessons-from-video-btn" class="mb-4 text-sm text-slate-500 hover:underline">&larr; 학습 선택으로</button>
                 <h1 id="student-video1-title" class="text-2xl font-bold text-slate-800 mb-4 text-center"></h1>
                 <div class="aspect-w-16 aspect-h-9 mb-6"><iframe id="student-video1-iframe" class="w-full aspect-video rounded-lg shadow-lg" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
-                <button id="student-start-quiz-btn" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">개념 확인 퀴즈 풀기</button>
+                <div class="w-full flex justify-center gap-4">
+                    <button id="student-goto-rev1-btn" class="bg-yellow-500 text-white font-bold py-3 rounded-lg hover:bg-yellow-600 transition px-8" style="display: none;">보충 영상 보기</button>
+                    <button id="student-start-quiz-btn" class="bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition px-8">개념 확인 퀴즈 풀기</button>
+                </div>
             </div>
         </div>
         
@@ -365,6 +370,7 @@
                     <div class="aspect-w-16 aspect-h-9 mb-6"><iframe id="student-review-video2-iframe" class="w-full aspect-video rounded-lg shadow-lg" frameborder="0" allowfullscreen></iframe></div>
                     <div class="flex gap-4 justify-center">
                         <button id="student-rewatch-video1-btn" class="bg-slate-200 text-slate-800 font-semibold py-2 px-5 rounded-lg hover:bg-slate-300">개념 영상 다시보기</button>
+                        <button id="student-show-rev2-btn-success" class="bg-yellow-500 text-white font-semibold py-2 px-5 rounded-lg hover:bg-yellow-600" style="display: none;">보충 풀이 보기</button>
                         <button id="student-back-to-lessons-btn-success" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700">학습 목록으로</button>
                     </div>
                 </div>
@@ -375,7 +381,10 @@
                  <div class="mt-8">
                     <h2 class="text-xl font-bold text-slate-800 mb-4">문제 풀이 영상</h2>
                     <div class="aspect-w-16 aspect-h-9 mb-6"><iframe id="student-video2-iframe" class="w-full aspect-video rounded-lg shadow-lg" frameborder="0" allowfullscreen></iframe></div>
-                    <button id="student-retry-quiz-btn" class="bg-yellow-500 text-white font-bold py-3 px-8 rounded-lg hover:bg-yellow-600">퀴즈 다시 풀기</button>
+                    <div class="flex gap-4 justify-center">
+                        <button id="student-retry-quiz-btn" class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700">퀴즈 다시 풀기</button>
+                        <button id="student-show-rev2-btn-failure" class="bg-yellow-500 text-white font-semibold py-3 px-8 rounded-lg hover:bg-yellow-600" style="display: none;">보충 풀이 보기</button>
+                    </div>
                 </div>
             </div>
         </div>
