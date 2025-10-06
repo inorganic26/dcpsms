@@ -1,6 +1,6 @@
 // src/teacher/teacherApp.js
 
-import { doc, getDoc, getDocs, collection, query } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore"; // 'where'를 여기에 추가했습니다.
 import { db, ensureAuth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 

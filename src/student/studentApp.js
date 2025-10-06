@@ -1,7 +1,7 @@
 // src/student/studentApp.js
 
 import { collection, doc, getDocs, getDoc, where, query } from "firebase/firestore";
-import { db } from '../shared/firebase.js';
+import { db, ensureAuth } from '../shared/firebase.js';
 
 // 분리된 기능 모듈들을 가져옵니다.
 import { studentAuth } from './studentAuth.js';
@@ -18,6 +18,8 @@ const StudentApp = {
         passScore: 4, totalQuizQuestions: 5,
         currentHomeworkId: null, filesToUpload: [], isEditingHomework: false,
         initialImageUrls: [],
+        // 보충 영상 순서를 기억하기 위한 변수 추가
+        currentRevVideoIndex: 0, 
     },
 
     init() {
@@ -25,15 +27,12 @@ const StudentApp = {
         this.isInitialized = true;
         this.cacheElements();
 
-        // 각 모듈을 초기화하고, StudentApp 객체 자체를 전달하여
-        // 모듈들이 state, elements, 공통 메소드에 접근할 수 있게 합니다.
         studentAuth.init(this);
         studentLesson.init(this);
         studentHomework.init(this);
 
         this.addEventListeners();
         
-        // init이 호출될 때 스스로 로그인 화면을 띄우도록 변경
         studentAuth.showLoginScreen();
     },
 
@@ -100,14 +99,12 @@ const StudentApp = {
         };
     },
 
-    // 화면 간 이동을 제어하는 공통 리스너들
     addEventListeners() {
         this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToLessonsBtnSuccess?.addEventListener('click', () => this.showLessonSelectionScreen());
         this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     },
 
-    // 모든 모듈이 공통으로 사용하는 화면 전환 함수
     showScreen(screenElement) {
         this.stopAllVideos();
         const screens = [
@@ -120,7 +117,6 @@ const StudentApp = {
         if(screenElement) screenElement.style.display = 'flex';
     },
 
-    // 모든 모듈이 공통으로 사용하는 영상 정지 함수
     stopAllVideos() {
         [this.elements.video1Iframe, this.elements.video2Iframe, this.elements.reviewVideo2Iframe].forEach(iframe => {
             if (iframe && iframe.src) { 
@@ -131,7 +127,6 @@ const StudentApp = {
         });
     },
 
-    // --- 화면 표시 관련 공통 함수들 ---
     showSubjectSelectionScreen() {
         this.elements.welcomeMessage.textContent = `${this.state.studentName} 학생, 환영합니다!`;
         this.elements.subjectsList.innerHTML = '';
@@ -204,9 +199,15 @@ const StudentApp = {
         const button = document.createElement('button');
         button.className = "w-full p-4 text-lg font-semibold text-slate-700 border-2 border-slate-200 rounded-lg hover:bg-slate-100 transition";
         button.textContent = lesson.title;
-        button.addEventListener('click', () => studentLesson.startSelectedLesson(lesson)); // lesson 모듈의 함수 호출
+        button.addEventListener('click', () => studentLesson.startSelectedLesson(lesson));
         this.elements.lessonsList.appendChild(button);
     },
 };
+
+document.addEventListener('DOMContentLoaded', () => {
+    ensureAuth(() => {
+        StudentApp.init();
+    });
+});
 
 export default StudentApp;

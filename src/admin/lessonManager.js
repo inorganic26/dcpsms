@@ -20,7 +20,37 @@ export const lessonManager = {
         this.app.elements.saveLessonBtn.addEventListener('click', () => this.saveLesson());
         this.app.elements.saveOrderBtn.addEventListener('click', () => this.saveLessonOrder());
         
+        // 보충 영상 URL 입력 필드 추가 버튼 이벤트
+        document.getElementById('admin-add-video1-rev-btn').addEventListener('click', () => this.addRevUrlInput(1));
+        document.getElementById('admin-add-video2-rev-btn').addEventListener('click', () => this.addRevUrlInput(2));
+        
         this.handleLessonFilterChange();
+    },
+
+    // 보충 영상 URL 입력 필드를 동적으로 추가하는 함수
+    addRevUrlInput(type, url = '') {
+        const container = document.getElementById(`admin-video${type}-rev-urls-container`);
+        if (!container) return;
+
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'flex items-center gap-2';
+
+        const newInput = document.createElement('input');
+        newInput.type = 'url';
+        newInput.className = 'w-full p-2 border rounded-md rev-url-input';
+        newInput.value = url;
+        newInput.placeholder = `보충 영상 URL #${container.children.length + 1}`;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '-';
+        removeBtn.className = 'text-xs bg-red-500 text-white px-2 py-1 rounded-md font-bold';
+        removeBtn.onclick = () => {
+            inputGroup.remove();
+        };
+
+        inputGroup.appendChild(newInput);
+        inputGroup.appendChild(removeBtn);
+        container.appendChild(inputGroup);
     },
 
     handleLessonFilterChange() {
@@ -88,7 +118,7 @@ export const lessonManager = {
         card.querySelector('.toggle-active-btn').addEventListener('click', (e) => this.toggleLessonActive(e.target.dataset.id, e.target.dataset.active === 'true'));
         card.querySelector('.delete-btn').addEventListener('click', (e) => this.deleteLesson(e.target.dataset.id));
     },
-
+    
     initDragAndDrop() {
         const list = this.app.elements.lessonsList;
         let draggedItem = null;
@@ -130,7 +160,7 @@ export const lessonManager = {
             }
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     },
-
+    
     async saveLessonOrder() {
         const { selectedSubjectIdForLesson } = this.app.state;
         if (!selectedSubjectIdForLesson) return;
@@ -177,9 +207,15 @@ export const lessonManager = {
         const { selectedSubjectIdForLesson, editingLesson, generatedQuiz, lessons } = state;
         const title = elements.lessonTitle.value.trim();
         const video1Url = elements.video1Url.value.trim();
-        const video1RevUrl = elements.video1RevUrl.value.trim();
         const video2Url = elements.video2Url.value.trim();
-        const video2RevUrl = elements.video2RevUrl.value.trim();
+
+        const video1RevUrls = Array.from(document.querySelectorAll('#admin-video1-rev-urls-container .rev-url-input'))
+            .map(input => input.value.trim())
+            .filter(url => url);
+
+        const video2RevUrls = Array.from(document.querySelectorAll('#admin-video2-rev-urls-container .rev-url-input'))
+            .map(input => input.value.trim())
+            .filter(url => url);
 
         if (!title || !video1Url || !video2Url || !generatedQuiz) {
             showToast("제목, 기본 영상 1, 문제 풀이 영상 2, 퀴즈 정보는 필수입니다.");
@@ -188,7 +224,11 @@ export const lessonManager = {
 
         this.setSaveButtonLoading(true);
         const lessonData = {
-            title, video1Url, video1RevUrl, video2Url, video2RevUrl,
+            title, 
+            video1Url, 
+            video2Url, 
+            video1RevUrls,
+            video2RevUrls,
             questionBank: generatedQuiz,
         };
 
@@ -219,9 +259,9 @@ export const lessonManager = {
         elements.modalTitle.textContent = "새 학습 세트 만들기";
         elements.lessonTitle.value = '';
         elements.video1Url.value = '';
-        elements.video1RevUrl.value = '';
         elements.video2Url.value = '';
-        elements.video2RevUrl.value = '';
+        document.getElementById('admin-video1-rev-urls-container').innerHTML = '';
+        document.getElementById('admin-video2-rev-urls-container').innerHTML = '';
         elements.quizJsonInput.value = '';
         elements.questionsPreviewContainer.classList.add('hidden');
         state.generatedQuiz = null;
@@ -239,9 +279,20 @@ export const lessonManager = {
         elements.modalTitle.textContent = "학습 세트 수정";
         elements.lessonTitle.value = lessonData.title;
         elements.video1Url.value = lessonData.video1Url;
-        elements.video1RevUrl.value = lessonData.video1RevUrl || '';
         elements.video2Url.value = lessonData.video2Url;
-        elements.video2RevUrl.value = lessonData.video2RevUrl || '';
+
+        const video1Container = document.getElementById('admin-video1-rev-urls-container');
+        const video2Container = document.getElementById('admin-video2-rev-urls-container');
+        video1Container.innerHTML = '';
+        video2Container.innerHTML = '';
+
+        if (lessonData.video1RevUrls && Array.isArray(lessonData.video1RevUrls)) {
+            lessonData.video1RevUrls.forEach(url => this.addRevUrlInput(1, url));
+        }
+        if (lessonData.video2RevUrls && Array.isArray(lessonData.video2RevUrls)) {
+            lessonData.video2RevUrls.forEach(url => this.addRevUrlInput(2, url));
+        }
+        
         elements.quizJsonInput.value = JSON.stringify(lessonData.questionBank, null, 2);
         this.handleJsonPreview();
         elements.modal.style.display = 'flex';

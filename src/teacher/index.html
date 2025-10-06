@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>선생님 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../shared/style.css">
+</head>
+<body class="bg-slate-100">
+
+    <div id="toast-notification" style="transition: opacity 0.3s, transform 0.3s;" class="fixed top-8 right-8 z-[100] p-4 rounded-lg shadow-lg text-white transform translate-x-[120%] opacity-0">
+        <p id="toast-message"></p>
+    </div>
+
+    <div class="container mx-auto max-w-6xl p-4 sm:p-6 md:p-8">
+        <a href="../../" class="back-to-portal-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition no-underline">&larr; 포털로 돌아가기</a>
+        <div id="teacher-loading-screen" class="w-full py-20 flex justify-center items-center" style="display: none;"><div class="loader"></div></div>
+        <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+            <header class="flex flex-col md:flex-row gap-4 border-b pb-6 mb-6">
+                <div class="flex-1"><label for="teacher-class-select" class="block text-sm font-medium text-slate-700 mb-2">반 선택</label><select id="teacher-class-select" class="w-full p-2 border border-slate-300 rounded-lg"></select></div>
+                <div class="flex-1"><label for="teacher-view-select" class="block text-sm font-medium text-slate-700 mb-2">확인할 내용</label><select id="teacher-view-select" class="w-full p-2 border border-slate-300 rounded-lg" disabled><option value="lessons">학습 현황</option><option value="homework">숙제 현황</option></select></div>
+            </header>
+            <main>
+                <div id="teacher-lessons-dashboard" style="display: none;">
+                    <div class="flex flex-col md:flex-row gap-4 mb-6">
+                        <div class="flex-1"><label for="teacher-subject-select" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label><select id="teacher-subject-select" class="w-full p-2 border border-slate-300 rounded-lg" disabled></select></div>
+                        <div class="flex-1"><label for="teacher-lesson-select" class="block text-sm font-medium text-slate-700 mb-2">학습 선택</label><select id="teacher-lesson-select" class="w-full p-2 border border-slate-300 rounded-lg" disabled></select></div>
+                    </div>
+                    <div id="teacher-dashboard-content" class="overflow-x-auto" style="display: none;">
+                         <h2 id="teacher-selected-lesson-title" class="text-xl font-bold text-slate-800 mb-4"></h2>
+                         <table class="w-full text-sm text-left text-gray-500"><tbody id="teacher-results-table-body"></tbody></table>
+                    </div>
+                </div>
+                <div id="teacher-homework-dashboard" style="display: none;">
+                    <div class="flex justify-between items-center mb-6">
+                        <div class="flex-1 max-w-md"><label for="teacher-homework-select" class="block text-sm font-medium text-slate-700 mb-2">숙제 선택</label><select id="teacher-homework-select" class="w-full p-2 border border-slate-300 rounded-lg"></select></div>
+                        <div id="teacher-assign-homework-btn-container" style="display: none;"><button id="teacher-assign-homework-btn" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition">+ 새 숙제 출제</button></div>
+                    </div>
+                    <div id="teacher-homework-content" class="overflow-x-auto" style="display: none;">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 id="teacher-selected-homework-title" class="text-xl font-bold text-slate-800"></h2>
+                            <div id="teacher-homework-management-buttons" class="flex gap-2" style="display: none;">
+                                <button id="teacher-edit-homework-btn" class="text-sm bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">수정</button>
+                                <button id="teacher-delete-homework-btn" class="text-sm bg-red-500 text-white font-semibold px-3 py-1 rounded-lg">삭제</button>
+                            </div>
+                        </div>
+                        <table class="w-full text-sm text-left text-gray-500"><tbody id="teacher-homework-table-body"></tbody></table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    <div id="teacher-assign-homework-modal" class="modal-backdrop" style="display: none;">
+         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <header class="p-6 border-b flex justify-between items-center"><h2 id="teacher-homework-modal-title" class="text-xl font-bold text-slate-800">새 숙제 출제</h2><button id="teacher-close-homework-modal-btn" class="text-slate-500 hover:text-slate-800">&times;</button></header>
+            <main class="p-6 space-y-4">
+                <div><label for="teacher-homework-subject-select" class="block text-sm font-medium text-slate-600 mb-1">과목</label><select id="teacher-homework-subject-select" class="w-full p-2 border rounded-md"></select></div>
+                <div><label for="teacher-homework-textbook-select" class="block text-sm font-medium text-slate-600 mb-1">교재</label><select id="teacher-homework-textbook-select" class="w-full p-2 border rounded-md" disabled></select></div>
+                <div><label for="teacher-homework-due-date" class="block text-sm font-medium text-slate-600 mb-1">제출 기한</label><input type="date" id="teacher-homework-due-date" class="w-full p-2 border rounded-md"></div>
+            </main>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="teacher-cancel-homework-btn" class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-2 px-5 rounded-lg">취소</button>
+                <button id="teacher-save-homework-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg">출제하기</button>
+            </footer>
+        </div>
+    </div>
+
+    <script type="module" src="./teacherApp.js"></script>
+</body>
+</html>
