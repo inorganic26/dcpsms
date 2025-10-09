@@ -4,10 +4,8 @@ import { doc, getDoc, getDocs, collection, query, where, onSnapshot } from "fire
 import { db, ensureAuth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
-// 분리된 기능 모듈들을 가져옵니다.
 import { lessonDashboard } from './lessonDashboard.js';
 import { homeworkDashboard } from './homeworkDashboard.js';
-// 관리자 앱에서 가져올 기능 모듈 (새로 생성하거나 복사해야 함)
 import { lessonManager } from './lessonManager.js'; 
 import { classEditor } from './classEditor.js'; 
 
@@ -15,19 +13,14 @@ const TeacherApp = {
     isInitialized: false,
     elements: {},
     state: {
-        // 공통 State
         selectedClassId: null,
         selectedClassName: null,
         selectedClassData: null,
         studentsInClass: new Map(),
-        subjects: [], // 전체 과목 목록
-        
-        // 대시보드 State
+        subjects: [],
         selectedSubjectId: null,
         selectedLessonId: null,
         selectedHomeworkId: null,
-        
-        // 관리 기능 State
         selectedSubjectIdForMgmt: null,
         lessons: [],
         editingLesson: null,
@@ -42,21 +35,17 @@ const TeacherApp = {
         this.cacheElements();
         this.addEventListeners();
 
-        // 기능 모듈 초기화
         lessonDashboard.init(this);
         homeworkDashboard.init(this);
         lessonManager.init(this);
         classEditor.init(this);
 
-        // 메인 콘텐츠를 처음부터 숨기지 않음
-        this.elements.mainContent.style.display = 'none'; // 반 선택 전에는 숨김
         this.populateClassSelect();
-        this.listenForSubjects(); // 앱 시작 시 전체 과목 정보 구독
+        this.listenForSubjects();
     },
 
     cacheElements() {
         this.elements = {
-            // loadingScreen 참조 제거
             classSelect: document.getElementById('teacher-class-select'),
             mainContent: document.getElementById('teacher-main-content'),
             navButtons: document.querySelectorAll('.teacher-nav-btn'),
@@ -66,8 +55,6 @@ const TeacherApp = {
                 'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
                 'class-mgmt': document.getElementById('view-class-mgmt'),
             },
-
-            // 대시보드 Elements
             subjectSelectLesson: document.getElementById('teacher-subject-select-lesson'),
             lessonSelect: document.getElementById('teacher-lesson-select'),
             lessonDashboardContent: document.getElementById('teacher-lesson-dashboard-content'),
@@ -77,8 +64,6 @@ const TeacherApp = {
             homeworkContent: document.getElementById('teacher-homework-content'),
             selectedHomeworkTitle: document.getElementById('teacher-selected-homework-title'),
             homeworkTableBody: document.getElementById('teacher-homework-table-body'),
-            
-            // 숙제 관리 Modal
             assignHomeworkBtn: document.getElementById('teacher-assign-homework-btn'),
             homeworkManagementButtons: document.getElementById('teacher-homework-management-buttons'),
             editHomeworkBtn: document.getElementById('teacher-edit-homework-btn'),
@@ -91,15 +76,11 @@ const TeacherApp = {
             homeworkSubjectSelect: document.getElementById('teacher-homework-subject-select'),
             homeworkTextbookSelect: document.getElementById('teacher-homework-textbook-select'),
             homeworkDueDateInput: document.getElementById('teacher-homework-due-date'),
-
-            // 학습 관리 Elements
             subjectSelectForMgmt: document.getElementById('teacher-subject-select-mgmt'),
             lessonsManagementContent: document.getElementById('teacher-lessons-management-content'),
             lessonPrompt: document.getElementById('teacher-lesson-prompt'),
             lessonsList: document.getElementById('teacher-lessons-list'),
             saveOrderBtn: document.getElementById('teacher-save-lesson-order-btn'),
-
-            // 학습 관리 Modal
             modal: document.getElementById('teacher-new-lesson-modal'), 
             modalTitle: document.getElementById('teacher-lesson-modal-title'),
             lessonTitle: document.getElementById('teacher-lesson-title'),
@@ -113,8 +94,6 @@ const TeacherApp = {
             saveLessonBtn: document.getElementById('teacher-save-lesson-btn'),
             saveBtnText: document.getElementById('teacher-save-btn-text'), 
             saveLoader: document.getElementById('teacher-save-loader'),
-            
-            // 반 설정 Elements
             editClassBtn: document.getElementById('teacher-edit-class-btn'),
             editClassModal: document.getElementById('teacher-edit-class-modal'),
             editClassName: document.getElementById('teacher-edit-class-name'),
@@ -188,18 +167,18 @@ const TeacherApp = {
     },
 
     async populateClassSelect() {
-        // 전체 로딩 화면 대신, select 엘리먼트만 비활성화/활성화
         this.elements.classSelect.disabled = true;
         try {
             const snapshot = await getDocs(query(collection(db, 'classes')));
-            this.elements.classSelect.innerHTML = '<option value="">-- 반을 선택하세요 --</option>'; // 로딩 완료 후 기본 텍스트 변경
+            this.elements.classSelect.innerHTML = '<option value="">-- 반을 선택하세요 --</option>';
             snapshot.forEach(doc => {
                 const option = document.createElement('option');
-                option.value = doc.id; option.textContent = doc.data().name;
+                option.value = doc.id;
+                option.textContent = doc.data().name;
                 this.elements.classSelect.appendChild(option);
             });
         } catch (error) {
-            this.elements.classSelect.innerHTML = '<option value="">-- 반 목록 로드 실패 --</option>';
+            this.elements.classSelect.innerHTML = '<option value="">-- 목록 로드 실패 --</option>';
             showToast("반 목록을 불러오는 데 실패했습니다.");
         } finally {
             this.elements.classSelect.disabled = false;
@@ -240,7 +219,6 @@ const TeacherApp = {
     },
 };
 
-// 앱 시작점
 document.addEventListener('DOMContentLoaded', () => {
     ensureAuth(() => {
         TeacherApp.init();
