@@ -4,9 +4,10 @@ import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth, ensureAuth } from './shared/firebase.js';
 import './shared/style.css';
 
-import AdminApp from './admin/adminApp.js';
-import TeacherApp from './teacher/teacherApp.js';
-import StudentApp from './student/studentApp.js';
+// 초기 로드 시 앱 모듈을 import 하지 않습니다.
+// import AdminApp from './admin/adminApp.js';
+// import TeacherApp from './teacher/teacherApp.js';
+// import StudentApp from './student/studentApp.js';
 
 const AppNavigator = {
     views: {},
@@ -34,7 +35,8 @@ const AppNavigator = {
 
         document.querySelectorAll('.back-to-portal-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (StudentApp.isInitialized) {
+                // StudentApp이 초기화되었는지 확인 후 stopAllVideos 호출
+                if (this.initializedApps.student && StudentApp) {
                     StudentApp.stopAllVideos();
                 }
                 this.showView('portal');
@@ -44,7 +46,7 @@ const AppNavigator = {
         this.showView('portal');
     },
 
-    showView(viewName) {
+    async showView(viewName) {
         Object.values(this.views).forEach(view => {
             if (view) view.style.display = 'none';
         });
@@ -55,20 +57,35 @@ const AppNavigator = {
         }
 
         if (viewName !== 'portal' && !this.initializedApps[viewName]) {
-            const app = this.getAppModule(viewName);
-            if (app) {
-                app.init();
-                this.initializedApps[viewName] = true;
+            try {
+                const appModule = await this.getAppModule(viewName);
+                if (appModule) {
+                    // 기본 내보내기(default export)를 사용하므로 .default로 접근
+                    appModule.default.init();
+                    this.initializedApps[viewName] = true;
+
+                    // StudentApp의 경우, 전역에서 접근할 수 있도록 window 객체에 할당
+                    if (viewName === 'student') {
+                        window.StudentApp = appModule.default;
+                    }
+                }
+            } catch (error) {
+                console.error(`${viewName} App 로딩 실패:`, error);
             }
         }
     },
     
+    // getAppModule을 동적 import를 사용하도록 수정
     getAppModule(appName) {
         switch(appName) {
-            case 'admin': return AdminApp;
-            case 'teacher': return TeacherApp;
-            case 'student': return StudentApp;
-            default: return null;
+            case 'admin': 
+                return import('./admin/adminApp.js');
+            case 'teacher': 
+                return import('./teacher/teacherApp.js');
+            case 'student': 
+                return import('./student/studentApp.js');
+            default: 
+                return null;
         }
     }
 };

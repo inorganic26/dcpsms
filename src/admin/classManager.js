@@ -31,7 +31,7 @@ export const classManager = {
                 subjects: {}, // 빈 과목으로 반 생성
                 createdAt: serverTimestamp() 
             });
-            showToast("새로운 반이 추가되었습니다. '수정' 버튼으로 과목을 설정하세요.", false);
+            showToast("새로운 반이 추가되었습니다. '수정' 버튼으로 과목과 학생을 설정하세요.", false);
             newClassNameInput.value = '';
         } catch (error) { 
             console.error("반 추가 실패:", error); 
@@ -51,18 +51,17 @@ export const classManager = {
     },
 
     renderClassList() {
-        const { classesList, classSelectForStudent } = this.app.elements;
-        const { classes, subjects } = this.app.state;
+        const { classesList } = this.app.elements;
+        const { subjects } = this.app.state;
 
         classesList.innerHTML = '';
-        classSelectForStudent.innerHTML = '<option value="">-- 반 선택 --</option>';
 
-        if (classes.length === 0) {
+        if (!this.app.state.classes || this.app.state.classes.length === 0) {
             classesList.innerHTML = '<p class="text-sm text-slate-400">생성된 반이 없습니다.</p>';
             return;
         }
 
-        classes.forEach(cls => {
+        this.app.state.classes.forEach(cls => {
             const classDiv = document.createElement('div');
             const subjectIds = cls.subjects ? Object.keys(cls.subjects) : [];
             const assignedSubjects = subjectIds
@@ -83,25 +82,24 @@ export const classManager = {
             classesList.appendChild(classDiv);
             classDiv.querySelector('.delete-class-btn').addEventListener('click', (e) => this.deleteClass(e.target.dataset.id));
             classDiv.querySelector('.edit-class-btn').addEventListener('click', (e) => this.openEditClassModal(e.target.dataset.id));
-            
-            const option = document.createElement('option');
-            option.value = cls.id;
-            option.textContent = cls.name;
-            classSelectForStudent.appendChild(option);
         });
     },
 
     async deleteClass(classId) {
-        if (!confirm("정말로 이 반을 삭제하시겠습니까? 학생 명단도 함께 삭제됩니다.")) return;
+        if (!confirm("정말로 이 반을 삭제하시겠습니까? 소속된 학생들은 '미배정' 상태가 됩니다.")) return;
         try {
             const batch = writeBatch(db);
             const classRef = doc(db, 'classes', classId);
             batch.delete(classRef);
+            
             const studentsQuery = query(collection(db, 'students'), where('classId', '==', classId));
             const studentsSnapshot = await getDocs(studentsQuery);
-            studentsSnapshot.forEach(studentDoc => batch.delete(studentDoc.ref));
+            studentsSnapshot.forEach(studentDoc => {
+                batch.update(studentDoc.ref, { classId: null });
+            });
+
             await batch.commit();
-            showToast("반과 소속 학생들이 삭제되었습니다.", false);
+            showToast("반이 삭제되고 소속 학생들은 미배정 처리되었습니다.", false);
         } catch (error) { 
             console.error("반 삭제 실패:", error); 
             showToast("반 삭제에 실패했습니다."); 
@@ -112,14 +110,23 @@ export const classManager = {
         const classData = this.app.state.classes.find(c => c.id === classId);
         if (!classData) return;
         this.app.state.editingClass = classData;
-        this.app.elements.editClassName.textContent = classData.name;
         
-        const container = document.getElementById('admin-edit-class-subjects-and-textbooks');
-        container.innerHTML = '불러오는 중...';
-        this.app.elements.editClassModal.style.display = 'flex';
+        const editClassName = document.getElementById('admin-edit-class-name');
+        const subjectsContainer = document.getElementById('admin-edit-class-subjects-and-textbooks');
+        const modal = document.getElementById('admin-edit-class-modal');
+        const studentsContainer = document.getElementById('admin-edit-class-students-container');
 
+        editClassName.textContent = classData.name;
+        subjectsContainer.innerHTML = '과목 정보 불러오는 중...';
+        studentsContainer.innerHTML = '학생 정보 불러오는 중...';
+        modal.style.display = 'flex';
+
+        this.renderSubjectsForEditing(classData, subjectsContainer);
+        this.renderStudentsForEditing(classId, studentsContainer);
+    },
+
+    async renderSubjectsForEditing(classData, container) {
         const currentSubjects = classData.subjects || {};
-        
         const textbookPromises = this.app.state.subjects.map(subject => 
             getDocs(collection(db, `subjects/${subject.id}/textbooks`))
         );
@@ -156,6 +163,84 @@ export const classManager = {
         });
     },
 
+    async renderStudentsForEditing(classId, container) {
+        const allStudentsSnapshot = await getDocs(query(collection(db, 'students')));
+        const allStudents = allStudentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        const studentsInClass = allStudents.filter(s => s.classId === classId).sort((a,b) => a.name.localeCompare(b.name));
+        const studentsNotInClass = allStudents.filter(s => !s.classId || s.classId !== classId).sort((a,b) => a.name.localeCompare(b.name));
+
+        container.innerHTML = `
+            <div>
+                <h4 class="font-semibold text-slate-700 mb-2">소속 학생 (${studentsInClass.length}명)</h4>
+                <div id="admin-students-in-class-list" class="space-y-2 max-h-40 overflow-y-auto custom-scrollbar border p-2 rounded-md"></div>
+            </div>
+            <div>
+                <h4 class="font-semibold text-slate-700 mb-2">학생 추가</h4>
+                <input type="text" id="admin-student-search-input" class="w-full px-3 py-2 border rounded-lg mb-2" placeholder="이름 또는 전화번호로 검색">
+                <div id="admin-students-not-in-class-list" class="space-y-2 max-h-40 overflow-y-auto custom-scrollbar border p-2 rounded-md"></div>
+            </div>
+        `;
+
+        const inClassList = container.querySelector('#admin-students-in-class-list');
+        const notInClassList = container.querySelector('#admin-students-not-in-class-list');
+        const searchInput = container.querySelector('#admin-student-search-input');
+
+        const renderStudentLists = (searchTerm = '') => {
+            inClassList.innerHTML = '';
+            notInClassList.innerHTML = '';
+
+            if (studentsInClass.length === 0) {
+                 inClassList.innerHTML = '<p class="text-sm text-slate-400">소속된 학생이 없습니다.</p>';
+            } else {
+                studentsInClass.forEach(student => {
+                    const studentDiv = document.createElement('div');
+                    studentDiv.className = "p-2 bg-slate-50 rounded-md flex justify-between items-center";
+                    studentDiv.innerHTML = `
+                        <span class="text-sm">${student.name} (${student.phone || '번호없음'})</span>
+                        <button data-id="${student.id}" class="remove-student-btn text-red-500 text-xs font-bold">제외</button>
+                    `;
+                    inClassList.appendChild(studentDiv);
+                    studentDiv.querySelector('.remove-student-btn').addEventListener('click', async (e) => {
+                        await updateDoc(doc(db, 'students', e.target.dataset.id), { classId: null });
+                        showToast(`${student.name} 학생을 반에서 제외했습니다.`, false);
+                        this.renderStudentsForEditing(classId, container);
+                    });
+                });
+            }
+
+            const filteredStudents = studentsNotInClass.filter(s => 
+                s.name.includes(searchTerm) || (s.phone && s.phone.includes(searchTerm))
+            );
+
+            if (filteredStudents.length === 0) {
+                 notInClassList.innerHTML = '<p class="text-sm text-slate-400">추가할 학생이 없거나 검색 결과가 없습니다.</p>';
+            } else {
+                 filteredStudents.forEach(student => {
+                    const studentDiv = document.createElement('div');
+                    studentDiv.className = "p-2 bg-slate-50 rounded-md flex justify-between items-center";
+                    const otherClassName = student.classId ? this.app.state.classes.find(c => c.id === student.classId)?.name : '미배정';
+                    studentDiv.innerHTML = `
+                         <div>
+                            <span class="text-sm">${student.name} (${student.phone || '번호없음'})</span>
+                            <span class="text-xs text-slate-400 ml-1">[${otherClassName}]</span>
+                         </div>
+                        <button data-id="${student.id}" class="add-student-btn text-blue-500 text-xs font-bold">추가</button>
+                    `;
+                    notInClassList.appendChild(studentDiv);
+                    studentDiv.querySelector('.add-student-btn').addEventListener('click', async (e) => {
+                        await updateDoc(doc(db, 'students', e.target.dataset.id), { classId: classId });
+                        showToast(`${student.name} 학생을 반에 추가했습니다.`, false);
+                        this.renderStudentsForEditing(classId, container);
+                    });
+                });
+            }
+        };
+        
+        searchInput.addEventListener('input', (e) => renderStudentLists(e.target.value.trim()));
+        renderStudentLists();
+    },
+
     closeEditClassModal() {
         this.app.state.editingClass = null;
         this.app.elements.editClassModal.style.display = 'none';
@@ -176,8 +261,7 @@ export const classManager = {
         
         try {
             await updateDoc(doc(db, 'classes', classId), { subjects: newSubjectsData });
-            showToast("반 정보가 성공적으로 수정되었습니다.", false);
-            this.closeEditClassModal();
+            showToast("반의 과목/교재 정보가 성공적으로 수정되었습니다.", false);
         } catch (error) {
             console.error("반 정보 수정 실패:", error);
             showToast("반 정보 수정에 실패했습니다.");

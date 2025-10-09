@@ -48,13 +48,15 @@ const TeacherApp = {
         lessonManager.init(this);
         classEditor.init(this);
 
+        // 메인 콘텐츠를 처음부터 숨기지 않음
+        this.elements.mainContent.style.display = 'none'; // 반 선택 전에는 숨김
         this.populateClassSelect();
         this.listenForSubjects(); // 앱 시작 시 전체 과목 정보 구독
     },
 
     cacheElements() {
         this.elements = {
-            loadingScreen: document.getElementById('teacher-loading-screen'),
+            // loadingScreen 참조 제거
             classSelect: document.getElementById('teacher-class-select'),
             mainContent: document.getElementById('teacher-main-content'),
             navButtons: document.querySelectorAll('.teacher-nav-btn'),
@@ -130,7 +132,6 @@ const TeacherApp = {
     },
 
     handleViewChange(viewName) {
-        // 네비게이션 버튼 스타일 업데이트
         this.elements.navButtons.forEach(btn => {
             const isSelected = btn.dataset.view === viewName;
             btn.classList.toggle('border-blue-600', isSelected);
@@ -141,14 +142,11 @@ const TeacherApp = {
             btn.classList.toggle('font-medium', !isSelected);
         });
 
-        // 모든 뷰 숨기기
         Object.values(this.elements.views).forEach(view => view.style.display = 'none');
-        // 선택된 뷰만 보이기
         if (this.elements.views[viewName]) {
             this.elements.views[viewName].style.display = 'block';
         }
 
-        // 뷰에 따른 초기화 작업
         if (viewName === 'lesson-dashboard') {
             this.populateSubjectSelectForLessonDashboard();
         } else if (viewName === 'homework-dashboard') {
@@ -164,13 +162,13 @@ const TeacherApp = {
         this.state.selectedClassName = selectedOption.text;
 
         if (!this.state.selectedClassId) {
-            this.elements.mainContent.classList.add('hidden');
+            this.elements.mainContent.style.display = 'none';
             return;
         }
 
-        this.elements.mainContent.classList.remove('hidden');
+        this.elements.mainContent.style.display = 'block';
         await this.fetchClassData(this.state.selectedClassId);
-        this.handleViewChange('lesson-dashboard'); // 반 선택 시 기본으로 학습 현황 뷰 표시
+        this.handleViewChange('lesson-dashboard');
     },
 
     async fetchClassData(classId) {
@@ -190,19 +188,21 @@ const TeacherApp = {
     },
 
     async populateClassSelect() {
-        this.elements.loadingScreen.style.display = 'flex';
-        this.elements.classSelect.innerHTML = '<option value="">-- 반을 선택하세요 --</option>';
+        // 전체 로딩 화면 대신, select 엘리먼트만 비활성화/활성화
+        this.elements.classSelect.disabled = true;
         try {
             const snapshot = await getDocs(query(collection(db, 'classes')));
+            this.elements.classSelect.innerHTML = '<option value="">-- 반을 선택하세요 --</option>'; // 로딩 완료 후 기본 텍스트 변경
             snapshot.forEach(doc => {
                 const option = document.createElement('option');
                 option.value = doc.id; option.textContent = doc.data().name;
                 this.elements.classSelect.appendChild(option);
             });
         } catch (error) {
+            this.elements.classSelect.innerHTML = '<option value="">-- 반 목록 로드 실패 --</option>';
             showToast("반 목록을 불러오는 데 실패했습니다.");
         } finally {
-            this.elements.loadingScreen.style.display = 'none';
+            this.elements.classSelect.disabled = false;
         }
     },
 

@@ -40,8 +40,8 @@ const StudentApp = {
         this.elements = {
             loadingScreen: document.getElementById('student-loading-screen'),
             loginScreen: document.getElementById('student-login-screen'),
-            classSelect: document.getElementById('student-class-select'),
-            nameSelect: document.getElementById('student-name-select'),
+            // classSelect와 nameSelect를 phoneInput으로 변경
+            phoneInput: document.getElementById('student-phone'),
             passwordInput: document.getElementById('student-password'),
             loginBtn: document.getElementById('student-login-btn'),
             
@@ -131,7 +131,7 @@ const StudentApp = {
         this.elements.welcomeMessage.textContent = `${this.state.studentName} 학생, 환영합니다!`;
         this.elements.subjectsList.innerHTML = '';
         if (this.state.activeSubjects.length === 0) {
-            this.elements.subjectsList.innerHTML = '<p class="text-center text-slate-500 py-8">수강 가능한 과목이 없습니다.</p>';
+            this.elements.subjectsList.innerHTML = '<p class="text-center text-slate-500 py-8">수강 가능한 과목이 없습니다. 관리자에게 문의하세요.</p>';
         } else {
             this.state.activeSubjects.forEach(subject => this.renderSubjectChoice(subject));
         }

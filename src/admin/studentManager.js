@@ -8,24 +8,15 @@ export const studentManager = {
     init(app) {
         this.app = app;
 
-        // 학생 관리 관련 이벤트 리스너 설정
         this.app.elements.addStudentBtn.addEventListener('click', () => this.addNewStudent());
-        this.app.elements.classSelectForStudent.addEventListener('change', (e) => {
-            this.app.state.selectedClassIdForStudent = e.target.value;
-            this.listenForStudents();
-        });
+        this.listenForStudents(); 
     },
 
     async addNewStudent() {
-        const { state, elements } = this.app;
-        const classId = state.selectedClassIdForStudent;
+        const { elements } = this.app;
         const studentName = elements.newStudentNameInput.value.trim();
         const phone = elements.newStudentPasswordInput.value.trim();
 
-        if (!classId) { 
-            showToast("학생을 추가할 반을 먼저 선택해주세요."); 
-            return; 
-        }
         if (!studentName || !phone) { 
             showToast("학생 이름과 전화번호를 모두 입력해주세요."); 
             return; 
@@ -40,7 +31,8 @@ export const studentManager = {
             await addDoc(collection(db, 'students'), { 
                 name: studentName, 
                 password: password, 
-                classId: classId, 
+                phone: phone,
+                classId: null,
                 createdAt: serverTimestamp() 
             });
             showToast(`새로운 학생이 추가되었습니다. (비밀번호: ${password})`, false);
@@ -53,17 +45,10 @@ export const studentManager = {
     },
 
     listenForStudents() {
-        const classId = this.app.state.selectedClassIdForStudent;
         const { studentsList } = this.app.elements;
-
         if (!studentsList) return;
 
-        if (!classId) { 
-            studentsList.innerHTML = '<p class="text-sm text-slate-400">먼저 반을 선택해주세요.</p>'; 
-            return; 
-        }
-
-        const q = query(collection(db, 'students'), where("classId", "==", classId));
+        const q = query(collection(db, 'students'));
         onSnapshot(q, (snapshot) => {
             studentsList.innerHTML = '';
             if (snapshot.empty) { 
@@ -73,18 +58,38 @@ export const studentManager = {
             const students = [];
             snapshot.forEach(doc => students.push({ id: doc.id, ...doc.data() }));
             students.sort((a, b) => a.name.localeCompare(b.name));
-            students.forEach(std => this.renderStudent(std));
+            
+            const assigned = students.filter(s => s.classId);
+            const unassigned = students.filter(s => !s.classId);
+
+            studentsList.innerHTML += '<h4 class="text-md font-semibold text-slate-600 mt-4">미배정 학생</h4>';
+            if (unassigned.length === 0) {
+                 studentsList.innerHTML += '<p class="text-sm text-slate-400">미배정 학생이 없습니다.</p>';
+            } else {
+                unassigned.forEach(std => this.renderStudent(std));
+            }
+
+            studentsList.innerHTML += '<h4 class="text-md font-semibold text-slate-600 mt-6">반 배정된 학생</h4>';
+            if (assigned.length === 0) {
+                 studentsList.innerHTML += '<p class="text-sm text-slate-400">반 배정된 학생이 없습니다.</p>';
+            } else {
+                 assigned.forEach(std => this.renderStudent(std));
+            }
         });
     },
 
     renderStudent(studentData) {
         const studentDiv = document.createElement('div');
+        const className = this.app.state.classes.find(c => c.id === studentData.classId)?.name || '미배정';
         studentDiv.className = "p-3 border rounded-lg flex items-center justify-between";
         studentDiv.innerHTML = `
-            <span class="font-medium text-slate-700">${studentData.name}</span>
+            <div>
+                <span class="font-medium text-slate-700">${studentData.name} (${studentData.phone || '번호없음'})</span>
+                <span class="text-xs text-slate-500 ml-2">[${className}]</span>
+            </div>
             <div class="flex gap-2">
                 <button data-id="${studentData.id}" data-name="${studentData.name}" class="reset-password-btn text-blue-500 hover:text-blue-700 text-sm font-semibold">비밀번호 초기화</button>
-                <button data-id="${studentData.id}" class="delete-student-btn text-red-500 hover:text-red-700 text-sm font-semibold">삭제</button>
+                <button data-id="${studentData.id}" class="delete-student-btn text-red-500 hover:red-blue-700 text-sm font-semibold">삭제</button>
             </div>
         `;
         this.app.elements.studentsList.appendChild(studentDiv);
@@ -112,7 +117,7 @@ export const studentManager = {
 
         const finalPassword = newPhone.slice(-4);
         try {
-            await updateDoc(doc(db, 'students', studentId), { password: finalPassword });
+            await updateDoc(doc(db, 'students', studentId), { password: finalPassword, phone: newPhone });
             showToast(`'${studentName}' 학생의 비밀번호가 '${finalPassword}'로 초기화되었습니다.`, false);
         } catch (error) { 
             console.error("비밀번호 초기화 실패:", error); 
