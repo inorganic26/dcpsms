@@ -6,8 +6,9 @@ import { showToast } from '../shared/utils.js';
 
 import { lessonDashboard } from './lessonDashboard.js';
 import { homeworkDashboard } from './homeworkDashboard.js';
-import { lessonManager } from './lessonManager.js'; 
-import { classEditor } from './classEditor.js'; 
+import { lessonManager } from './lessonManager.js';
+import { classEditor } from './classEditor.js';
+import { analysisDashboard } from './analysisDashboard.js';
 
 const TeacherApp = {
     isInitialized: false,
@@ -33,13 +34,16 @@ const TeacherApp = {
         this.isInitialized = true;
 
         this.cacheElements();
-        this.addEventListeners();
-
+        
+        // 모든 모듈 초기화
         lessonDashboard.init(this);
         homeworkDashboard.init(this);
         lessonManager.init(this);
         classEditor.init(this);
+        analysisDashboard.init(this);
 
+        this.addEventListeners(); // 이벤트 리스너는 요소 캐싱과 모듈 초기화 후에 설정
+        
         this.populateClassSelect();
         this.listenForSubjects();
     },
@@ -52,6 +56,7 @@ const TeacherApp = {
             views: {
                 'lesson-dashboard': document.getElementById('view-lesson-dashboard'),
                 'homework-dashboard': document.getElementById('view-homework-dashboard'),
+                'analysis-dashboard': document.getElementById('view-analysis-dashboard'),
                 'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
                 'class-mgmt': document.getElementById('view-class-mgmt'),
             },
@@ -81,18 +86,18 @@ const TeacherApp = {
             lessonPrompt: document.getElementById('teacher-lesson-prompt'),
             lessonsList: document.getElementById('teacher-lessons-list'),
             saveOrderBtn: document.getElementById('teacher-save-lesson-order-btn'),
-            modal: document.getElementById('teacher-new-lesson-modal'), 
+            modal: document.getElementById('teacher-new-lesson-modal'),
             modalTitle: document.getElementById('teacher-lesson-modal-title'),
             lessonTitle: document.getElementById('teacher-lesson-title'),
             video1Url: document.getElementById('teacher-video1-url'),
             video2Url: document.getElementById('teacher-video2-url'),
-            quizJsonInput: document.getElementById('teacher-quiz-json-input'), 
+            quizJsonInput: document.getElementById('teacher-quiz-json-input'),
             previewQuizBtn: document.getElementById('teacher-preview-quiz-btn'),
-            questionsPreviewContainer: document.getElementById('teacher-questions-preview-container'), 
+            questionsPreviewContainer: document.getElementById('teacher-questions-preview-container'),
             questionsPreviewTitle: document.getElementById('teacher-questions-preview-title'),
-            questionsPreviewList: document.getElementById('teacher-questions-preview-list'), 
+            questionsPreviewList: document.getElementById('teacher-questions-preview-list'),
             saveLessonBtn: document.getElementById('teacher-save-lesson-btn'),
-            saveBtnText: document.getElementById('teacher-save-btn-text'), 
+            saveBtnText: document.getElementById('teacher-save-btn-text'),
             saveLoader: document.getElementById('teacher-save-loader'),
             editClassBtn: document.getElementById('teacher-edit-class-btn'),
             editClassModal: document.getElementById('teacher-edit-class-modal'),
@@ -103,8 +108,10 @@ const TeacherApp = {
         };
     },
 
-    addEventListeners() { 
-        this.elements.classSelect?.addEventListener('change', (e) => this.handleClassSelection(e));
+    addEventListeners() {
+        if (this.elements.classSelect) {
+            this.elements.classSelect.addEventListener('change', (e) => this.handleClassSelection(e));
+        }
         this.elements.navButtons.forEach(btn => {
             btn.addEventListener('click', () => this.handleViewChange(btn.dataset.view));
         });
@@ -121,9 +128,13 @@ const TeacherApp = {
             btn.classList.toggle('font-medium', !isSelected);
         });
 
-        Object.values(this.elements.views).forEach(view => view.style.display = 'none');
-        if (this.elements.views[viewName]) {
-            this.elements.views[viewName].style.display = 'block';
+        Object.values(this.elements.views).forEach(view => {
+            if (view) view.style.display = 'none';
+        });
+        
+        const viewToShow = this.elements.views[viewName];
+        if (viewToShow) {
+            viewToShow.style.display = 'block';
         }
 
         if (viewName === 'lesson-dashboard') {
@@ -132,6 +143,8 @@ const TeacherApp = {
             homeworkDashboard.populateHomeworkSelect();
         } else if (viewName === 'lesson-mgmt') {
              this.populateSubjectSelectForMgmt();
+        } else if (viewName === 'analysis-dashboard') {
+            analysisDashboard.renderStudentList();
         }
     },
 
@@ -147,7 +160,10 @@ const TeacherApp = {
 
         this.elements.mainContent.style.display = 'block';
         await this.fetchClassData(this.state.selectedClassId);
-        this.handleViewChange('lesson-dashboard');
+        
+        const activeNav = document.querySelector('.teacher-nav-btn.border-blue-600');
+        const activeView = activeNav ? activeNav.dataset.view : 'lesson-dashboard';
+        this.handleViewChange(activeView);
     },
 
     async fetchClassData(classId) {
@@ -155,9 +171,11 @@ const TeacherApp = {
         const studentsQuery = query(collection(db, 'students'), where('classId', '==', classId));
         const studentsSnapshot = await getDocs(studentsQuery);
         studentsSnapshot.forEach(doc => this.state.studentsInClass.set(doc.id, doc.data().name));
-        
+
         const classDoc = await getDoc(doc(db, 'classes', classId));
         this.state.selectedClassData = classDoc.exists() ? { id: classDoc.id, ...classDoc.data() } : null;
+
+        document.dispatchEvent(new CustomEvent('class-changed'));
     },
 
     listenForSubjects() {
@@ -187,18 +205,20 @@ const TeacherApp = {
 
     populateSubjectSelectForLessonDashboard() {
         const select = this.elements.subjectSelectLesson;
+        if (!select) return;
+
         select.innerHTML = '<option value="">-- 과목 선택 --</option>';
         this.elements.lessonSelect.innerHTML = '<option value="">-- 학습 선택 --</option>';
-        this.elements.lessonSelect.disabled = true; 
+        this.elements.lessonSelect.disabled = true;
         this.elements.lessonDashboardContent.style.display = 'none';
-        
-        if (!this.state.selectedClassData || !this.state.selectedClassData.subjects) { 
-            select.disabled = true; return; 
+
+        if (!this.state.selectedClassData || !this.state.selectedClassData.subjects) {
+            select.disabled = true; return;
         }
-        
+
         const subjectIds = Object.keys(this.state.selectedClassData.subjects);
-        if(subjectIds.length === 0) { 
-            select.disabled = true; return; 
+        if(subjectIds.length === 0) {
+            select.disabled = true; return;
         }
 
         subjectIds.forEach(id => {
@@ -212,6 +232,8 @@ const TeacherApp = {
 
     populateSubjectSelectForMgmt() {
         const select = this.elements.subjectSelectForMgmt;
+        if (!select) return;
+        
         select.innerHTML = '<option value="">-- 과목 선택 --</option>';
         this.state.subjects.forEach(sub => {
             select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`;

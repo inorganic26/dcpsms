@@ -10,12 +10,15 @@ export const lessonDashboard = {
     init(app) {
         this.app = app;
 
-        // 학습 현황 대시보드와 관련된 이벤트 리스너를 설정합니다.
-        this.app.elements.subjectSelectLesson?.addEventListener('change', (e) => this.populateLessonSelect(e.target.value));
-        this.app.elements.lessonSelect?.addEventListener('change', (e) => this.handleLessonSelection(e.target.value, e.target.options[e.target.selectedIndex].text));
+        // 요소가 존재하는지 확인 후 이벤트 리스너 추가
+        if (this.app.elements.subjectSelectLesson) {
+            this.app.elements.subjectSelectLesson.addEventListener('change', (e) => this.populateLessonSelect(e.target.value));
+        }
+        if (this.app.elements.lessonSelect) {
+            this.app.elements.lessonSelect.addEventListener('change', (e) => this.handleLessonSelection(e.target.value, e.target.options[e.target.selectedIndex].text));
+        }
     },
 
-    // 선택된 과목에 맞는 학습 목록을 불러옵니다.
     async populateLessonSelect(subjectId) {
         this.app.state.selectedSubjectId = subjectId;
         this.app.elements.lessonSelect.innerHTML = '<option value="">-- 학습 선택 --</option>';
@@ -29,7 +32,6 @@ export const lessonDashboard = {
         snapshot.forEach(doc => this.app.elements.lessonSelect.innerHTML += `<option value="${doc.id}">${doc.data().title}</option>`);
     },
 
-    // 선택된 학습의 학생별 현황을 실시간으로 보여줍니다.
     handleLessonSelection(lessonId, lessonTitle) {
         this.app.state.selectedLessonId = lessonId;
         if (this.unsubscribe) this.unsubscribe();
@@ -55,7 +57,6 @@ export const lessonDashboard = {
         });
     },
 
-    // 학생 한 명의 학습 현황을 테이블 행으로 렌더링합니다.
     renderSubmissionRow(data) {
         const row = document.createElement('tr');
         row.className = 'bg-white border-b hover:bg-slate-50';
@@ -65,12 +66,11 @@ export const lessonDashboard = {
         let statusClass = '';
         if (data.status.includes('통과')) statusClass = 'text-green-600 font-semibold';
         if (data.status.includes('실패')) statusClass = 'text-red-600 font-semibold';
-        row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${data.studentName}</td><td class="px-6 py-4 ${statusClass}">${data.status}</td><td class="px-6 py-4">${score}</td><td class="px-6 py-4">${date}</td><td class="px-6 py-4"><button data-id="${data.id}" class="reset-lesson-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">기록 삭제</button></td>`;
+        row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${data.studentName}</td><td class="px-6 py-4 ${statusClass}">${data.status}</td><td class.px-6 py-4">${score}</td><td class="px-6 py-4">${date}</td><td class="px-6 py-4"><button data-id="${data.id}" class="reset-lesson-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">기록 삭제</button></td>`;
         this.app.elements.resultsTableBody.appendChild(row);
         row.querySelector('.reset-lesson-btn').addEventListener('click', (e) => this.resetStudentLessonProgress(e.target.dataset.id, data.studentName));
     },
 
-    // 학생의 학습 기록을 삭제합니다.
     async resetStudentLessonProgress(submissionId, studentName) {
         if (!confirm(`'${studentName}' 학생의 학습 기록을 정말 삭제하시겠습니까?`)) return;
         try {
@@ -81,7 +81,6 @@ export const lessonDashboard = {
         }
     },
     
-    // 테이블 헤더를 생성하는 유틸리티 함수입니다.
     renderTableHeader(tbody, headers) {
         const table = tbody.parentElement;
         table.querySelector('thead')?.remove();
