@@ -216,13 +216,15 @@ export const homeworkDashboard = {
                 const pagesInfo = totalPages ? `(${submittedPages}/${totalPages}p)` : `(${submittedPages}p)`;
                 const statusText = isComplete ? `제출 완료 ${pagesInfo}` : `제출 중 ${pagesInfo}`;
 
-                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">${statusText}</td><td class="px-6 py-4">${submittedAt}</td><td class="px-6 py-4"></td>`;
+                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">${statusText}</td><td class="px-6 py-4">${submittedAt}</td><td class="px-6 py-4 flex flex-col space-y-1"></td>`;
                 
+                const btnContainer = row.cells[3];
+
                 const downloadBtn = document.createElement('button');
                 downloadBtn.className = 'download-btn text-xs bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg';
                 downloadBtn.textContent = '전체 다운로드';
                 downloadBtn.addEventListener('click', () => this.downloadHomework(submissionData, textbookName));
-                row.cells[3].appendChild(downloadBtn);
+                btnContainer.appendChild(downloadBtn);
             } else {
                 const statusClass = 'text-slate-400';
                 const pagesInfo = totalPages ? `(0/${totalPages}p)` : '';
