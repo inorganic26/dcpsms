@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY",
   authDomain: "svcm-v2.firebaseapp.com",
   projectId: "svcm-v2",
-  storageBucket: "svcm-v2.appspot.com",
+  storageBucket: "svcm-v2.firebasestorage.app", // 수정된 부분입니다!
   messagingSenderId: "189740450655",
   appId: "1:189740450655:web:a7bf1b03d23352a09b2cea"
 };

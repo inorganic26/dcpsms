@@ -144,7 +144,8 @@ const TeacherApp = {
         } else if (viewName === 'lesson-mgmt') {
              this.populateSubjectSelectForMgmt();
         } else if (viewName === 'analysis-dashboard') {
-            analysisDashboard.renderStudentList();
+            // 여기가 수정된 부분입니다!
+            analysisDashboard.renderStudentLists();
         }
     },
 

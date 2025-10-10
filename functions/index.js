@@ -9,13 +9,16 @@ initializeApp();
 
 const db = getFirestore();
 const storage = getStorage();
-// functions.config()는 배포 후에만 값을 가져올 수 있으므로, process.env를 사용합니다.
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 const region = "asia-northeast3"; // 지역을 변수로 지정
 
-// ========== 1. 시험지 PDF 분석 함수 (v2 + Region 설정) ==========
-exports.analyzeTestPdf = onObjectFinalized({ region: region }, async (event) => {
+// ========== 1. 시험지 PDF 분석 함수 (v2 + Region 설정 + Secret 연결) ==========
+exports.analyzeTestPdf = onObjectFinalized({ 
+    region: region,
+    secrets: ["GEMINI_API_KEY"]
+}, async (event) => {
+    // 함수가 호출될 때마다 API 키를 가지고 genAI 클라이언트를 생성합니다.
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -68,8 +71,14 @@ exports.analyzeTestPdf = onObjectFinalized({ region: region }, async (event) => 
     }
 });
 
-// ========== 2. 숙제 이미지 채점 함수 (v2 + Region 설정) ==========
-exports.gradeHomeworkImage = onObjectFinalized({ region: region }, async (event) => {
+// ========== 2. 숙제 이미지 채점 함수 (v2 + Region 설정 + Secret 연결) ==========
+exports.gradeHomeworkImage = onObjectFinalized({ 
+    region: region,
+    secrets: ["GEMINI_API_KEY"]
+}, async (event) => {
+    // 함수가 호출될 때마다 API 키를 가지고 genAI 클라이언트를 생성합니다.
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
