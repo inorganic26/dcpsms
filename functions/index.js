@@ -17,15 +17,6 @@ const region = "asia-northeast3";
 exports.analyzeTestPdf = onObjectFinalized({
     region: region,
 }, async (event) => {
-    // ***** 💡 수정된 부분: API 키와 genAI 클라이언트를 함수 내부에서 초기화 *****
-    const GEMINI_API_KEY = functions.config().gemini?.key;
-    if (!GEMINI_API_KEY) {
-        functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
-        return;
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    // ***************************************************************
-
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -34,8 +25,23 @@ exports.analyzeTestPdf = onObjectFinalized({
         return functions.logger.log("Not a relevant PDF file.");
     }
 
-    const testId = filePath.split("/")[1].replace(".pdf", "");
+    const testId = filePath.split("/")[1];
     const resultDocRef = db.collection("testAnalysisResults").doc(testId);
+
+    // ***** 💡 API 키 유효성 검사 로직 추가 *****
+    const GEMINI_API_KEY = functions.config().gemini?.key;
+    if (!GEMINI_API_KEY) {
+        functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
+        // API 키가 없을 때 즉시 에러 상태를 DB에 기록합니다.
+        await resultDocRef.set({
+            status: "error",
+            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
+            errorAt: new Date()
+        }, { merge: true });
+        return; // 함수 종료
+    }
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    // *******************************************
 
     try {
         await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
@@ -97,15 +103,6 @@ exports.analyzeTestPdf = onObjectFinalized({
 exports.gradeHomeworkImage = onObjectFinalized({
     region: region,
 }, async (event) => {
-    // ***** 💡 수정된 부분: API 키와 genAI 클라이언트를 함수 내부에서 초기화 *****
-    const GEMINI_API_KEY = functions.config().gemini?.key;
-    if (!GEMINI_API_KEY) {
-        functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
-        return;
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    // ***************************************************************
-
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -113,7 +110,7 @@ exports.gradeHomeworkImage = onObjectFinalized({
     if (!contentType.startsWith("image/") || !filePath.startsWith("homework-grading/")) {
         return functions.logger.log("Not a relevant image file.");
     }
-
+    
     const parts = filePath.split("/");
     const homeworkId = parts[1];
     const fileName = parts[2];
@@ -121,7 +118,22 @@ exports.gradeHomeworkImage = onObjectFinalized({
     const studentName = nameParts[2];
     const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
 
+    // ***** 💡 API 키 유효성 검사 로직 추가 *****
+    const GEMINI_API_KEY = functions.config().gemini?.key;
+    if (!GEMINI_API_KEY) {
+        functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
+        await resultDocRef.set({
+            status: "error",
+            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
+            errorAt: new Date()
+        }, { merge: true });
+        return; // 함수 종료
+    }
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    // *******************************************
+
     try {
+        // processing 상태는 개별 파일 처리 시작 시 기록
         await resultDocRef.set({ 
             status: "processing",
             timestamp: new Date()
@@ -162,15 +174,17 @@ exports.gradeHomeworkImage = onObjectFinalized({
         
         const gradingData = JSON.parse(responseText);
 
-        const studentUpdateData = {
-            status: "completed",
-            completedAt: new Date()
-        };
+        // 학생별, 파일별 결과를 results 맵에 저장
+        const studentUpdateData = {};
         studentUpdateData[`results.${studentName}.${fileName}`] = gradingData;
+        studentUpdateData.lastUpdatedAt = new Date();
 
         await resultDocRef.set(studentUpdateData, { merge: true });
 
-        functions.logger.log("Grading completed for:", homeworkId, studentName);
+        // 참고: 'completed' 상태는 모든 파일 처리가 끝났을 때를 감지하는 별도의 로직이 필요할 수 있습니다.
+        // 여기서는 개별 파일 처리 성공 시 로그만 남깁니다.
+        functions.logger.log("Grading completed for:", homeworkId, studentName, fileName);
+        
     } catch (error) {
         functions.logger.error("Error grading image:", error);
         await resultDocRef.set({ 
