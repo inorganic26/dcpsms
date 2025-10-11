@@ -1,3 +1,5 @@
+// functions/index.js (테스트용 임시 코드)
+
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -9,16 +11,19 @@ initializeApp();
 
 const db = getFirestore();
 const storage = getStorage();
-const region = "asia-northeast3"; // 지역을 변수로 지정
+const region = "asia-northeast3";
 
-// ========== 1. 시험지 PDF 분석 함수 (v2 + Region 설정 + Secret 연결) ==========
+// --- !! 중요 !! ---
+// 아래 "" 안에 본인의 실제 Gemini API 키를 붙여넣으세요.
+const GEMINI_API_KEY = "AIzaSyCDRnmG-spDPAkhTPZZ7ikyjmCH2IVkRVM"; 
+// --------------------
+
+// ========== 1. 시험지 PDF 분석 함수 ==========
 exports.analyzeTestPdf = onObjectFinalized({ 
     region: region,
-    secrets: ["GEMINI_API_KEY"]
 }, async (event) => {
-    // 함수가 호출될 때마다 API 키를 가지고 genAI 클라이언트를 생성합니다.
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
+    // Secret Manager 대신 코드에 직접 입력한 키를 사용합니다.
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY); 
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -32,8 +37,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     
     try {
         await resultDocRef.set({ status: "processing" });
-
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
         
         const prompt = `
             You are an expert math tutor. Analyze the provided PDF math test.
@@ -44,41 +48,23 @@ exports.analyzeTestPdf = onObjectFinalized({
             The output should be a single JSON object where keys are the question numbers as strings (e.g., "1", "2", "3").
         `;
 
-        const result = await model.generateContent([
-            prompt,
-            {
-                fileData: {
-                    mimeType: contentType,
-                    fileUri: `gs://${object.bucket}/${filePath}`,
-                },
-            },
-        ]);
-        
+        const result = await model.generateContent([prompt, { fileData: { mimeType: contentType, fileUri: `gs://${object.bucket}/${filePath}` } }]);
         const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
         const analysisData = JSON.parse(responseText);
 
-        await resultDocRef.set({
-            status: "completed",
-            analysis: analysisData,
-        });
-
+        await resultDocRef.set({ status: "completed", analysis: analysisData });
     } catch (error) {
         functions.logger.error("Error analyzing PDF:", error);
-        await resultDocRef.set({
-            status: "error",
-            error: error.message,
-        });
+        await resultDocRef.set({ status: "error", error: message });
     }
 });
 
-// ========== 2. 숙제 이미지 채점 함수 (v2 + Region 설정 + Secret 연결) ==========
+// ========== 2. 숙제 이미지 채점 함수 ==========
 exports.gradeHomeworkImage = onObjectFinalized({ 
     region: region,
-    secrets: ["GEMINI_API_KEY"]
 }, async (event) => {
-    // 함수가 호출될 때마다 API 키를 가지고 genAI 클라이언트를 생성합니다.
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
+    // Secret Manager 대신 코드에 직접 입력한 키를 사용합니다.
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -90,15 +76,12 @@ exports.gradeHomeworkImage = onObjectFinalized({
     const parts = filePath.split("/");
     const homeworkId = parts[1];
     const fileName = parts[2];
-    
     const nameParts = fileName.split("_");
     const studentName = nameParts[2];
-    
     const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
 
     try {
         await resultDocRef.set({ status: "processing" }, { merge: true });
-
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         const prompt = `
@@ -110,16 +93,7 @@ exports.gradeHomeworkImage = onObjectFinalized({
             Provide the output as a single JSON object where keys are the question numbers (as strings) and values are "정답", "오답", or "안풂".
         `;
         
-        const result = await model.generateContent([
-            prompt,
-            {
-                fileData: {
-                    mimeType: contentType,
-                    fileUri: `gs://${object.bucket}/${filePath}`,
-                },
-            },
-        ]);
-
+        const result = await model.generateContent([prompt, { fileData: { mimeType: contentType, fileUri: `gs://${object.bucket}/${filePath}` } }]);
         const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
         const gradingData = JSON.parse(responseText);
 
@@ -127,14 +101,9 @@ exports.gradeHomeworkImage = onObjectFinalized({
         studentUpdateData[`results.${studentName}.${fileName}`] = gradingData;
 
         await resultDocRef.set(studentUpdateData, { merge: true });
-        
         await resultDocRef.set({ status: "completed" }, { merge: true });
-
     } catch (error) {
         functions.logger.error("Error grading image:", error);
-        await resultDocRef.set({
-            status: "error",
-            error: error.message,
-        }, { merge: true });
+        await resultDocRef.set({ status: "error", error: error.message }, { merge: true });
     }
 });
