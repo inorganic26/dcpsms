@@ -1,4 +1,4 @@
-// functions/index.js (테스트용 임시 코드)
+// functions/index.js
 
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
@@ -13,17 +13,15 @@ const db = getFirestore();
 const storage = getStorage();
 const region = "asia-northeast3";
 
-// --- !! 중요 !! ---
-// 아래 "" 안에 본인의 실제 Gemini API 키를 붙여넣으세요.
-const GEMINI_API_KEY = "AIzaSyCDRnmG-spDPAkhTPZZ7ikyjmCH2IVkRVM"; 
-// --------------------
+// .env 파일에서 Gemini API 키를 안전하게 불러옵니다.
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // ========== 1. 시험지 PDF 분석 함수 ==========
-exports.analyzeTestPdf = onObjectFinalized({ 
+exports.analyzeTestPdf = onObjectFinalized({
     region: region,
 }, async (event) => {
-    // Secret Manager 대신 코드에 직접 입력한 키를 사용합니다.
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY); 
+    // 환경 변수에서 불러온 키를 사용합니다.
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -34,11 +32,11 @@ exports.analyzeTestPdf = onObjectFinalized({
 
     const testId = filePath.split("/")[1];
     const resultDocRef = db.collection("testAnalysisResults").doc(testId);
-    
+
     try {
         await resultDocRef.set({ status: "processing" });
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); 
-        
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
         const prompt = `
             You are an expert math tutor. Analyze the provided PDF math test.
             For each numbered question, extract the following information in a structured JSON format:
@@ -55,15 +53,15 @@ exports.analyzeTestPdf = onObjectFinalized({
         await resultDocRef.set({ status: "completed", analysis: analysisData });
     } catch (error) {
         functions.logger.error("Error analyzing PDF:", error);
-        await resultDocRef.set({ status: "error", error: message });
+        await resultDocRef.set({ status: "error", error: error.message }); // 'message'을 error.message로 수정
     }
 });
 
 // ========== 2. 숙제 이미지 채점 함수 ==========
-exports.gradeHomeworkImage = onObjectFinalized({ 
+exports.gradeHomeworkImage = onObjectFinalized({
     region: region,
 }, async (event) => {
-    // Secret Manager 대신 코드에 직접 입력한 키를 사용합니다.
+    // 환경 변수에서 불러온 키를 사용합니다.
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const object = event.data;
     const filePath = object.name;
@@ -83,7 +81,7 @@ exports.gradeHomeworkImage = onObjectFinalized({
     try {
         await resultDocRef.set({ status: "processing" }, { merge: true });
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        
+
         const prompt = `
             You are an automated scoring assistant. Analyze the provided image of a solved math problem set.
             Your task is to identify each question number and determine if it is correct, incorrect, or not solved.
@@ -92,7 +90,7 @@ exports.gradeHomeworkImage = onObjectFinalized({
             - No marking means NOT SOLVED.
             Provide the output as a single JSON object where keys are the question numbers (as strings) and values are "정답", "오답", or "안풂".
         `;
-        
+
         const result = await model.generateContent([prompt, { fileData: { mimeType: contentType, fileUri: `gs://${object.bucket}/${filePath}` } }]);
         const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
         const gradingData = JSON.parse(responseText);
