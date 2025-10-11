@@ -13,27 +13,19 @@ const db = getFirestore();
 const storage = getStorage();
 const region = "asia-northeast3";
 
-// 환경 변수에서 API 키 가져오기 (여러 방법 지원)
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 
-                       functions.config().gemini?.api_key || 
-                       functions.config().gemini?.key;
-
-if (!GEMINI_API_KEY) {
-  functions.logger.error("GEMINI_API_KEY is not set!");
-} else {
-  functions.logger.log("API Key loaded successfully");
-}
-
 // ========== 1. 시험지 PDF 분석 함수 ==========
 exports.analyzeTestPdf = onObjectFinalized({
     region: region,
 }, async (event) => {
+    // ***** 💡 수정된 부분: API 키와 genAI 클라이언트를 함수 내부에서 초기화 *****
+    const GEMINI_API_KEY = functions.config().gemini?.key;
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
         return;
     }
-
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    // ***************************************************************
+
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -48,7 +40,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     try {
         await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
         
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }, { apiVersion: 'v1' });
 
         const prompt = `
 당신은 수학 전문 교사입니다. 제공된 PDF 수학 시험지를 분석하세요.
@@ -105,12 +97,15 @@ exports.analyzeTestPdf = onObjectFinalized({
 exports.gradeHomeworkImage = onObjectFinalized({
     region: region,
 }, async (event) => {
+    // ***** 💡 수정된 부분: API 키와 genAI 클라이언트를 함수 내부에서 초기화 *****
+    const GEMINI_API_KEY = functions.config().gemini?.key;
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
         return;
     }
-
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    // ***************************************************************
+
     const object = event.data;
     const filePath = object.name;
     const contentType = object.contentType;
@@ -132,7 +127,7 @@ exports.gradeHomeworkImage = onObjectFinalized({
             timestamp: new Date()
         }, { merge: true });
         
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }, { apiVersion: 'v1' });
 
         const prompt = `
 당신은 자동 채점 보조 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하세요.
