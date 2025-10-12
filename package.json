@@ -16,5 +16,18 @@
   },
   "dependencies": {
     "firebase": "^12.3.0"
-  }
+  },
+  "description": "",
+  "main": "postcss.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/inorganic26/dcpsms.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/inorganic26/dcpsms/issues"
+  },
+  "homepage": "https://github.com/inorganic26/dcpsms#readme"
 }

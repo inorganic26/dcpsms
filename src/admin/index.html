@@ -8,61 +8,56 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="../shared/style.css">
 </head>
-<body class="bg-slate-100">
+<body class="bg-slate-50">
 
     <div id="toast-notification" style="transition: opacity 0.3s, transform 0.3s;" class="fixed top-8 right-8 z-[100] p-4 rounded-lg shadow-lg text-white transform translate-x-[120%] opacity-0">
         <p id="toast-message"></p>
     </div>
 
-    <div class="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
+    <div class="container mx-auto max-w-7xl p-4 sm:p-6 md:p-8">
         <div id="admin-dashboard-view">
-            <a href="../../" class="back-to-portal-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition no-underline">&larr; 포털로 돌아가기</a>
+            <a href="../../" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
             <header class="text-center mb-10">
                 <h1 class="text-3xl font-bold text-slate-800">관리자 대시보드</h1>
                 <p class="text-slate-500 mt-2">관리할 항목을 선택하세요.</p>
             </header>
-            <main class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div id="goto-subject-mgmt-btn" class="portal-card cursor-pointer bg-white p-6 rounded-xl shadow-md text-center">
-                    <h2 class="text-lg font-bold text-slate-800">과목 관리</h2>
+            <main>
+                <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200">
+                        <div id="goto-subject-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">과목 관리</h2></div>
+                        <div id="goto-textbook-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">교재 관리</h2></div>
+                        <div id="goto-class-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">반 관리</h2></div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 border-t divide-y md:divide-y-0 md:divide-x divide-slate-200">
+                        <div id="goto-student-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">학생 명단 관리</h2></div>
+                        <div id="goto-student-assignment-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">반 배정 관리</h2></div>
+                        <div id="goto-lesson-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">학습 세트 관리</h2></div>
+                    </div>
                 </div>
-                <div id="goto-textbook-mgmt-btn" class="portal-card cursor-pointer bg-white p-6 rounded-xl shadow-md text-center">
-                    <h2 class="text-lg font-bold text-slate-800">교재 관리</h2>
-                </div>
-                <div id="goto-class-mgmt-btn" class="portal-card cursor-pointer bg-white p-6 rounded-xl shadow-md text-center">
-                    <h2 class="text-lg font-bold text-slate-800">반 관리</h2>
-                </div>
-                <div id="goto-student-mgmt-btn" class="portal-card cursor-pointer bg-white p-6 rounded-xl shadow-md text-center">
-                    <h2 class="text-lg font-bold text-slate-800">학생 명단 관리</h2>
-                </div>
-                <div id="goto-student-assignment-btn" class="portal-card cursor-pointer bg-white p-6 rounded-xl shadow-md text-center">
-                    <h2 class="text-lg font-bold text-slate-800">반 배정 관리</h2>
-                </div>
-                <div id="goto-lesson-mgmt-btn" class="portal-card cursor-pointer bg-white p-6 rounded-xl shadow-md text-center">
-                    <h2 class="text-lg font-bold text-slate-800">학습 세트 관리</h2>
-                </div>
+                <style>.admin-menu-item { @apply cursor-pointer p-8 text-center transition hover:bg-slate-50; }</style>
             </main>
         </div>
         
         <div id="admin-subject-mgmt-view" class="admin-section-view" style="display: none;">
-            <button class="back-to-admin-dashboard-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition">&larr; 관리자 메뉴로</button>
-            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+            <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
                 <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">과목 관리 (공통)</h2>
-                <div class="flex items-start gap-4"><div class="flex-grow"><label for="admin-new-subject-name" class="block text-sm font-medium text-slate-700 mb-2">새 과목 이름</label><input type="text" id="admin-new-subject-name" class="w-full px-4 py-2 border border-slate-300 rounded-lg" placeholder="예: 공통 수학"></div><div class="flex-shrink-0 pt-7"><button id="admin-add-subject-btn" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition">+ 과목 추가</button></div></div>
-                <div class="mt-6"><h3 class="text-lg font-semibold text-slate-700 mb-2">생성된 과목 목록</h3><div id="admin-subjects-list" class="space-y-2"></div></div>
+                <div class="flex items-end gap-4"><div class="flex-grow"><label for="admin-new-subject-name" class="block text-sm font-medium text-slate-700 mb-2">새 과목 이름</label><input type="text" id="admin-new-subject-name" class="form-input" placeholder="예: 공통 수학"></div><div class="flex-shrink-0"><button id="admin-add-subject-btn" class="btn-primary">+ 과목 추가</button></div></div>
+                <div class="mt-8"><h3 class="text-lg font-semibold text-slate-700 mb-2">생성된 과목 목록</h3><div id="admin-subjects-list" class="space-y-2"></div></div>
             </div>
         </div>
         <div id="admin-textbook-mgmt-view" class="admin-section-view" style="display: none;">
-             <button class="back-to-admin-dashboard-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition">&larr; 관리자 메뉴로</button>
-            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+             <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
                 <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">교재 관리</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <label for="admin-subject-select-for-textbook" class="block text-sm font-medium text-slate-700 mb-2">교재를 추가할 과목 선택</label>
-                        <select id="admin-subject-select-for-textbook" class="w-full p-2 border border-slate-300 rounded-lg"></select>
+                        <select id="admin-subject-select-for-textbook" class="form-select"></select>
                         <div id="admin-textbook-management-content" class="mt-4" style="display: none;">
-                            <div class="flex items-start gap-4">
-                                <div class="flex-grow"><label for="admin-new-textbook-name" class="block text-sm font-medium text-slate-700 mb-2">새 교재 이름</label><input type="text" id="admin-new-textbook-name" class="w-full px-4 py-2 border border-slate-300 rounded-lg" placeholder="예: 수학의 정석"></div>
-                                <div class="flex-shrink-0 pt-7"><button id="admin-add-textbook-btn" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition">+ 교재 추가</button></div>
+                            <div class="flex items-end gap-4">
+                                <div class="flex-grow"><label for="admin-new-textbook-name" class="block text-sm font-medium text-slate-700 mb-2">새 교재 이름</label><input type="text" id="admin-new-textbook-name" class="form-input" placeholder="예: 수학의 정석"></div>
+                                <div class="flex-shrink-0"><button id="admin-add-textbook-btn" class="btn-primary">+ 교재 추가</button></div>
                             </div>
                         </div>
                     </div>
@@ -74,15 +69,15 @@
             </div>
         </div>
         <div id="admin-class-mgmt-view" class="admin-section-view" style="display: none;">
-             <button class="back-to-admin-dashboard-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition">&larr; 관리자 메뉴로</button>
-            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+             <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
                 <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">반 관리</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <label for="admin-new-class-name" class="block text-sm font-medium text-slate-700 mb-2">새 반 이름</label>
-                        <div class="flex items-start gap-4">
-                            <input type="text" id="admin-new-class-name" class="w-full px-4 py-2 border border-slate-300 rounded-lg" placeholder="예: 1학년 1반">
-                            <button id="admin-add-class-btn" class="flex-shrink-0 bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition">+ 반 추가</button>
+                        <div class="flex items-center gap-4">
+                            <input type="text" id="admin-new-class-name" class="form-input" placeholder="예: 1학년 1반">
+                            <button id="admin-add-class-btn" class="btn-primary flex-shrink-0">+ 반 추가</button>
                         </div>
                     </div>
                     <div>
@@ -92,17 +87,17 @@
             </div>
         </div>
         <div id="admin-student-mgmt-view" class="admin-section-view" style="display: none;">
-             <button class="back-to-admin-dashboard-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition">&larr; 관리자 메뉴로</button>
-            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+             <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
                 <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">학생 명단 관리</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
-                        <h3 class="text-lg font-semibold text-slate-700 mb-2">신규 학생 등록</h3>
-                        <div class="grid grid-cols-2 gap-4 mt-4">
-                            <div><label for="admin-new-student-name" class="block text-sm font-medium text-slate-700 mb-2">새 학생 이름</label><input type="text" id="admin-new-student-name" class="w-full px-4 py-2 border border-slate-300 rounded-lg" placeholder="예: 홍길동"></div>
-                            <div><label for="admin-new-student-phone" class="block text-sm font-medium text-slate-700 mb-2">전화번호</label><input type="tel" id="admin-new-student-phone" class="w-full px-4 py-2 border border-slate-300 rounded-lg" placeholder="비밀번호는 뒷 4자리"></div>
+                        <h3 class="text-lg font-semibold text-slate-700 mb-4">신규 학생 등록</h3>
+                        <div class="space-y-4">
+                            <div><label for="admin-new-student-name" class="block text-sm font-medium text-slate-700 mb-2">새 학생 이름</label><input type="text" id="admin-new-student-name" class="form-input" placeholder="예: 홍길동"></div>
+                            <div><label for="admin-new-student-phone" class="block text-sm font-medium text-slate-700 mb-2">전화번호</label><input type="tel" id="admin-new-student-phone" class="form-input" placeholder="비밀번호는 뒷 4자리"></div>
                         </div>
-                        <div class="flex justify-end mt-4"><button id="admin-add-student-btn" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition">+ 학생 추가</button></div>
+                        <div class="flex justify-end mt-4"><button id="admin-add-student-btn" class="btn-primary">+ 학생 추가</button></div>
                     </div>
                     <div>
                         <h3 class="text-lg font-semibold text-slate-700 mb-2">전체 학생 목록</h3>
@@ -111,21 +106,20 @@
                 </div>
             </div>
         </div>
-
         <div id="admin-student-assignment-view" class="admin-section-view" style="display: none;">
-            <button class="back-to-admin-dashboard-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition">&larr; 관리자 메뉴로</button>
-            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+            <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
                 <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">반 배정 관리</h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div>
                         <div class="flex gap-4 mb-2">
                             <div class="flex-grow">
                                 <label for="admin-source-class-select" class="block text-sm font-medium text-slate-700 mb-1">반 선택</label>
-                                <select id="admin-source-class-select" class="w-full p-2 border border-slate-300 rounded-lg"></select>
+                                <select id="admin-source-class-select" class="form-select"></select>
                             </div>
                             <div class="flex-grow">
                                 <label for="admin-student-search-input-assignment" class="block text-sm font-medium text-slate-700 mb-1">학생 검색</label>
-                                <input type="text" id="admin-student-search-input-assignment" class="w-full px-3 py-2 border rounded-lg" placeholder="이름 또는 번호">
+                                <input type="text" id="admin-student-search-input-assignment" class="form-input" placeholder="이름 또는 번호">
                             </div>
                         </div>
                         <div id="admin-source-student-list" class="space-y-2 p-2 border rounded-lg min-h-[200px] max-h-96 overflow-y-auto custom-scrollbar">
@@ -134,27 +128,26 @@
                     </div>
                     <div>
                         <label for="admin-target-class-select" class="block text-sm font-medium text-slate-700 mb-1">배정할 반 선택</label>
-                        <select id="admin-target-class-select" class="w-full p-2 border border-slate-300 rounded-lg mb-4"></select>
-                        <button id="admin-assign-students-btn" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition">선택한 학생 배정하기</button>
+                        <select id="admin-target-class-select" class="form-select mb-4"></select>
+                        <button id="admin-assign-students-btn" class="btn-primary w-full">선택한 학생 배정하기</button>
                     </div>
                 </div>
             </div>
         </div>
-        
         <div id="admin-lesson-mgmt-view" class="admin-section-view" style="display: none;">
-            <button class="back-to-admin-dashboard-btn mb-6 bg-slate-200 text-slate-800 font-semibold px-4 py-2 rounded-lg hover:bg-slate-300 transition">&larr; 관리자 메뉴로</button>
-            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-lg">
+            <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
                 <div class="border-b pb-4 mb-6">
                     <h1 class="text-2xl font-bold text-slate-800">학습 세트 관리</h1>
-                    <div class="w-full md:w-1/2">
+                    <div class="w-full md:w-1/2 mt-4">
                         <label for="admin-subject-select-for-lesson" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label>
-                        <select id="admin-subject-select-for-lesson" class="w-full p-2 border border-slate-300 rounded-lg"></select>
+                        <select id="admin-subject-select-for-lesson" class="form-select"></select>
                     </div>
                 </div>
                 <div id="admin-lessons-management-content" class="hidden">
                     <div class="flex justify-end gap-2">
-                        <button id="admin-save-lesson-order-btn" class="bg-green-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-green-700 transition duration-300 shadow-md">순서 저장</button>
-                        <button id="admin-show-new-lesson-modal-btn" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md">+ 새 학습 세트 만들기</button>
+                        <button id="admin-save-lesson-order-btn" class="btn bg-green-600 text-white hover:bg-green-700 focus:ring-green-500">순서 저장</button>
+                        <button id="admin-show-new-lesson-modal-btn" class="btn-primary">+ 새 학습 세트 만들기</button>
                     </div>
                     <div id="admin-lessons-list-container" class="mt-6"><div id="admin-lessons-list" class="space-y-4"></div></div>
                 </div>
@@ -165,50 +158,41 @@
     
     <div id="admin-new-lesson-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <header class="p-6 border-b flex justify-between items-center">
-                <h2 id="admin-lesson-modal-title" class="text-2xl font-bold text-slate-800">새 학습 세트 만들기</h2>
-                <button id="admin-close-modal-btn" class="text-slate-500 hover:text-slate-800">&times;</button>
-            </header>
-            <main class="p-6 flex-grow overflow-y-auto custom-scrollbar grid grid-cols-2 gap-6">
+            <header class="p-6 border-b flex justify-between items-center"><h2 id="admin-lesson-modal-title" class="text-2xl font-bold text-slate-800">새 학습 세트 만들기</h2><button id="admin-close-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button></header>
+            <main class="p-6 flex-grow overflow-y-auto custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <h3 class="font-bold text-lg mb-4 text-slate-700">학습 정보</h3>
                     <div class="space-y-4">
-                        <div><label for="admin-lesson-title" class="block text-sm font-medium text-slate-600 mb-1">학습 제목</label><input type="text" id="admin-lesson-title" class="w-full p-2 border rounded-md"></div>
-                        <div><label for="admin-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label><input type="url" id="admin-video1-url" class="w-full p-2 border rounded-md" placeholder="https://youtube.com/watch?v=..."></div>
-                        <div><div class="flex items-center justify-between mb-1"><label class="block text-sm font-medium text-slate-600">영상 1 수정/보충 영상 (선택)</label><button id="admin-add-video1-rev-btn" class="text-xs bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded-md font-bold">+</button></div><div id="admin-video1-rev-urls-container" class="space-y-2"></div></div>
-                        <div><label for="admin-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label><input type="url" id="admin-video2-url" class="w-full p-2 border rounded-md" placeholder="https://youtube.com/watch?v=..."></div>
-                        <div><div class="flex items-center justify-between mb-1"><label class="block text-sm font-medium text-slate-600">영상 2 수정/보충 영상 (선택)</label><button id="admin-add-video2-rev-btn" class="text-xs bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded-md font-bold">+</button></div><div id="admin-video2-rev-urls-container" class="space-y-2"></div></div>
+                        <div><label for="admin-lesson-title" class="block text-sm font-medium text-slate-600 mb-1">학습 제목</label><input type="text" id="admin-lesson-title" class="form-input"></div>
+                        <div><label for="admin-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label><input type="url" id="admin-video1-url" class="form-input" placeholder="https://youtube.com/watch?v=..."></div>
+                        <div><div class="flex items-center justify-between mb-1"><label class="block text-sm font-medium text-slate-600">영상 1 수정/보충 영상 (선택)</label><button id="admin-add-video1-rev-btn" class="btn-secondary btn-sm">+</button></div><div id="admin-video1-rev-urls-container" class="space-y-2"></div></div>
+                        <div><label for="admin-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label><input type="url" id="admin-video2-url" class="form-input" placeholder="https://youtube.com/watch?v=..."></div>
+                        <div><div class="flex items-center justify-between mb-1"><label class="block text-sm font-medium text-slate-600">영상 2 수정/보충 영상 (선택)</label><button id="admin-add-video2-rev-btn" class="btn-secondary btn-sm">+</button></div><div id="admin-video2-rev-urls-container" class="space-y-2"></div></div>
                     </div>
                 </div>
                 <div>
                     <h3 class="font-bold text-lg mb-4 text-slate-700">퀴즈 정보 (JSON)</h3>
-                    <div><label for="admin-quiz-json-input" class="block text-sm font-medium text-slate-600 mb-1">문제은행 JSON 붙여넣기</label><textarea id="admin-quiz-json-input" rows="8" class="w-full p-2 border rounded-md font-mono text-sm"></textarea></div>
-                    <button id="admin-preview-quiz-btn" class="mt-2 w-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold py-2 px-4 rounded-md transition">미리보기</button>
+                    <div><label for="admin-quiz-json-input" class="block text-sm font-medium text-slate-600 mb-1">문제은행 JSON 붙여넣기</label><textarea id="admin-quiz-json-input" rows="8" class="form-input font-mono text-sm"></textarea></div>
+                    <button id="admin-preview-quiz-btn" class="btn-secondary w-full mt-2">미리보기</button>
                     <div id="admin-questions-preview-container" class="mt-4 p-4 border rounded-md bg-slate-50 hidden max-h-48 overflow-y-auto custom-scrollbar">
                         <h4 id="admin-questions-preview-title" class="font-bold mb-2 text-slate-700">생성된 퀴즈</h4>
                         <div id="admin-questions-preview-list" class="text-sm space-y-1 text-slate-600"></div>
                     </div>
                 </div>
             </main>
-            <footer class="p-6 border-t flex justify-end gap-3">
-                <button id="admin-cancel-btn" class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-2 px-5 rounded-lg">취소</button>
-                <button id="admin-save-lesson-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg flex items-center justify-center min-w-[100px]"><span id="admin-save-btn-text">저장하기</span><div id="admin-save-loader" class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin hidden"></div></button>
-            </footer>
+            <footer class="p-6 border-t flex justify-end gap-3"><button id="admin-cancel-btn" class="btn-secondary">취소</button><button id="admin-save-lesson-btn" class="btn-primary flex items-center justify-center min-w-[120px]"><span id="admin-save-btn-text">저장하기</span><div id="admin-save-loader" class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin hidden"></div></button></footer>
         </div>
     </div>
     <div id="admin-edit-class-modal" class="modal-backdrop" style="display: none;">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <header class="p-6 border-b flex justify-between items-center"><h2 class="text-2xl font-bold text-slate-800">반 정보 수정</h2><button id="admin-close-edit-class-modal-btn" class="text-slate-500 hover:text-slate-800">&times;</button></header>
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <header class="p-6 border-b flex justify-between items-center"><h2 class="text-2xl font-bold text-slate-800">반 정보 수정</h2><button id="admin-close-edit-class-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button></header>
             <main class="p-6 flex-grow overflow-y-auto custom-scrollbar">
                 <p class="mb-1 text-sm font-medium text-slate-600">반 이름</p>
                 <p id="admin-edit-class-name" class="text-lg font-bold text-slate-800 mb-6"></p>
                 <p class="mb-2 text-sm font-medium text-slate-600">이 반에서 사용할 과목 및 교재 선택</p>
-                <div id="admin-edit-class-subjects-and-textbooks" class="space-y-4"></div>
+                <div id="admin-edit-class-subjects-and-textbooks" class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4"></div>
             </main>
-            <footer class="p-6 border-t flex justify-end gap-3">
-                <button id="admin-cancel-edit-class-btn" class="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-2 px-5 rounded-lg">닫기</button>
-                <button id="admin-save-class-edit-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-5 rounded-lg">변경사항 저장</button>
-            </footer>
+            <footer class="p-6 border-t flex justify-end gap-3"><button id="admin-cancel-edit-class-btn" class="btn-secondary">닫기</button><button id="admin-save-class-edit-btn" class="btn-primary">변경사항 저장</button></footer>
         </div>
     </div>
 

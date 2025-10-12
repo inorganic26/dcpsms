@@ -2,10 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* --- 기존 CSS 코드는 이 아래에 그대로 둡니다 --- */
-body { font-family: 'Inter', sans-serif; }
-.view { display: none; }
-.active-view { display: block; }
+/* --- 전체적인 디자인 시스템 업데이트 --- */
+body {
+    font-family: 'Inter', sans-serif;
+    @apply bg-slate-50 text-slate-800; /* 기본 배경색과 글자색 변경 */
+}
+
+/* 새로운 카드 스타일 (모든 흰색 배경 패널에 적용) */
+.content-card {
+    @apply bg-white p-6 md:p-8 rounded-2xl shadow-lg border border-slate-200;
+}
+
+/* 새로운 버튼 스타일 (포털 카드와 유사한 느낌) */
+.btn {
+    @apply inline-block font-semibold py-2 px-5 rounded-lg transition duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed;
+}
+.btn-primary {
+    @apply btn bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+}
+.btn-secondary {
+    @apply btn bg-slate-200 text-slate-800 hover:bg-slate-300 focus:ring-slate-400;
+}
+.btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+}
+.btn-warning {
+    @apply btn bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500;
+}
+.btn-sm {
+    @apply py-1 px-3 text-sm;
+}
+
+/* 입력 필드 스타일 */
+.form-input {
+    @apply w-full p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
+}
+.form-select {
+    @apply w-full p-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition;
+}
+
+/* 포털 카드 호버 효과 */
 .portal-card {
     transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
@@ -13,6 +49,8 @@ body { font-family: 'Inter', sans-serif; }
     transform: translateY(-5px);
     box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
+
+/* 기존 유틸리티 */
 .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 .modal-backdrop {
@@ -29,22 +67,3 @@ body { font-family: 'Inter', sans-serif; }
 .option-btn.correct { background-color: #22c55e; color: white; border-color: #16a34a; }
 .option-btn.incorrect { background-color: #ef4444; color: white; border-color: #dc2626; }
 .disabled { pointer-events: none; opacity: 0.8; }
-
-/* 추가된 코드 시작 */
-.subject-option {
-    cursor: pointer;
-    padding: 8px;
-    border: 1px solid #e2e8f0; /* slate-200 */
-    border-radius: 8px;
-    transition: all 0.2s ease-in-out;
-}
-.subject-option:hover {
-    background-color: #f1f5f9; /* slate-100 */
-}
-.subject-option.selected {
-    background-color: #dbeafe; /* blue-100 */
-    border-color: #93c5fd; /* blue-300 */
-    font-weight: 600;
-    color: #2563eb; /* blue-600 */
-}
-/* 추가된 코드 끝 */
