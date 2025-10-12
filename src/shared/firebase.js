@@ -17,20 +17,19 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// 💡 App Check 초기화 코드 (올바른 순서 적용)
+// ✅ App Check 초기화 코드 수정 완료
 // ==================================================================
 
-// 1. 디버그 모드 활성화 (반드시 초기화보다 먼저 실행되어야 합니다!)
-//    (중요: 실제 서비스 배포 시에는 이 줄을 반드시 제거하거나 주석 처리해야 합니다.)
-self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-
-// 2. App Check 초기화 실행
+// 1. App Check 초기화 실행
+// 제공해주신 reCAPTCHA 사이트 키를 적용했습니다.
 initializeAppCheck(app, {
-  // Firebase 콘솔에서 App Check을 설정했으므로, 실제 키를 넣을 필요가 없습니다.
-  // 아래 'abcdef...' 부분은 단순히 형식을 맞추기 위한 임의의 값입니다.
-  provider: new ReCaptchaV3Provider('abcdef-123456-abcdef-123456'),
+  provider: new ReCaptchaV3Provider('6LdZeOYrAAAAAIK_L5u1NB-XZWyxl08UQ1jGgW3j'), // 👈 키 적용 완료
   isTokenAutoRefreshEnabled: true
 });
+
+// 2. 디버그 토큰 설정 제거
+// 아래 라인은 실제 서비스 환경에서는 필요 없으므로 주석 처리하거나 삭제하는 것이 좋습니다.
+// self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
 
 // ==================================================================
 

@@ -1,3 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- 기존 CSS 코드는 이 아래에 그대로 둡니다 --- */
 body { font-family: 'Inter', sans-serif; }
 .view { display: none; }
 .active-view { display: block; }

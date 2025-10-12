@@ -46,7 +46,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     try {
         await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
         
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }, { apiVersion: 'v1' });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }, { apiVersion: 'v1' });
 
         const prompt = `
 당신은 수학 전문 교사입니다. 제공된 PDF 수학 시험지를 분석하세요.
