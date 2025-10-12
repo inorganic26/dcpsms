@@ -80,42 +80,47 @@
                     </div>
                     
                     <div id="view-analysis-dashboard" class="teacher-view" style="display: none;">
-                        <div class="mb-8">
-                            <h2 class="text-xl font-bold text-slate-800 mb-2">AI 시험지 분석</h2>
-                            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <h2 class="text-2xl font-bold text-slate-800 mb-6 border-b pb-2">AI 분석 및 채점 대시보드</h2>
+
+                        <div class="bg-white p-6 rounded-2xl shadow-lg mb-8 border border-slate-200">
+                            <h3 class="text-xl font-semibold text-slate-800 mb-4">📝 AI 시험지 문항 분석</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
                                     <label for="test-pdf-upload-input" class="block text-sm font-medium text-slate-700 mb-2">1. 시험지 파일 (PDF) 업로드</label>
                                     <input type="file" id="test-pdf-upload-input" accept=".pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                                    <p id="pdf-analysis-status" class="text-xs text-slate-500 mt-1">AI가 분석할 시험지 PDF를 업로드하세요.</p>
+                                    <p id="pdf-analysis-status" class="text-xs text-slate-500 mt-2 min-h-[20px]">AI가 분석할 시험지 PDF를 업로드하세요.</p>
                                 </div>
                                 <div>
                                     <label for="student-data-upload-input" class="block text-sm font-medium text-slate-700 mb-2">2. 학생 성적 파일 (XLSX) 업로드</label>
                                     <input type="file" id="student-data-upload-input" accept=".xlsx" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"/>
-                                     <p class="text-xs text-slate-500 mt-1">※ 헤더: 학생명, q1, q2, ...</p>
+                                     <p class="text-xs text-slate-500 mt-2">※ 헤더: 학생명, q1, q2, ...</p>
                                 </div>
                             </div>
-                            <div class="mt-4">
-                                <h3 class="text-sm font-medium text-slate-700 mb-2">3. 학생별 분석 리포트 보기</h3>
+                            <div class="mt-6">
+                                <h3 class="text-lg font-semibold text-slate-700 mb-3">3. 학생별 분석 리포트 보기</h3>
                                 <div id="test-analysis-student-list" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    <p class="text-slate-400 col-span-full">반을 선택하고 파일을 업로드하세요.</p>
+                                    <p class="text-slate-400 col-span-full text-sm">반을 선택하고 파일을 업로드하세요.</p>
                                 </div>
                             </div>
                         </div>
 
-                        <div>
-                            <h2 class="text-xl font-bold text-slate-800 mb-2">AI 숙제 자동 채점</h2>
-                            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                <label for="homework-image-upload-input" class="block text-sm font-medium text-slate-700 mb-2">숙제 이미지 업로드 (여러 장 선택 가능)</label>
-                                <input type="file" id="homework-image-upload-input" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"/>
-                                <p class="text-xs text-slate-500 mt-1">채점할 학생의 숙제 사진을 모두 선택하여 업로드하세요. (파일명 형식: `날짜_반명_학생명_교재명_페이지번호.jpg`)</p>
-                            </div>
-                            <div class="mt-4">
-                                <h3 class="text-sm font-medium text-slate-700 mb-2">학생별 채점 결과 보기</h3>
-                                <div id="homework-analysis-student-list" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                                    <p class="text-slate-400 col-span-full">반을 선택하고 숙제 이미지를 업로드하세요.</p>
+                        <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+                            <h3 class="text-xl font-semibold text-slate-800 mb-4">📸 AI 숙제 자동 채점 (UI 유지)</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="homework-image-upload-input" class="block text-sm font-medium text-slate-700 mb-2">숙제 이미지 업로드 (여러 장 선택 가능)</label>
+                                    <input type="file" id="homework-image-upload-input" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"/>
+                                    <p class="text-xs text-slate-500 mt-2">채점할 숙제 사진을 모두 선택하여 업로드하세요.</p>
+                                </div>
+                                <div>
+                                     <h3 class="text-sm font-medium text-slate-700 mb-2">학생별 채점 결과 보기</h3>
+                                    <div id="homework-analysis-student-list" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 h-full min-h-[100px]">
+                                        <p class="text-slate-400 col-span-full text-sm">숙제 이미지를 업로드하면 채점 결과가 여기에 표시됩니다.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                        
                     </div>
                     <div id="view-lesson-mgmt" class="teacher-view" style="display: none;">
                         <div class="border-b pb-4 mb-6">
@@ -135,7 +140,7 @@
                         <p id="teacher-lesson-prompt" class="text-center text-slate-500 py-8">먼저 과목을 선택해주세요.</p>
                     </div>
                     <div id="view-class-mgmt" class="teacher-view" style="display: none;">
-                        <h2 class="text-xl font-bold text-slate-800 mb-4">반 설정 관리</h2>
+                        <h2 class="text-2xl font-bold text-slate-800 mb-4">반 설정 관리</h2>
                         <p class="text-slate-600 mb-4">현재 선택된 반에 연결된 과목과 교재를 수정할 수 있습니다.</p>
                         <button id="teacher-edit-class-btn" class="bg-blue-600 text-white font-bold py-2 px-5 rounded-lg hover:bg-blue-700 transition">과목 및 교재 설정</button>
                     </div>
@@ -145,14 +150,14 @@
     </div>
     
     <div id="analysis-report-modal" class="modal-backdrop" style="display: none;">
-        <div id="analysis-report-content" class="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar">
-        </div>
+        <div id="analysis-report-content" class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto custom-scrollbar">
+            </div>
     </div>
 
     <div id="teacher-assign-homework-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
             <header class="p-6 border-b flex justify-between items-center">
-                <h2 id="teacher-homework-modal-title" class="text-xl font-bold text-slate-800">새 숙제 출제</h2>
+                <h2 id="teacher-homework-modal-title" class="text-2xl font-bold text-slate-800">새 숙제 출제</h2>
                 <button id="teacher-close-homework-modal-btn" class="text-slate-500 hover:text-slate-800">&times;</button>
             </header>
             <main class="p-6 space-y-4">
@@ -204,11 +209,17 @@
     
     <div id="teacher-edit-class-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <header class="p-6 border-b flex justify-between items-center"><h2 class="text-2xl font-bold text-slate-800">반 정보 수정</h2><button id="teacher-close-edit-class-modal-btn" class="text-slate-500 hover:text-slate-800">&times;</button></header>
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">반 정보 수정</h2>
+                <button id="teacher-close-edit-class-modal-btn" class="text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
             <main class="p-6 flex-grow overflow-y-auto custom-scrollbar">
-                <p class="mb-1 text-sm font-medium text-slate-600">반 이름</p>
-                <p id="teacher-edit-class-name" class="text-lg font-bold text-slate-800 mb-6"></p>
-                <p class="mb-2 text-sm font-medium text-slate-600">이 반에서 사용할 과목 및 교재 선택</p>
+                <div class="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                     <p class="mb-1 text-sm font-medium text-slate-600">현재 반 이름</p>
+                    <p id="teacher-edit-class-name" class="text-xl font-bold text-slate-800"></p>
+                </div>
+                
+                <h3 class="text-lg font-semibold text-slate-700 mb-3 border-b pb-2">과목 및 교재 설정</h3>
                 <div id="teacher-edit-class-subjects-and-textbooks" class="space-y-4"></div>
             </main>
             <footer class="p-6 border-t flex justify-end gap-3">

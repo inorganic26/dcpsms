@@ -28,11 +28,10 @@ exports.analyzeTestPdf = onObjectFinalized({
     const testId = filePath.split("/")[1];
     const resultDocRef = db.collection("testAnalysisResults").doc(testId);
 
-    // ***** 💡 API 키 유효성 검사 로직 추가 *****
+    // ***** 💡 API 키 유효성 검사 로직 *****
     const GEMINI_API_KEY = functions.config().gemini?.key;
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
-        // API 키가 없을 때 즉시 에러 상태를 DB에 기록합니다.
         await resultDocRef.set({
             status: "error",
             error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
@@ -44,32 +43,37 @@ exports.analyzeTestPdf = onObjectFinalized({
     // *******************************************
 
     try {
+        // 🛠️ 'processing' 상태를 기록하여 클라이언트에게 작업 시작을 알림
         await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
         
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }, { apiVersion: 'v1' });
 
+        // 🛠️ 프롬프트 개선: '오답대응방안'의 답변 길이를 제한하여 AI의 생성 부하를 줄임
         const prompt = `
-당신은 수학 전문 교사입니다. 제공된 PDF 수학 시험지를 분석하세요.
-각 문제 번호에 대해 다음 정보를 추출하여 JSON 형식으로 제공하세요:
+당신은 수학 시험지 분석 전문가입니다. 제공된 PDF 수학 시험지를 분석하세요.
+각 문제 번호에 대해 다음 세 가지 정보를 JSON 형식으로 제공하세요.
 
-1. "단원명": 구체적인 수학 주제나 단원명
+1. "단원명": 해당 문제의 구체적인 수학 단원명 또는 핵심 개념 (예: '삼각함수', '미분계수의 정의')
 2. "난이도": [쉬움, 보통, 어려움] 중 하나로 분류
-3. "오답대응방안": 틀린 학생을 위한 구체적이고 실행 가능한 조언. 동사로 시작하는 문장.
+3. "오답대응방안": 틀린 학생을 위한 **핵심만 요약된, 15자 내외의 구체적이고 간결한 조언** (예: '미분계수 공식 반복 숙달').
 
 출력은 문제 번호를 키로 하는 하나의 JSON 객체여야 합니다 (예: "1", "2", "3").
         `.trim();
 
+        // 🛠️ 메모리 효율 개선: GCS URI를 직접 AI에 전달
         const fileUri = `gs://${object.bucket}/${filePath}`;
-        functions.logger.log("Analyzing file:", fileUri);
+        functions.logger.log("Analyzing file via URI:", fileUri);
+        
+        const filePart = { 
+            fileData: {
+                mimeType: contentType,
+                fileUri: fileUri
+            }
+        };
 
         const result = await model.generateContent([
             prompt, 
-            { 
-                inlineData: {
-                    mimeType: contentType,
-                    data: (await storage.bucket(object.bucket).file(filePath).download())[0].toString('base64')
-                }
-            }
+            filePart 
         ]);
 
         const responseText = result.response.text()
@@ -81,6 +85,7 @@ exports.analyzeTestPdf = onObjectFinalized({
         
         const analysisData = JSON.parse(responseText);
 
+        // 🛠️ 'completed' 상태 기록
         await resultDocRef.set({ 
             status: "completed", 
             analysis: analysisData,
@@ -90,6 +95,7 @@ exports.analyzeTestPdf = onObjectFinalized({
         functions.logger.log("Analysis completed for testId:", testId);
     } catch (error) {
         functions.logger.error("Error analyzing PDF:", error);
+        // 🛠️ 'error' 상태 기록
         await resultDocRef.set({ 
             status: "error", 
             error: error.message,
@@ -99,7 +105,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     }
 });
 
-// ========== 2. 숙제 이미지 채점 함수 ==========
+// ========== 2. 숙제 이미지 채점 함수 (유지) ==========
 exports.gradeHomeworkImage = onObjectFinalized({
     region: region,
 }, async (event) => {
@@ -118,7 +124,7 @@ exports.gradeHomeworkImage = onObjectFinalized({
     const studentName = nameParts[2];
     const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
 
-    // ***** 💡 API 키 유효성 검사 로직 추가 *****
+    // ***** 💡 API 키 유효성 검사 로직 *****
     const GEMINI_API_KEY = functions.config().gemini?.key;
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
@@ -152,17 +158,20 @@ exports.gradeHomeworkImage = onObjectFinalized({
 문제 번호를 키로, 값은 "정답", "오답", "안풂" 중 하나인 JSON 객체로 출력하세요.
         `.trim();
 
+        // 🛠️ 메모리 효율 개선: GCS URI를 직접 AI에 전달
         const fileUri = `gs://${object.bucket}/${filePath}`;
-        functions.logger.log("Grading file:", fileUri);
+        functions.logger.log("Grading file via URI:", fileUri);
+        
+        const filePart = { 
+            fileData: {
+                mimeType: contentType,
+                fileUri: fileUri
+            }
+        };
 
         const result = await model.generateContent([
             prompt, 
-            { 
-                inlineData: {
-                    mimeType: contentType,
-                    data: (await storage.bucket(object.bucket).file(filePath).download())[0].toString('base64')
-                }
-            }
+            filePart 
         ]);
 
         const responseText = result.response.text()

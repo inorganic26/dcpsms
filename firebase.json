@@ -18,7 +18,11 @@
       ],
       "predeploy": [
         "cd functions && npm run lint"
-      ]
+      ],
+      "runtime": "nodejs20",
+      "memory": "1024MiB",
+      "timeoutSeconds": 300,
+      "region": "asia-northeast3"
     }
   ],
   "storage": {
