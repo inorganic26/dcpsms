@@ -1,12 +1,29 @@
 rules_version = '2';
 
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    
+    // 모든 파일에 대해 기본적으로 읽기/쓰기 차단
     match /{allPaths=**} {
       allow read, write: if false;
+    }
+
+    // 1. 학생 숙제 제출 폴더 (homeworks):
+    // 학생 업로드 및 선생님 다운로드를 위해 인증된 사용자에게 허용
+    match /homeworks/{homeworkId}/{studentId}/{fileName} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 2. AI 시험지 분석 폴더 (test-analysis):
+    // 선생님 업로드 및 Cloud Functions 접근을 위해 인증된 사용자에게 허용
+    match /test-analysis/{testId}/{fileName} {
+      allow read, write: if request.auth != null; 
+    }
+    
+    // 3. AI 숙제 채점 이미지 폴더 (homework-grading):
+    // 선생님 업로드 및 Cloud Functions 접근을 위해 인증된 사용자에게 허용
+    match /homework-grading/{homeworkId}/{fileName} {
+      allow read, write: if request.auth != null;
     }
   }
 }

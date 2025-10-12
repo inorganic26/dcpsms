@@ -14,7 +14,7 @@
         <p id="toast-message"></p>
     </div>
 
-    <div class="container mx-auto max-w-7xl p-4 sm:p-6 md:p-8">
+    <div class="container mx-auto max-w-4xl p-4 sm:p-6 md:p-8">
         <div id="admin-dashboard-view">
             <a href="../../" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
             <header class="text-center mb-10">
@@ -22,19 +22,27 @@
                 <p class="text-slate-500 mt-2">관리할 항목을 선택하세요.</p>
             </header>
             <main>
-                <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
-                    <div class="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-slate-200">
-                        <div id="goto-subject-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">과목 관리</h2></div>
-                        <div id="goto-textbook-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">교재 관리</h2></div>
-                        <div id="goto-class-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">반 관리</h2></div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div id="goto-subject-mgmt-btn" class="admin-menu-item content-card">
+                        <h3 class="text-lg font-bold text-slate-800">과목 관리</h3>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 border-t divide-y md:divide-y-0 md:divide-x divide-slate-200">
-                        <div id="goto-student-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">학생 명단 관리</h2></div>
-                        <div id="goto-student-assignment-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">반 배정 관리</h2></div>
-                        <div id="goto-lesson-mgmt-btn" class="admin-menu-item"><h2 class="text-lg font-bold text-slate-800">학습 세트 관리</h2></div>
+                    <div id="goto-textbook-mgmt-btn" class="admin-menu-item content-card">
+                        <h3 class="text-lg font-bold text-slate-800">교재 관리</h3>
+                    </div>
+                    <div id="goto-class-mgmt-btn" class="admin-menu-item content-card">
+                        <h3 class="text-lg font-bold text-slate-800">반 관리</h3>
+                    </div>
+                    <div id="goto-student-mgmt-btn" class="admin-menu-item content-card">
+                        <h3 class="text-lg font-bold text-slate-800">학생 명단 관리</h3>
+                    </div>
+                    <div id="goto-student-assignment-btn" class="admin-menu-item content-card">
+                        <h3 class="text-lg font-bold text-slate-800">반 배정 관리</h3>
+                    </div>
+                    <div id="goto-lesson-mgmt-btn" class="admin-menu-item content-card">
+                        <h3 class="text-lg font-bold text-slate-800">학습 세트 관리</h3>
                     </div>
                 </div>
-                <style>.admin-menu-item { @apply cursor-pointer p-8 text-center transition hover:bg-slate-50; }</style>
+                <style>.admin-menu-item { @apply cursor-pointer p-6 text-center transition hover:bg-slate-50; }</style>
             </main>
         </div>
         
