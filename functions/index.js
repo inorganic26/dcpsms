@@ -28,13 +28,14 @@ exports.analyzeTestPdf = onObjectFinalized({
     const testId = filePath.split("/")[1];
     const resultDocRef = db.collection("testAnalysisResults").doc(testId);
 
-    // ***** 💡 API 키 유효성 검사 로직 *****
-    const GEMINI_API_KEY = functions.config().gemini?.key;
+    // ***** 💡 API 키 유효성 검사 로직 (process.env 사용으로 변경) *****
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
+    
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
         await resultDocRef.set({
             status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
+            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요. (키 설정 확인 필요)",
             errorAt: new Date()
         }, { merge: true });
         return; // 함수 종료
@@ -162,13 +163,14 @@ exports.gradeHomeworkImage = onObjectFinalized({
     const studentName = nameParts[2];
     const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
 
-    // ***** 💡 API 키 유효성 검사 로직 *****
-    const GEMINI_API_KEY = functions.config().gemini?.key;
+    // ***** 💡 API 키 유효성 검사 로직 (process.env 사용으로 변경) *****
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
+    
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
         await resultDocRef.set({
             status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
+            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요. (키 설정 확인 필요)",
             errorAt: new Date()
         }, { merge: true });
         return; // 함수 종료

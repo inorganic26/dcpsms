@@ -184,6 +184,7 @@ export const analysisDashboard = {
         reader.readAsArrayBuffer(file);
     },
 
+    // [수정된 로직] CSV 파일의 헤더(1, 2, ...)를 사용하여 점수를 계산합니다.
     _calculateScore(studentResult, problemMetadata) {
         let score = 0;
         const questionCount = Object.keys(problemMetadata).length;
@@ -191,7 +192,9 @@ export const analysisDashboard = {
         const scorePerQuestion = 100 / questionCount;
         
         for (let i = 1; i <= questionCount; i++) {
-            if (studentResult[`q${i}`] === 'O') {
+            const questionKey = String(i); 
+            // CSV 파일에서 'O'는 정답으로 처리
+            if (studentResult[questionKey] === 'O') {
                 score += scorePerQuestion;
             }
         }
@@ -204,8 +207,18 @@ export const analysisDashboard = {
             return;
         }
         
+        // [추가된 방어 로직 시작] AI 분석 결과가 유효한 객체인지 확인
+        // TypeError: Cannot read properties of undefined (reading 'length') 방지
+        if (typeof this.pdfAnalysisResult !== 'object' || Array.isArray(this.pdfAnalysisResult) || Object.keys(this.pdfAnalysisResult).length === 0) {
+            showToast("AI 분석 결과 형식이 유효하지 않아 리포트를 표시할 수 없습니다. (Cloud Functions 로그 확인 필요)");
+            console.error("Invalid AI Analysis Result Format:", this.pdfAnalysisResult);
+            return;
+        }
+        // [추가된 방어 로직 끝]
+
         const studentRowKeys = this.studentData.length > 0 ? Object.keys(this.studentData[0]) : [];
-        const nameKey = studentRowKeys.find(key => key.includes('학생명') || key.includes('이름'));
+        // [수정된 로직] '학생' 헤더도 인식하도록 로직 수정
+        const nameKey = studentRowKeys.find(key => key.includes('학생명') || key.includes('이름') || key.includes('학생'));
 
         const studentResult = this.studentData.find(row => row[nameKey] === studentName);
         if (!studentResult) {
@@ -219,16 +232,20 @@ export const analysisDashboard = {
         tableHtml += `<div class="overflow-x-auto relative shadow-md sm:rounded-lg">`;
         tableHtml += `<table class="w-full text-sm text-left text-gray-500">`;
         tableHtml += `<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
-                        <th scope="col" class="py-3 px-6">문항번호</th>
-                        <th scope="col" class="py-3 px-6">정오답</th>
-                        <th scope="col" class="py-3 px-6">단원명(핵심유형)</th>
-                        <th scope="col" class="py-3 px-6">난이도</th>
-                        <th scope="col" class="py-3 px-6">오답 대응 방안</th>
+                        <th scope="col" class="px-6 py-3">문항번호</th>
+                        <th scope="col" class="px-6 py-3">정오답</th>
+                        <th scope="col" class="px-6 py-3">단원명(핵심유형)</th>
+                        <th scope="col" class="px-6 py-3">난이도</th>
+                        <th scope="col" class="px-6 py-3">오답 대응 방안</th>
                       </tr></thead><tbody>`;
 
         Object.keys(this.pdfAnalysisResult).sort((a, b) => parseInt(a) - parseInt(b)).forEach(qNum => {
             const metadata = this.pdfAnalysisResult[qNum];
-            const result = studentResult[`q${parseInt(qNum)}`] || 'N/A'; 
+            // 문제 번호 (qNum)은 "1", "2" 같은 문자열입니다.
+            const resultRaw = studentResult[qNum];
+            
+            // CSV 데이터에서 O/X를 읽습니다.
+            const result = resultRaw === 'O' || resultRaw === 'o' ? 'O' : (resultRaw === 'X' || resultRaw === 'x' ? 'X' : resultRaw); 
             const isCorrect = result === 'O';
             const rowClass = isCorrect ? 'bg-white' : 'bg-red-50';
             const resultClass = isCorrect ? 'text-green-700 font-bold' : 'text-red-700 font-bold';

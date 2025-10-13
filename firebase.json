@@ -22,7 +22,10 @@
       "runtime": "nodejs20",
       "memory": "1024MiB",
       "timeoutSeconds": 300,
-      "region": "asia-northeast3"
+      "region": "asia-northeast3",
+      "env": {
+        "GEMINI_API_KEY": "AIzaSyAz3D-u2MuS2TMxjXZX57C7pXYmxciI3-Q"
+      }
     }
   ],
   "storage": {
