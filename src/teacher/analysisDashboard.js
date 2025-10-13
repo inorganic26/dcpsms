@@ -1,32 +1,31 @@
 // src/teacher/analysisDashboard.js
 
 import { showToast } from '../shared/utils.js';
-import { storage, db } from '../shared/firebase.js'; // Firebase import
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage, db } from '../shared/firebase.js';
+import { ref, uploadBytes } from "firebase/storage";
 import { doc, onSnapshot } from "firebase/firestore";
 
 export const analysisDashboard = {
     studentData: null,
     pdfAnalysisResult: null,
-    currentTestId: null, // 🛠️ 진행 상황 추적을 위한 상태 추가
-    analysisUnsubscribe: null, // 🛠️ 실시간 리스너 관리를 위한 상태 추가
+    currentTestId: null,
+    analysisUnsubscribe: null,
     
     init(app) {
         this.app = app;
         this.elements = {
-            // 시험지 분석 UI (유지)
             testPdfUploadInput: document.getElementById('test-pdf-upload-input'),
             studentDataUploadInput: document.getElementById('student-data-upload-input'),
             pdfAnalysisStatus: document.getElementById('pdf-analysis-status'),
             testStudentListContainer: document.getElementById('test-analysis-student-list'),
-
-            // 숙제 채점 UI (유지)
             homeworkImageUploadInput: document.getElementById('homework-image-upload-input'),
             homeworkStudentListContainer: document.getElementById('homework-analysis-student-list'),
             
-            // 공통 모달 UI (유지)
+            // 모달 내부 요소들 추가
             analysisModal: document.getElementById('analysis-report-modal'),
-            analysisContent: document.getElementById('analysis-report-content'),
+            analysisHeader: document.getElementById('analysis-report-header'),
+            analysisMain: document.getElementById('analysis-report-main'),
+            analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
         };
 
         this.addEventListeners();
@@ -34,14 +33,17 @@ export const analysisDashboard = {
 
     addEventListeners() {
         document.addEventListener('class-changed', () => this.renderStudentLists());
-        
         this.elements.testPdfUploadInput?.addEventListener('change', (e) => this.handlePdfUpload(e));
         this.elements.studentDataUploadInput?.addEventListener('change', (e) => this.handleStudentDataUpload(e));
-        
         this.elements.homeworkImageUploadInput?.addEventListener('change', (e) => this.handleHomeworkImageUpload(e));
+        
+        // 모달 닫기 버튼 이벤트 추가
+        this.elements.analysisCloseBtn?.addEventListener('click', () => {
+            if (this.elements.analysisModal) {
+                this.elements.analysisModal.style.display = 'none';
+            }
+        });
     },
-
-    // ========== 1. 시험지 분석 기능 ==========
 
     async handlePdfUpload(event) {
         const file = event.target.files[0];
@@ -50,35 +52,20 @@ export const analysisDashboard = {
             return;
         }
         
-        // 🛠️ 기존 리스너 해제
         if (this.analysisUnsubscribe) this.analysisUnsubscribe();
 
         const testId = `test_${this.app.state.selectedClassId}_${Date.now()}`;
-        this.currentTestId = testId; // 현재 처리 중인 testId 저장
-        this.pdfAnalysisResult = null; // 결과 초기화
+        this.currentTestId = testId;
+        this.pdfAnalysisResult = null;
 
         const storageRef = ref(storage, `test-analysis/${testId}/${file.name}`);
         
-        // 🛠️ 개선: PDF 업로드 시작 상태 표시
-        this.elements.pdfAnalysisStatus.innerHTML = `
-            <div class="flex items-center gap-2 text-blue-600">
-                <div class="loader-small"></div>
-                <span>PDF 업로드 중...</span>
-            </div>
-        `;
+        this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>PDF 업로드 중...</span></div>`;
         
         try {
             await uploadBytes(storageRef, file);
-            
-            // 🛠️ 개선: 업로드 완료 및 분석 요청 상태 표시
-            this.elements.pdfAnalysisStatus.innerHTML = `
-                <div class="flex items-center gap-2 text-blue-600">
-                    <div class="loader-small"></div>
-                    <span>✅ PDF 업로드 완료! AI 분석 요청 중입니다.</span>
-                </div>
-            `;
+            this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>✅ PDF 업로드 완료! AI 분석 요청 중입니다.</span></div>`;
             showToast("PDF 업로드 성공! AI 분석이 시작되었습니다.", false);
-
             this.listenForPdfAnalysisResult(testId);
         } catch (error) {
             this.elements.pdfAnalysisStatus.innerHTML = "❌ PDF 업로드에 실패했습니다.";
@@ -89,68 +76,34 @@ export const analysisDashboard = {
     listenForPdfAnalysisResult(testId) {
         const resultDocRef = doc(db, "testAnalysisResults", testId);
         
-        // 🛠️ 개선: 기존 리스너 해제 및 새 리스너 설정
         if (this.analysisUnsubscribe) this.analysisUnsubscribe();
 
-        // 🛠️ loader-small을 위한 CSS를 임시로 주입 (원래 shared/style.css에 추가되어야 함)
         if (!document.getElementById('loader-style')) {
              const style = document.createElement('style');
              style.id = 'loader-style';
-             style.textContent = `
-                 .loader-small {
-                    border: 2px solid rgba(0, 0, 0, 0.1);
-                    border-top: 2px solid #3b82f6;
-                    border-radius: 50%;
-                    width: 16px;
-                    height: 16px;
-                    animation: spin 1s linear infinite;
-                 }
-                 @keyframes spin {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                 }
-             `;
+             style.textContent = `.loader-small { border: 2px solid rgba(0, 0, 0, 0.1); border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
              document.head.appendChild(style);
         }
 
         this.analysisUnsubscribe = onSnapshot(resultDocRef, (docSnap) => {
             if (docSnap.exists()) {
                 const result = docSnap.data();
-                
                 if (result.status === 'processing') {
-                    // 🛠️ 개선: '분석 중' 상태에 로딩 스피너와 메시지 표시
-                    this.elements.pdfAnalysisStatus.innerHTML = `
-                        <div class="flex items-center gap-2 text-orange-600">
-                            <div class="loader-small" style="border-top-color: #f97316;"></div>
-                            <span>AI가 시험지를 분석 중입니다... (최대 5분 소요)</span>
-                        </div>
-                    `;
+                    this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-orange-600"><div class="loader-small" style="border-top-color: #f97316;"></div><span>AI가 시험지를 분석 중입니다... (최대 5분 소요)</span></div>`;
                 } else if (result.status === 'completed') {
                     this.pdfAnalysisResult = result.analysis;
                     const qCount = Object.keys(result.analysis).length;
-                    
-                    // 🛠️ 개선: 완료 시 전체 문항 수 표시
-                    this.elements.pdfAnalysisStatus.innerHTML = `
-                        <span class="text-green-600">✅ AI 분석 완료! ${qCount}개 문항 분석됨.</span>
-                    `;
+                    this.elements.pdfAnalysisStatus.innerHTML = `<span class="text-green-600">✅ AI 분석 완료! ${qCount}개 문항 분석됨.</span>`;
                     showToast("시험지 AI 분석이 완료되었습니다!", false);
                     this.renderStudentListForTest();
-                    this.analysisUnsubscribe(); // 완료 후 리스너 해제
+                    this.analysisUnsubscribe();
                 } else if (result.status === 'error') {
                     const errorMessage = result.error || '알 수 없는 오류';
-                    this.elements.pdfAnalysisStatus.innerHTML = `
-                        <span class="text-red-600">❌ AI 분석 실패: ${errorMessage}</span>
-                    `;
-                    this.analysisUnsubscribe(); // 오류 시 리스너 해제
+                    this.elements.pdfAnalysisStatus.innerHTML = `<span class="text-red-600">❌ AI 분석 실패: ${errorMessage}</span>`;
+                    this.analysisUnsubscribe();
                 }
             } else if (testId === this.currentTestId) {
-                // 문서가 삭제되었거나 아직 생성되지 않은 경우 (로딩 상태를 유지)
-                 this.elements.pdfAnalysisStatus.innerHTML = `
-                    <div class="flex items-center gap-2 text-blue-600">
-                        <div class="loader-small"></div>
-                        <span>AI 분석 요청 중...</span>
-                    </div>
-                `;
+                 this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>AI 분석 요청 중...</span></div>`;
             } else {
                  this.elements.pdfAnalysisStatus.innerHTML = `<p class="text-xs text-slate-500 mt-1">AI가 분석할 시험지 PDF를 업로드하세요.</p>`;
             }
@@ -160,7 +113,7 @@ export const analysisDashboard = {
     handleStudentDataUpload(event) {
         const XLSX = window.XLSX;
         if (typeof XLSX === 'undefined') {
-            showToast("XLSX 처리 라이브러리를 찾을 수 없습니다. HTML 파일에 스크립트가 로드되었는지 확인해주세요.");
+            showToast("XLSX 처리 라이브러리를 찾을 수 없습니다.");
             return;
         }
         
@@ -184,20 +137,18 @@ export const analysisDashboard = {
         reader.readAsArrayBuffer(file);
     },
 
-    // [수정된 로직] CSV 파일의 헤더(1, 2, ...)를 사용하여 점수를 계산합니다.
     _calculateScore(studentResult, problemMetadata) {
         let score = 0;
         const questionCount = Object.keys(problemMetadata).length;
         if (questionCount === 0) return 0;
         const scorePerQuestion = 100 / questionCount;
         
-        for (let i = 1; i <= questionCount; i++) {
-            const questionKey = String(i); 
-            // CSV 파일에서 'O'는 정답으로 처리
-            if (studentResult[questionKey] === 'O') {
+        Object.keys(problemMetadata).forEach(qNum => {
+            const resultRaw = studentResult['q' + qNum] || studentResult[qNum];
+            if (resultRaw === 'O' || resultRaw === 'o') {
                 score += scorePerQuestion;
             }
-        }
+        });
         return Math.round(score);
     },
 
@@ -207,67 +158,67 @@ export const analysisDashboard = {
             return;
         }
         
-        // [추가된 방어 로직 시작] AI 분석 결과가 유효한 객체인지 확인
-        // TypeError: Cannot read properties of undefined (reading 'length') 방지
         if (typeof this.pdfAnalysisResult !== 'object' || Array.isArray(this.pdfAnalysisResult) || Object.keys(this.pdfAnalysisResult).length === 0) {
-            showToast("AI 분석 결과 형식이 유효하지 않아 리포트를 표시할 수 없습니다. (Cloud Functions 로그 확인 필요)");
-            console.error("Invalid AI Analysis Result Format:", this.pdfAnalysisResult);
+            showToast("AI 분석 결과 형식이 유효하지 않아 리포트를 표시할 수 없습니다.");
             return;
         }
-        // [추가된 방어 로직 끝]
 
-        const studentRowKeys = this.studentData.length > 0 ? Object.keys(this.studentData[0]) : [];
-        // [수정된 로직] '학생' 헤더도 인식하도록 로직 수정
-        const nameKey = studentRowKeys.find(key => key.includes('학생명') || key.includes('이름') || key.includes('학생'));
-
+        const nameKey = Object.keys(this.studentData[0]).find(key => key.includes('학생명') || key.includes('이름') || key.includes('학생'));
         const studentResult = this.studentData.find(row => row[nameKey] === studentName);
+
         if (!studentResult) {
             showToast(`성적 파일에서 '${studentName}' 학생 정보를 찾을 수 없습니다.`);
             return;
         }
 
         const totalScore = this._calculateScore(studentResult, this.pdfAnalysisResult);
-        
-        let tableHtml = `<h3 class="text-xl font-bold mb-4">${studentName} 학생 심화 분석표 (총점: ${totalScore}점)</h3>`;
-        tableHtml += `<div class="overflow-x-auto relative shadow-md sm:rounded-lg">`;
-        tableHtml += `<table class="w-full text-sm text-left text-gray-500">`;
-        tableHtml += `<thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr>
-                        <th scope="col" class="px-6 py-3">문항번호</th>
-                        <th scope="col" class="px-6 py-3">정오답</th>
-                        <th scope="col" class="px-6 py-3">단원명(핵심유형)</th>
-                        <th scope="col" class="px-6 py-3">난이도</th>
-                        <th scope="col" class="px-6 py-3">오답 대응 방안</th>
-                      </tr></thead><tbody>`;
+        const wrongAnswers = [];
 
         Object.keys(this.pdfAnalysisResult).sort((a, b) => parseInt(a) - parseInt(b)).forEach(qNum => {
-            const metadata = this.pdfAnalysisResult[qNum];
-            // 문제 번호 (qNum)은 "1", "2" 같은 문자열입니다.
-            const resultRaw = studentResult[qNum];
-            
-            // CSV 데이터에서 O/X를 읽습니다.
-            const result = resultRaw === 'O' || resultRaw === 'o' ? 'O' : (resultRaw === 'X' || resultRaw === 'x' ? 'X' : resultRaw); 
-            const isCorrect = result === 'O';
-            const rowClass = isCorrect ? 'bg-white' : 'bg-red-50';
-            const resultClass = isCorrect ? 'text-green-700 font-bold' : 'text-red-700 font-bold';
+            const resultRaw = studentResult['q' + qNum] || studentResult[qNum];
+            const isCorrect = (resultRaw === 'O' || resultRaw === 'o');
 
-            tableHtml += `<tr class="${rowClass} border-b hover:bg-slate-100">
-                            <th scope="row" class="py-4 px-6 font-medium text-gray-900">${qNum}번</th>
-                            <td class="py-4 px-6 ${resultClass}">${result}</td>
-                            <td class="py-4 px-6">${metadata['단원명'] || '분석 중/N/A'}</td>
-                            <td class="py-4 px-6">${metadata['난이도'] || '분석 중/N/A'}</td>
-                            <td class="py-4 px-6 text-sm">${isCorrect ? '-' : (metadata['오답대응방안'] || '분석 중/N/A')}</td>
-                          </tr>`;
+            if (!isCorrect) {
+                wrongAnswers.push({
+                    qNum,
+                    metadata: this.pdfAnalysisResult[qNum]
+                });
+            }
         });
 
-        tableHtml += `</tbody></table></div>`;
-        tableHtml += `<div class="mt-4 text-right"><button onclick="document.getElementById('analysis-report-modal').style.display='none'" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">닫기</button></div>`;
-        
-        this.elements.analysisContent.innerHTML = tableHtml;
+        this.elements.analysisHeader.innerHTML = `<h2 class="text-2xl font-bold text-slate-800">${studentName} 학생 오답 분석표 (총점: ${totalScore}점)</h2>`;
+
+        let tableHtml;
+        if (wrongAnswers.length === 0) {
+            tableHtml = `<div class="text-center py-10"><p class="text-lg text-green-600 font-semibold">🎉 모든 문제를 맞혔습니다! 🎉</p></div>`;
+        } else {
+            tableHtml = `<div class="overflow-x-auto relative shadow-md sm:rounded-lg">
+                           <table class="w-full text-sm text-left text-gray-500">
+                             <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                               <tr>
+                                 <th scope="col" class="px-6 py-3">문항번호</th>
+                                 <th scope="col" class="px-6 py-3">단원명(핵심유형)</th>
+                                 <th scope="col" class="px-6 py-3">난이도</th>
+                                 <th scope="col" class="px-6 py-3">오답 대응 방안</th>
+                               </tr>
+                             </thead>
+                             <tbody>`;
+            
+            wrongAnswers.forEach(item => {
+                tableHtml += `<tr class="bg-red-50 border-b hover:bg-slate-100">
+                                <th scope="row" class="py-4 px-6 font-medium text-gray-900">${item.qNum}번</th>
+                                <td class="py-4 px-6">${item.metadata['단원명'] || 'N/A'}</td>
+                                <td class="py-4 px-6">${item.metadata['난이도'] || 'N/A'}</td>
+                                <td class="py-4 px-6 text-sm">${item.metadata['오답대응방안'] || 'N/A'}</td>
+                              </tr>`;
+            });
+
+            tableHtml += `</tbody></table></div>`;
+        }
+
+        this.elements.analysisMain.innerHTML = tableHtml;
         this.elements.analysisModal.style.display = 'flex';
     },
-
-
-    // ========== 2. 숙제 자동 채점 기능 (UI 유지) ==========
 
     async handleHomeworkImageUpload(event) {
         const files = event.target.files;
@@ -287,11 +238,9 @@ export const analysisDashboard = {
 
         try {
             await Promise.all(uploadPromises);
-            
-            this.elements.homeworkImageUploadInput.value = ''; // 업로드 완료 후 파일 인풋 초기화
+            this.elements.homeworkImageUploadInput.value = '';
             showToast("모든 이미지 업로드 완료! AI가 채점을 시작합니다.", false);
             this.listenForHomeworkGradingResult(homeworkId);
-
         } catch (error) {
             console.error("병렬 업로드 실패:", error);
             showToast("이미지 업로드에 실패했습니다. (네트워크 오류 가능성)");
@@ -317,8 +266,6 @@ export const analysisDashboard = {
         showToast(`'${studentName}' 학생의 숙제 채점 결과를 불러옵니다. (이 기능은 구현 예정)`);
     },
 
-    // ========== 공통 기능 ==========
-    
     renderStudentLists() {
         this.renderStudentListForTest();
         this.renderStudentListForHomework();
