@@ -46,6 +46,9 @@ const TeacherApp = {
         
         this.populateClassSelect();
         this.listenForSubjects();
+
+        // 초기 뷰 설정
+        this.handleViewChange('lesson-dashboard');
     },
 
     cacheElements() {
@@ -117,15 +120,17 @@ const TeacherApp = {
         });
     },
 
+    // ---▼▼▼▼▼ 버튼 스타일 제어 로직 수정 ▼▼▼▼▼---
     handleViewChange(viewName) {
         this.elements.navButtons.forEach(btn => {
             const isSelected = btn.dataset.view === viewName;
-            btn.classList.toggle('border-blue-600', isSelected);
+            // 활성 상태 스타일
+            btn.classList.toggle('bg-white', isSelected);
             btn.classList.toggle('text-blue-600', isSelected);
-            btn.classList.toggle('font-semibold', isSelected);
-            btn.classList.toggle('border-transparent', !isSelected);
-            btn.classList.toggle('text-slate-500', !isSelected);
-            btn.classList.toggle('font-medium', !isSelected);
+            btn.classList.toggle('shadow-sm', isSelected);
+            // 비활성 상태 스타일
+            btn.classList.toggle('text-slate-600', !isSelected);
+            btn.classList.toggle('hover:bg-slate-300', !isSelected);
         });
 
         Object.values(this.elements.views).forEach(view => {
@@ -144,10 +149,10 @@ const TeacherApp = {
         } else if (viewName === 'lesson-mgmt') {
              this.populateSubjectSelectForMgmt();
         } else if (viewName === 'analysis-dashboard') {
-            // 여기가 수정된 부분입니다!
             analysisDashboard.renderStudentLists();
         }
     },
+    // ---▲▲▲▲▲ 버튼 스타일 제어 로직 수정 끝 ▲▲▲▲▲---
 
     async handleClassSelection(event) {
         const selectedOption = event.target.options[event.target.selectedIndex];
@@ -162,7 +167,7 @@ const TeacherApp = {
         this.elements.mainContent.style.display = 'block';
         await this.fetchClassData(this.state.selectedClassId);
         
-        const activeNav = document.querySelector('.teacher-nav-btn.border-blue-600');
+        const activeNav = document.querySelector('.teacher-nav-btn.bg-white');
         const activeView = activeNav ? activeNav.dataset.view : 'lesson-dashboard';
         this.handleViewChange(activeView);
     },

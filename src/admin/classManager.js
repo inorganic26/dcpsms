@@ -118,11 +118,15 @@ export const classManager = {
 
         editClassName.textContent = classData.name;
         subjectsContainer.innerHTML = '과목 정보 불러오는 중...';
-        studentsContainer.innerHTML = '학생 정보 불러오는 중...';
+        if (studentsContainer) studentsContainer.innerHTML = '학생 정보 불러오는 중...';
+        
+        // ---▼ 수정된 부분 ▼---
+        document.body.classList.add('modal-open'); // 배경 스크롤 막기
         modal.style.display = 'flex';
+        // ---▲ 수정된 부분 ▲---
 
         this.renderSubjectsForEditing(classData, subjectsContainer);
-        this.renderStudentsForEditing(classId, studentsContainer);
+        if (studentsContainer) this.renderStudentsForEditing(classId, studentsContainer);
     },
 
     async renderSubjectsForEditing(classData, container) {
@@ -243,7 +247,10 @@ export const classManager = {
 
     closeEditClassModal() {
         this.app.state.editingClass = null;
+        // ---▼ 수정된 부분 ▼---
+        document.body.classList.remove('modal-open'); // 배경 스크롤 허용
         this.app.elements.editClassModal.style.display = 'none';
+        // ---▲ 수정된 부분 ▲---
     },
 
     async saveClassChanges() {

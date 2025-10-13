@@ -17,7 +17,7 @@
         <p id="toast-message"></p>
     </div>
 
-    <div class="container mx-auto max-w-4xl p-4 sm:p-6 md:p-8">
+    <div class="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
         <a href="../../" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
         
         <div class="content-card">
@@ -29,14 +29,13 @@
             </header>
 
             <div id="teacher-main-content" style="display: none;">
-                <nav class="flex border-b border-slate-200 mb-6">
-                    <button data-view="lesson-dashboard" class="teacher-nav-btn px-4 py-3 border-b-2 border-blue-600 text-blue-600 font-semibold">학습 현황</button>
-                    <button data-view="homework-dashboard" class="teacher-nav-btn px-4 py-3 border-b-2 border-transparent text-slate-500 font-medium hover:text-slate-700">숙제 현황</button>
-                    <button data-view="analysis-dashboard" class="teacher-nav-btn px-4 py-3 border-b-2 border-transparent text-slate-500 font-medium hover:text-slate-700">AI 분석</button>
-                    <button data-view="lesson-mgmt" class="teacher-nav-btn px-4 py-3 border-b-2 border-transparent text-slate-500 font-medium hover:text-slate-700">학습 관리</button>
-                    <button data-view="class-mgmt" class="teacher-nav-btn px-4 py-3 border-b-2 border-transparent text-slate-500 font-medium hover:text-slate-700">반 설정</button>
+                <nav class="p-1 mb-6 flex space-x-1 bg-slate-200 rounded-lg">
+                    <button data-view="lesson-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">학습 현황</button>
+                    <button data-view="homework-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">숙제 현황</button>
+                    <button data-view="analysis-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">AI 분석</button>
+                    <button data-view="lesson-mgmt" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">학습 관리</button>
+                    <button data-view="class-mgmt" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">반 설정</button>
                 </nav>
-
                 <main>
                     <div id="view-lesson-dashboard" class="teacher-view">
                         <div class="flex items-center gap-4 mb-4">
