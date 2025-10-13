@@ -60,32 +60,70 @@ exports.analyzeTestPdf = onObjectFinalized({
 출력은 문제 번호를 키로 하는 하나의 JSON 객체여야 합니다 (예: "1", "2", "3").
         `.trim();
 
-        // 🛠️ 메모리 효율 개선: GCS URI를 직접 AI에 전달
-        const fileUri = `gs://${object.bucket}/${filePath}`;
-        functions.logger.log("Analyzing file via URI:", fileUri);
+        // 🛠️ Base64 인코딩 방식 적용 시작
+        // Storage에서 파일 내용을 다운로드
+        const bucket = storage.bucket(object.bucket);
+        const file = bucket.file(filePath);
+        const [fileBuffer] = await file.download(); // 파일 다운로드
+
+        // 다운로드한 파일 버퍼를 Base64 문자열로 변환
+        const base64Data = fileBuffer.toString('base64');
         
+        // AI 모델에 전달할 filePart 생성 (inlineData 사용)
         const filePart = { 
-            fileData: {
+            inlineData: {
+                data: base64Data,
                 mimeType: contentType,
-                fileUri: fileUri
             }
         };
+        // 🛠️ Base64 인코딩 방식 적용 끝
 
         const result = await model.generateContent([
             prompt, 
             filePart 
         ]);
 
-        const responseText = result.response.text()
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
+        const responseText = result.response.text();
         
         functions.logger.log("Raw response:", responseText);
-        
-        const analysisData = JSON.parse(responseText);
 
-        // 🛠️ 'completed' 상태 기록
+        // 🛠️ AI 응답에서 JSON 객체만을 안전하게 추출하는 강력한 로직
+        let analysisData;
+        try {
+            // 1. 응답 텍스트에서 ```json\n...\n``` 블록 찾기
+            const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
+            let jsonContent;
+
+            if (jsonMatch && jsonMatch[1]) {
+                jsonContent = jsonMatch[1].trim();
+            } else {
+                // 2. 블록이 없는 경우, JSON 객체의 시작과 끝(`{`, `}`)을 찾아 그 사이 내용만 추출
+                const cleanedResponse = responseText
+                    .replace(/```json/g, "")
+                    .replace(/```/g, "")
+                    .replace(/AI 분석 요약:/i, "") // 예상치 못한 설명 제거
+                    .trim();
+                
+                // 첫 번째 '{' 위치와 마지막 '}' 위치를 찾아 JSON 문자열을 안전하게 추출
+                const startIndex = cleanedResponse.indexOf('{');
+                const endIndex = cleanedResponse.lastIndexOf('}');
+
+                if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+                    jsonContent = cleanedResponse.substring(startIndex, endIndex + 1);
+                } else {
+                    // `{`와 `}`를 찾지 못한 경우, 원본 응답 전체를 JSON으로 간주 (최후의 수단)
+                    jsonContent = cleanedResponse;
+                }
+            }
+            
+            analysisData = JSON.parse(jsonContent);
+
+        } catch (parseError) {
+            // JSON 파싱 오류 발생 시, 원본 에러를 기록하고 함수를 종료
+            throw new Error(`JSON 파싱 실패: ${parseError.message}. 응답: ${responseText.substring(0, 100)}...`);
+        }
+
+        // 🛠️ 'completed' 상태 기록 (JSON 파싱 성공 시에만 도달)
         await resultDocRef.set({ 
             status: "completed", 
             analysis: analysisData,
@@ -105,7 +143,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     }
 });
 
-// ========== 2. 숙제 이미지 채점 함수 (유지) ==========
+// ========== 2. 숙제 이미지 채점 함수 ==========
 exports.gradeHomeworkImage = onObjectFinalized({
     region: region,
 }, async (event) => {
@@ -158,14 +196,16 @@ exports.gradeHomeworkImage = onObjectFinalized({
 문제 번호를 키로, 값은 "정답", "오답", "안풂" 중 하나인 JSON 객체로 출력하세요.
         `.trim();
 
-        // 🛠️ 메모리 효율 개선: GCS URI를 직접 AI에 전달
-        const fileUri = `gs://${object.bucket}/${filePath}`;
-        functions.logger.log("Grading file via URI:", fileUri);
+        // 🛠️ Base64 인코딩 방식으로 파일 다운로드 및 전달
+        const bucket = storage.bucket(object.bucket);
+        const file = bucket.file(filePath);
+        const [fileBuffer] = await file.download();
+        const base64Data = fileBuffer.toString('base64');
         
         const filePart = { 
-            fileData: {
+            inlineData: {
+                data: base64Data,
                 mimeType: contentType,
-                fileUri: fileUri
             }
         };
 
@@ -174,14 +214,44 @@ exports.gradeHomeworkImage = onObjectFinalized({
             filePart 
         ]);
 
-        const responseText = result.response.text()
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
+        const responseText = result.response.text();
         
         functions.logger.log("Raw grading response:", responseText);
-        
-        const gradingData = JSON.parse(responseText);
+
+        // 🛠️ AI 응답에서 JSON 객체만을 안전하게 추출하는 강력한 로직
+        let gradingData;
+        try {
+             // 1. 응답 텍스트에서 ```json\n...\n``` 블록 찾기
+            const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
+            let jsonContent;
+
+            if (jsonMatch && jsonMatch[1]) {
+                jsonContent = jsonMatch[1].trim();
+            } else {
+                // 2. 블록이 없는 경우, JSON 객체의 시작과 끝(`{`, `}`)을 찾아 그 사이 내용만 추출
+                const cleanedResponse = responseText
+                    .replace(/```json/g, "")
+                    .replace(/```/g, "")
+                    .trim();
+                
+                // 첫 번째 '{' 위치와 마지막 '}' 위치를 찾아 JSON 문자열을 안전하게 추출
+                const startIndex = cleanedResponse.indexOf('{');
+                const endIndex = cleanedResponse.lastIndexOf('}');
+
+                if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+                    jsonContent = cleanedResponse.substring(startIndex, endIndex + 1);
+                } else {
+                    // `{`와 `}`를 찾지 못한 경우, 원본 응답 전체를 JSON으로 간주 (최후의 수단)
+                    jsonContent = cleanedResponse;
+                }
+            }
+            
+            gradingData = JSON.parse(jsonContent);
+
+        } catch (parseError) {
+             // JSON 파싱 오류 발생 시, 원본 에러를 기록하고 함수를 종료
+            throw new Error(`JSON 파싱 실패: ${parseError.message}. 응답: ${responseText.substring(0, 100)}...`);
+        }
 
         // 학생별, 파일별 결과를 results 맵에 저장
         const studentUpdateData = {};
