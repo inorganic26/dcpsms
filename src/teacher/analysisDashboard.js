@@ -271,13 +271,14 @@ export const analysisDashboard = {
         this.renderStudentListForHomework();
     },
 
+    // ---▼▼▼▼▼ 학생 버튼 스타일링 수정 ▼▼▼▼▼---
     renderStudentListForTest() {
         const listEl = this.elements.testStudentListContainer;
         if (!listEl) return;
         listEl.innerHTML = '';
 
         if (!this.app.state.selectedClassId || this.app.state.studentsInClass.size === 0) {
-            listEl.innerHTML = '<p class="text-slate-400 col-span-full">학생 목록이 없습니다.</p>';
+            listEl.innerHTML = '<p class="text-slate-400 col-span-full text-center py-4">학생 목록이 없습니다.</p>';
             return;
         }
 
@@ -287,16 +288,17 @@ export const analysisDashboard = {
         
         this.app.state.studentsInClass.forEach((name, id) => {
             const studentCard = document.createElement('div');
-            studentCard.className = `p-3 border rounded-lg cursor-pointer bg-white transition shadow-sm text-center ${isReady ? 'hover:bg-blue-50' : 'opacity-50 cursor-not-allowed'}`;
+            // 버튼 스타일 클래스 추가
+            studentCard.className = `p-3 border rounded-lg cursor-pointer bg-white transition shadow-sm text-center ${isReady ? 'hover:bg-blue-50 hover:border-blue-300' : 'opacity-50 cursor-not-allowed'}`;
             
             let statusText = '';
             if (!isDataLoaded) statusText = '성적 파일 필요';
-            else if (!isAnalysisCompleted) statusText = 'AI 분석 중';
+            else if (!isAnalysisCompleted) statusText = 'AI 분석 필요';
             else statusText = '리포트 보기';
             
             studentCard.innerHTML = `
                 <h3 class="font-semibold text-slate-800 text-sm">${name}</h3>
-                <p class="text-xs text-blue-500">${statusText}</p>
+                <p class="text-xs ${isReady ? 'text-blue-500' : 'text-slate-400'}">${statusText}</p>
             `;
             if (isReady) {
                 studentCard.addEventListener('click', () => this.showTestAnalysisReport(name));
@@ -306,10 +308,11 @@ export const analysisDashboard = {
             listEl.appendChild(studentCard);
         });
     },
+    // ---▲▲▲▲▲ 학생 버튼 스타일링 수정 끝 ▲▲▲▲▲---
     
     renderStudentListForHomework() {
         const listEl = this.elements.homeworkStudentListContainer;
         if (!listEl) return;
-        listEl.innerHTML = '<p class="text-slate-400 col-span-full">숙제 이미지를 업로드하면 채점 결과가 여기에 표시됩니다.</p>';
+        listEl.innerHTML = '<p class="text-slate-400 col-span-full text-center py-4">숙제 이미지를 업로드하면 채점 결과가 여기에 표시됩니다.</p>';
     },
 };
