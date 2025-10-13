@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>관리자 대시보드</title>
+    <link rel="icon" href="/vite.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="../shared/style.css">
@@ -114,16 +115,21 @@
                 </div>
             </div>
         </div>
+        
         <div id="admin-student-assignment-view" class="admin-section-view" style="display: none;">
             <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
             <div class="content-card">
                 <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">반 배정 관리</h2>
+                
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    
                     <div>
                         <div class="flex gap-4 mb-2">
                             <div class="flex-grow">
                                 <label for="admin-source-class-select" class="block text-sm font-medium text-slate-700 mb-1">반 선택</label>
-                                <select id="admin-source-class-select" class="form-select"></select>
+                                <select id="admin-source-class-select" class="form-select">
+                                     <option value="unassigned">미배정</option>
+                                </select>
                             </div>
                             <div class="flex-grow">
                                 <label for="admin-student-search-input-assignment" class="block text-sm font-medium text-slate-700 mb-1">학생 검색</label>
@@ -134,14 +140,19 @@
                             <p class="text-sm text-slate-400">먼저 반을 선택해주세요.</p>
                         </div>
                     </div>
+                    
                     <div>
                         <label for="admin-target-class-select" class="block text-sm font-medium text-slate-700 mb-1">배정할 반 선택</label>
-                        <select id="admin-target-class-select" class="form-select mb-4"></select>
+                        <select id="admin-target-class-select" class="form-select mb-4">
+                             <option value="">-- 배정할 반 --</option>
+                        </select>
                         <button id="admin-assign-students-btn" class="btn-primary w-full">선택한 학생 배정하기</button>
                     </div>
+
                 </div>
             </div>
         </div>
+
         <div id="admin-lesson-mgmt-view" class="admin-section-view" style="display: none;">
             <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
             <div class="content-card">
