@@ -1,7 +1,6 @@
 // src/teacher/teacherApp.js
 
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot, updateDoc } from "firebase/firestore";
-// ▼▼▼ [수정] ensureAuthWithRole 대신 ensureAnonymousAuth를 가져옵니다. ▼▼▼
 import { db, ensureAnonymousAuth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
@@ -88,11 +87,19 @@ const TeacherApp = {
         if (this.isInitialized) return;
         this.isInitialized = true;
 
-        lessonDashboard.init(this);
-        homeworkDashboard.init(this);
-        lessonManager.init(this);
-        classEditor.init(this);
-        analysisDashboard.init(this);
+        // 각 모듈을 TeacherApp의 속성으로 추가하여 서로 참조할 수 있도록 함
+        this.lessonDashboard = lessonDashboard;
+        this.homeworkDashboard = homeworkDashboard;
+        this.lessonManager = lessonManager;
+        this.classEditor = classEditor;
+        this.analysisDashboard = analysisDashboard;
+
+        // 초기화
+        this.lessonDashboard.init(this);
+        this.homeworkDashboard.init(this);
+        this.lessonManager.init(this);
+        this.classEditor.init(this);
+        this.analysisDashboard.init(this);
 
         this.addEventListeners();
         this.populateClassSelect();
@@ -215,11 +222,11 @@ const TeacherApp = {
         if (viewName === 'lesson-dashboard') {
             this.populateSubjectSelectForLessonDashboard();
         } else if (viewName === 'homework-dashboard') {
-            homeworkDashboard.populateHomeworkSelect();
+            this.homeworkDashboard.populateHomeworkSelect();
         } else if (viewName === 'lesson-mgmt') {
              this.populateSubjectSelectForMgmt();
         } else if (viewName === 'analysis-dashboard') {
-            analysisDashboard.renderStudentLists();
+            this.analysisDashboard.renderStudentLists();
         }
     },
 
@@ -316,9 +323,7 @@ const TeacherApp = {
     },
 };
 
-// ▼▼▼ [수정] DOMContentLoaded 리스너를 ensureAnonymousAuth로 감쌉니다. ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
-    // 앱이 시작되기 전에 항상 익명 로그인을 먼저 수행하여 권한을 확보합니다.
     ensureAnonymousAuth(() => {
         TeacherApp.init();
     });

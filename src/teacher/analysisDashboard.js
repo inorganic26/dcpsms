@@ -21,7 +21,6 @@ export const analysisDashboard = {
             homeworkImageUploadInput: document.getElementById('homework-image-upload-input'),
             homeworkStudentListContainer: document.getElementById('homework-analysis-student-list'),
             
-            // 모달 내부 요소들 추가
             analysisModal: document.getElementById('analysis-report-modal'),
             analysisHeader: document.getElementById('analysis-report-header'),
             analysisMain: document.getElementById('analysis-report-main'),
@@ -37,7 +36,6 @@ export const analysisDashboard = {
         this.elements.studentDataUploadInput?.addEventListener('change', (e) => this.handleStudentDataUpload(e));
         this.elements.homeworkImageUploadInput?.addEventListener('change', (e) => this.handleHomeworkImageUpload(e));
         
-        // 모달 닫기 버튼 이벤트 추가
         this.elements.analysisCloseBtn?.addEventListener('click', () => {
             if (this.elements.analysisModal) {
                 this.elements.analysisModal.style.display = 'none';
@@ -262,8 +260,47 @@ export const analysisDashboard = {
         });
     },
     
-    showHomeworkGradingReport(studentName) {
-        showToast(`'${studentName}' 학생의 숙제 채점 결과를 불러옵니다. (이 기능은 구현 예정)`);
+    showHomeworkGradingReport(studentName, analysisData) {
+        if (!analysisData || !analysisData.results) {
+            showToast(`'${studentName}' 학생의 채점 결과가 없습니다.`);
+            return;
+        }
+
+        const { results, analyzedAt } = analysisData;
+        const date = (analyzedAt && analyzedAt.toDate) ? analyzedAt.toDate().toLocaleString() : '날짜 정보 없음';
+        
+        this.elements.analysisHeader.innerHTML = `<h2 class="text-2xl font-bold text-slate-800">${studentName} 학생 숙제 채점 결과</h2><p class="text-sm text-slate-500 mt-1">채점 일시: ${date}</p>`;
+
+        const sortedResults = Object.entries(results).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+        
+        let resultHtml = '';
+        
+        if (sortedResults.length === 0) {
+            resultHtml = `
+                <div class="text-center py-10 col-span-full">
+                    <p class="text-slate-600 font-semibold">채점된 문제가 없습니다.</p>
+                    <p class="text-sm text-slate-400 mt-2">AI가 이미지에서 문제 번호나 채점 표시(O, X)를 인식하지 못했을 수 있습니다.</p>
+                </div>
+            `;
+        } else {
+            resultHtml = '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">';
+            sortedResults.forEach(([qNum, result]) => {
+                let bgColor, textColor;
+                switch(result) {
+                    case 'O': bgColor = 'bg-green-100'; textColor = 'text-green-800'; break;
+                    case 'X': bgColor = 'bg-red-100'; textColor = 'text-red-800'; break;
+                    default: bgColor = 'bg-slate-100'; textColor = 'text-slate-600';
+                }
+                resultHtml += `<div class="p-3 rounded-lg text-center ${bgColor} ${textColor}">
+                                 <p class="font-bold text-lg">${qNum}번</p>
+                                 <p class="text-sm font-semibold">${result}</p>
+                               </div>`;
+            });
+            resultHtml += '</div>';
+        }
+
+        this.elements.analysisMain.innerHTML = resultHtml;
+        this.elements.analysisModal.style.display = 'flex';
     },
 
     renderStudentLists() {
@@ -271,7 +308,6 @@ export const analysisDashboard = {
         this.renderStudentListForHomework();
     },
 
-    // ---▼▼▼▼▼ 학생 버튼 스타일링 수정 ▼▼▼▼▼---
     renderStudentListForTest() {
         const listEl = this.elements.testStudentListContainer;
         if (!listEl) return;
@@ -288,7 +324,6 @@ export const analysisDashboard = {
         
         this.app.state.studentsInClass.forEach((name, id) => {
             const studentCard = document.createElement('div');
-            // 버튼 스타일 클래스 추가
             studentCard.className = `p-3 border rounded-lg cursor-pointer bg-white transition shadow-sm text-center ${isReady ? 'hover:bg-blue-50 hover:border-blue-300' : 'opacity-50 cursor-not-allowed'}`;
             
             let statusText = '';
@@ -308,7 +343,6 @@ export const analysisDashboard = {
             listEl.appendChild(studentCard);
         });
     },
-    // ---▲▲▲▲▲ 학생 버튼 스타일링 수정 끝 ▲▲▲▲▲---
     
     renderStudentListForHomework() {
         const listEl = this.elements.homeworkStudentListContainer;

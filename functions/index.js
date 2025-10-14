@@ -20,7 +20,9 @@ const region = "asia-northeast3";
 // ▼▼▼ [수정] secrets 설정을 추가합니다. ▼▼▼
 exports.analyzeTestPdf = onObjectFinalized({
     region: region,
-    secrets: ["GEMINI_API_KEY"], // 이 줄 추가
+    secrets: ["GEMINI_API_KEY"],
+    // ▼▼▼ [수정] 메모리 설정을 128MiB로 변경합니다. ▼▼▼
+    memory: "128MiB",
 }, async (event) => {
     const object = event.data;
     const filePath = object.name;
@@ -123,7 +125,9 @@ exports.analyzeTestPdf = onObjectFinalized({
 // ▼▼▼ [수정] secrets 설정을 추가합니다. ▼▼▼
 exports.gradeAndAnalyzeHomework = onCall({ 
     region: region,
-    secrets: ["GEMINI_API_KEY"], // 이 줄 추가
+    secrets: ["GEMINI_API_KEY"],
+    // ▼▼▼ [수정] 메모리 설정을 128MiB로 변경합니다. ▼▼▼
+    memory: "128MiB",
 }, async (request) => {
     // 1. 요청 인증 및 데이터 유효성 검사
     if (!request.auth) {
@@ -229,7 +233,7 @@ exports.gradeAndAnalyzeHomework = onCall({
 
 
 // ========== 사용자 역할 설정 함수들 ==========
-exports.setCustomUserRole = onCall({ region: region }, async (request) => {
+exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (request) => { // 메모리 설정 추가
   const data = request.data;
   const authContext = request.auth;
 
@@ -260,7 +264,7 @@ exports.setCustomUserRole = onCall({ region: region }, async (request) => {
   }
 });
 
-exports.setCustomUserRoleByUid = onCall({ region: region }, async (request) => {
+exports.setCustomUserRoleByUid = onCall({ region: region, memory: "128MiB" }, async (request) => { // 메모리 설정 추가
     const data = request.data;
     const authContext = request.auth;
 
