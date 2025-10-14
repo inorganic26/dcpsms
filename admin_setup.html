@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>관리자 역할 부여 (1회용)</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        div { margin-bottom: 10px; }
+        input { width: 300px; padding: 5px; }
+        button { padding: 10px; }
+        #log { margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <h2>최초 관리자 역할 부여 (1회용)</h2>
+    <p>1. 먼저 관리자로 사용할 계정으로 로그인하세요.</p>
+    <p>2. 역할을 부여할 대상의 이메일과 역할을 입력하고 '역할 부여' 버튼을 누르세요. (보통 본인 이메일에 'admin' 역할 부여)</p>
+
+    <button id="loginBtn">1. Google 계정으로 로그인</button>
+    <p id="authStatus">로그인되지 않음</p>
+    <hr>
+    <div>
+        <label for="email">대상 이메일:</label>
+        <input type="email" id="email" placeholder="admin@example.com">
+    </div>
+    <div>
+        <label for="role">부여할 역할:</label>
+        <input type="text" id="role" value="admin">
+    </div>
+    <button id="setRoleBtn" disabled>2. 역할 부여</button>
+
+    <div id="log"></div>
+
+    <script type="module">
+        // firebase.js에서 Firebase 설정을 가져옵니다.
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+
+        // src/shared/firebase.js 의 설정을 그대로 사용
+        const firebaseConfig = {
+          apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY",
+          authDomain: "svcm-v2.firebaseapp.com",
+          projectId: "svcm-v2",
+          storageBucket: "svcm-v2.firebasestorage.app",
+          messagingSenderId: "189740450655",
+          appId: "1:189740450655:web:a7bf1b03d23352a09b2cea"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const functions = getFunctions(app, "asia-northeast3"); // 리전 지정
+        
+        const loginBtn = document.getElementById('loginBtn');
+        const setRoleBtn = document.getElementById('setRoleBtn');
+        const authStatus = document.getElementById('authStatus');
+        const logEl = document.getElementById('log');
+
+        function log(message, isError = false) {
+            logEl.innerHTML = `<p style="color: ${isError ? 'red' : 'green'}">${message}</p>`;
+        }
+
+        // 인증 상태 감지
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                authStatus.textContent = `로그인됨: ${user.email}`;
+                loginBtn.textContent = "로그아웃";
+                setRoleBtn.disabled = false;
+            } else {
+                authStatus.textContent = "로그인되지 않음";
+                loginBtn.textContent = "1. Google 계정으로 로그인";
+                setRoleBtn.disabled = true;
+            }
+        });
+
+        // 로그인 버튼 클릭
+        loginBtn.onclick = () => {
+            if (auth.currentUser) {
+                auth.signOut();
+            } else {
+                signInWithPopup(auth, new GoogleAuthProvider())
+                    .catch(err => log(`로그인 실패: ${err.message}`, true));
+            }
+        };
+
+        // 역할 부여 버튼 클릭
+        setRoleBtn.onclick = async () => {
+            const email = document.getElementById('email').value;
+            const role = document.getElementById('role').value;
+
+            if (!email || !role) {
+                log("이메일과 역할을 입력하세요.", true);
+                return;
+            }
+
+            log("역할 부여 함수 호출 중...", false);
+            
+            try {
+                const setCustomUserRole = httpsCallable(functions, 'setCustomUserRole');
+                const result = await setCustomUserRole({ email: email, role: role });
+                log(`성공: ${result.data.message}`, false);
+                alert('역할 부여 성공! 이제 관리자 앱으로 이동해 보세요.');
+            } catch (error) {
+                console.error("함수 호출 실패:", error);
+                log(`오류: ${error.message}`, true);
+            }
+        };
+
+    </script>
+</body>
+</html>

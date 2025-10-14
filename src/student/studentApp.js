@@ -1,7 +1,8 @@
 // src/student/studentApp.js
 
 import { collection, doc, getDocs, getDoc, where, query } from "firebase/firestore";
-import { db, ensureAuth } from '../shared/firebase.js';
+// ▼▼▼ [수정] import 항목 변경 ▼▼▼
+import { db, ensureAnonymousAuth } from '../shared/firebase.js';
 
 // 분리된 기능 모듈들을 가져옵니다.
 import { studentAuth } from './studentAuth.js';
@@ -204,8 +205,10 @@ const StudentApp = {
     },
 };
 
+// ▼▼▼ [수정] DOMContentLoaded 리스너 변경 ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
-    ensureAuth(() => {
+    // 학생 앱은 익명 인증으로 Firebase App Check 등을 활성화합니다.
+    ensureAnonymousAuth(() => {
         StudentApp.init();
     });
 });

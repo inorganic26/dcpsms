@@ -2,52 +2,90 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // 1. 기본 규칙: 모든 인증된 사용자에게 읽기 권한 허용
-    match /{document=**} {
-      allow read: if request.auth != null;
+  
+    // --- Helper Functions ---
+    // 사용자가 'admin' 역할을 가졌는지 확인
+    function isAdmin() {
+      return request.auth.token.role == 'admin';
+    }
+    // 사용자가 'teacher' 역할을 가졌는지 확인
+    function isTeacher() {
+      return request.auth.token.role == 'teacher';
+    }
+    // 사용자가 관리자 또는 선생님인지 확인
+    function isAdminOrTeacher() {
+      return isAdmin() || isTeacher();
+    }
+    // 문서의 소유자인지 확인 (사용자 UID와 문서 ID 비교)
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    // 인증된 사용자인지 확인
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    // 2. 관리 데이터 (classes, subjects, lessons, textbooks):
-    // 관리자/선생님 앱의 쓰기 작업을 위해 인증된 사용자에게 허용
+    // --- Collection Rules ---
+
+    // 1. 관리 데이터 (classes, subjects, lessons, textbooks):
+    // 관리자/선생님만 생성, 수정, 삭제 가능. 모든 인증 사용자는 읽기 가능.
     match /classes/{classId} {
-      allow write: if request.auth != null;
+      allow read: if isAuthenticated();
+allow write: if isAdminOrTeacher(); // 관리자와 선생님만 쓰기 허용
     }
+    
     match /subjects/{subjectId} {
-      allow write: if request.auth != null;
-    }
-    match /subjects/{subjectId}/textbooks/{textbookId} {
-      allow write: if request.auth != null;
-    }
-    match /subjects/{subjectId}/lessons/{lessonId} {
-      allow write: if request.auth != null;
+      allow read: if isAuthenticated();
+allow write: if isAdminOrTeacher(); // 관리자와 선생님이 과목/학습 관리
+      
+      // 교재는 관리자만 관리
+      match /textbooks/{textbookId} {
+        allow read: if isAuthenticated();
+allow write: if isAdmin(); //
+      }
+      
+      // 학습(레슨)은 관리자 또는 선생님이 관리
+      match /lessons/{lessonId} {
+        allow read: if isAuthenticated();
+allow write: if isAdminOrTeacher(); //
+        
+        // 학생 본인의 학습 제출 기록
+        match /submissions/{studentId} {
+          allow read: if isAdminOrTeacher() || isOwner(studentId); // 관리자, 선생님, 본인만 읽기
+allow create, update: if isOwner(studentId); // 생성/수정은 본인만 가능
+          allow delete: if isAdminOrTeacher(); // 삭제는 관리자/선생님만 가능 (기록 삭제 기능)
+        }
+      }
     }
 
-    // 3. 학생 데이터 (students):
-    // 학생 명단 관리 및 로그인 조회를 위해 인증된 사용자에게 쓰기 허용
+    // 2. 학생 데이터 (students):
+    // (보안 #1 문제 해결 전제: 비밀번호 필드 제거, 문서 ID = auth.uid 사용)
     match /students/{studentId} {
-      allow write: if request.auth != null;
+      allow read: if isAdminOrTeacher() || isOwner(studentId); // 관리자, 선생님, 본인만 읽기
+allow write: if isAdmin() || isOwner(studentId); // 관리자가 생성/수정, 학생은 본인 정보(예: 이름)만 수정
     }
     
-    // 4. 숙제 및 학습 제출 기록 (Submissions):
-    // 학생/선생님 앱의 기록 생성/수정 작업을 위해 인증된 사용자에게 허용
+    // 3. 숙제 (homeworks) 및 제출 기록 (Submissions):
     match /homeworks/{homeworkId} {
-      allow write: if request.auth != null; 
-    }
-    match /homeworks/{homeworkId}/submissions/{studentId} {
-      allow write: if request.auth != null; 
-    }
-    match /subjects/{subjectId}/lessons/{lessonId}/submissions/{studentId} {
-      allow write: if request.auth != null; 
+      allow read: if isAuthenticated();
+allow write: if isAdminOrTeacher(); // 숙제 출제/수정/삭제는 관리자/선생님만
+      
+      match /submissions/{studentId} {
+        allow read: if isAdminOrTeacher() || isOwner(studentId); // 관리자, 선생님, 본인만 읽기
+allow write: if isOwner(studentId); // 숙제 제출/수정은 본인만
+        allow delete: if isAdminOrTeacher(); // (필요시) 관리자/선생님이 삭제
+      }
     }
     
-    // 5. AI 분석 결과 (testAnalysisResults, homeworkGradingResults):
-    // Cloud Functions의 서버 쓰기 작업을 보장하기 위해 허용
+    // 4. AI 분석 결과:
+    // Cloud Function(Admin SDK)만 쓰기 가능, 관리자/선생님만 읽기 가능
     match /testAnalysisResults/{docId} {
-        allow write: if true;
+        allow read: if isAdminOrTeacher();
+allow write: if false; // 클라이언트에서 쓰기 절대 불가
     }
     match /homeworkGradingResults/{docId} {
-        allow write: if true;
+        allow read: if isAdminOrTeacher();
+allow write: if false; // 클라이언트에서 쓰기 절대 불가
     }
   }
 }

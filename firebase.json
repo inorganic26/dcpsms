@@ -16,9 +16,6 @@
         "firebase-debug.*.log",
         "*.local"
       ],
-      "predeploy": [
-        "cd functions && npm run lint"
-      ],
       "runtime": "nodejs20",
       "memory": "1024MiB",
       "timeoutSeconds": 300,

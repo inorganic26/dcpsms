@@ -6,11 +6,15 @@ const { getFirestore } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
+// ▼▼▼ [수정] v2의 onCall 함수를 import 합니다. ▼▼▼
+const { onCall } = require("firebase-functions/v2/https");
+const { getAuth } = require("firebase-admin/auth");
 
 initializeApp();
 
 const db = getFirestore();
 const storage = getStorage();
+const auth = getAuth();
 const region = "asia-northeast3";
 
 // ========== 1. 시험지 PDF 분석 함수 ==========
@@ -275,4 +279,47 @@ exports.gradeHomeworkImage = onObjectFinalized({
             errorAt: new Date()
         }, { merge: true });
     }
+});
+
+// ▼▼▼ [수정] 사용자 역할 설정 함수 (v2 구문으로 변경) ▼▼▼
+/**
+ * HTTPS Callable Function (v2)
+ * 관리자가 사용자에게 'admin' 또는 'teacher' 역할을 부여합니다.
+ * @param {object} request - onCall 요청 객체 (data와 auth 포함)
+ */
+exports.setCustomUserRole = onCall({ region: region }, async (request) => {
+  // v2에서는 request 객체에 data와 auth가 포함됩니다.
+  const data = request.data;
+  const authContext = request.auth;
+
+  // 1. 함수를 호출한 사용자가 관리자인지 먼저 확인합니다.
+  if (authContext.token.role !== 'admin') {
+    functions.logger.warn(`권한 없는 사용자(${authContext.uid})가 역할 설정을 시도했습니다.`);
+    throw new functions.https.HttpsError(
+      'permission-denied', 
+      '이 작업을 수행하려면 관리자 권한이 필요합니다.'
+    );
+  }
+
+  const email = data.email; // 역할을 부여할 대상의 이메일
+  const role = data.role; // 부여할 역할 (예: 'teacher', 'admin', 'student')
+
+  if (!email || !role) {
+    throw new functions.https.HttpsError('invalid-argument', '이메일과 역할이 필요합니다.');
+  }
+  if (!['admin', 'teacher', 'student'].includes(role)) {
+     throw new functions.https.HttpsError('invalid-argument', '유효하지 않은 역할입니다.');
+  }
+
+  // 2. 대상 사용자를 찾아 Custom Claim을 설정합니다.
+  try {
+    const user = await auth.getUserByEmail(email);
+    await auth.setCustomUserClaims(user.uid, { role: role });
+    
+    functions.logger.log(`성공: ${authContext.uid}가 ${user.uid}(${email})에게 '${role}' 역할을 부여했습니다.`);
+    return { message: `성공: ${email} 님에게 '${role}' 역할을 부여했습니다.` };
+  } catch (error) {
+    functions.logger.error("역할 설정 실패:", error);
+    throw new functions.https.HttpsError('internal', '사용자 역할을 설정하는 데 실패했습니다.');
+  }
 });

@@ -1,7 +1,8 @@
 // src/teacher/teacherApp.js
 
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot } from "firebase/firestore";
-import { db, ensureAuth } from '../shared/firebase.js';
+// ▼▼▼ [수정] import 항목 변경 ▼▼▼
+import { db, ensureAuthWithRole } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 import { lessonDashboard } from './lessonDashboard.js';
@@ -247,8 +248,10 @@ const TeacherApp = {
     },
 };
 
+// ▼▼▼ [수정] DOMContentLoaded 리스너 변경 ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
-    ensureAuth(() => {
+    // 'admin' 또는 'teacher' 역할이 있으면 앱을 초기화합니다.
+    ensureAuthWithRole(['admin', 'teacher'], (user) => {
         TeacherApp.init();
     });
 });

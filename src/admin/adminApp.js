@@ -1,6 +1,7 @@
 // src/admin/adminApp.js
 
-import { db, ensureAuth } from '../shared/firebase.js';
+// ▼▼▼ [수정] import 항목 변경 ▼▼▼
+import { db, ensureAuthWithRole } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 // 분리된 모든 기능 모듈들을 가져옵니다.
@@ -185,8 +186,10 @@ const AdminApp = {
     },
 };
 
+// ▼▼▼ [수정] DOMContentLoaded 리스너 변경 ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
-    ensureAuth(() => {
+    // 'admin' 역할이 있어야만 앱을 초기화합니다.
+    ensureAuthWithRole('admin', (user) => {
         AdminApp.init();
     });
 });
