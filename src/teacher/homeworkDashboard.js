@@ -1,8 +1,13 @@
 // src/teacher/homeworkDashboard.js
 
 import { collection, onSnapshot, doc, deleteDoc, query, getDocs, getDoc, addDoc, serverTimestamp, where, orderBy, updateDoc } from "firebase/firestore";
-import { db } from '../shared/firebase.js';
+import { getFunctions, httpsCallable } from "firebase/functions";
+// ▼▼▼ [수정] app을 import 목록에 추가합니다. ▼▼▼
+import { app, db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
+
+// ▼▼▼ [수정] functions를 초기화할 때 app과 지역을 명시합니다. ▼▼▼
+const functions = getFunctions(app, 'asia-northeast3');
 
 export const homeworkDashboard = {
     unsubscribe: null,
@@ -170,11 +175,43 @@ export const homeworkDashboard = {
         this.app.elements.homeworkManagementButtons.style.display = 'flex';
         
         const hwText = this.app.elements.homeworkSelect.options[this.app.elements.homeworkSelect.selectedIndex].text;
-        this.app.elements.selectedHomeworkTitle.textContent = `'${hwText}' 숙제 제출 현황`;
+        
+        this.app.elements.selectedHomeworkTitle.innerHTML = `
+            '${hwText}' 숙제 제출 현황
+            <div id="homework-analysis-container" class="mt-4 p-4 bg-slate-100 rounded-lg text-sm">
+                <h4 class="font-bold text-slate-700 mb-2">📊 반 전체 오답 통계</h4>
+                <div id="homework-analysis-content">통계를 불러오는 중...</div>
+            </div>
+        `;
+
         this.renderTableHeader(this.app.elements.homeworkTableBody, ['학생 이름', '제출 상태', '제출 시간', '관리']);
         
         const submissionsRef = collection(db, 'homeworks', homeworkId, 'submissions');
         this.unsubscribe = onSnapshot(query(submissionsRef), (snapshot) => this.renderHomeworkSubmissions(snapshot));
+        
+        this.listenForHomeworkAnalysis(homeworkId);
+    },
+
+    listenForHomeworkAnalysis(homeworkId) {
+        const homeworkRef = doc(db, 'homeworks', homeworkId);
+        onSnapshot(homeworkRef, (docSnap) => {
+            const analysisContent = document.getElementById('homework-analysis-content');
+            if (docSnap.exists() && docSnap.data().analysis) {
+                const analysis = docSnap.data().analysis;
+                const sorted = Object.entries(analysis).sort(([,a],[,b]) => b - a);
+                
+                if (sorted.length === 0) {
+                    analysisContent.innerHTML = '<p class="text-slate-500">아직 집계된 오답이 없습니다.</p>';
+                    return;
+                }
+
+                analysisContent.innerHTML = sorted
+                    .map(([qNum, count]) => `<span class="inline-block bg-red-200 text-red-800 text-xs font-semibold mr-2 px-2.5 py-0.5 rounded-full">${qNum}번 (${count}명)</span>`)
+                    .join(' ');
+            } else {
+                analysisContent.innerHTML = '<p class="text-slate-500">AI 채점 후 통계가 표시됩니다.</p>';
+            }
+        });
     },
 
     async deleteHomework() {
@@ -216,7 +253,7 @@ export const homeworkDashboard = {
                 const pagesInfo = totalPages ? `(${submittedPages}/${totalPages}p)` : `(${submittedPages}p)`;
                 const statusText = isComplete ? `제출 완료 ${pagesInfo}` : `제출 중 ${pagesInfo}`;
 
-                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">${statusText}</td><td class="px-6 py-4">${submittedAt}</td><td class="px-6 py-4 flex flex-col space-y-1"></td>`;
+                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${name}</td><td class="px-6 py-4 ${statusClass}">${statusText}</td><td class="px-6 py-4">${submittedAt}</td><td class="px-6 py-4 flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-1"></td>`;
                 
                 const btnContainer = row.cells[3];
 
@@ -225,6 +262,13 @@ export const homeworkDashboard = {
                 downloadBtn.textContent = '전체 다운로드';
                 downloadBtn.addEventListener('click', () => this.downloadHomework(submissionData, textbookName));
                 btnContainer.appendChild(downloadBtn);
+
+                const gradeBtn = document.createElement('button');
+                gradeBtn.className = 'grade-btn text-xs bg-purple-600 text-white font-semibold px-3 py-1 rounded-lg';
+                gradeBtn.textContent = 'AI 채점';
+                gradeBtn.addEventListener('click', (e) => this.runAIGrading(e, id));
+                btnContainer.appendChild(gradeBtn);
+
             } else {
                 const statusClass = 'text-slate-400';
                 const pagesInfo = totalPages ? `(0/${totalPages}p)` : '';
@@ -233,9 +277,39 @@ export const homeworkDashboard = {
             tbody.appendChild(row);
         });
     },
+    
+    async runAIGrading(event, studentId) {
+        const button = event.target;
+        const originalText = button.textContent;
+        button.textContent = '채점 중...';
+        button.disabled = true;
+
+        showToast("AI 채점을 요청했습니다. 잠시 후 결과가 집계됩니다.", false);
+        
+        try {
+            const gradeAndAnalyzeHomework = httpsCallable(functions, 'gradeAndAnalyzeHomework');
+            const result = await gradeAndAnalyzeHomework({ 
+                homeworkId: this.app.state.selectedHomeworkId,
+                studentId: studentId
+            });
+            
+            if (result.data.success) {
+                showToast("AI 채점 및 통계 집계가 완료되었습니다.", false);
+            } else {
+                throw new Error(result.data.message || '알 수 없는 오류');
+            }
+        } catch (error) {
+            console.error("AI 채점 함수 호출 실패:", error);
+            showToast(`AI 채점 실패: ${error.message}`);
+        } finally {
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    },
+
 
     async downloadHomework(submissionData, textbookName) {
-        if (!submissionData || !submissionData.imageUrls || submissionData.imageUrls.length === 0) {
+        if (!submissionData || !submissionData.imageUrls || !submissionData.imageUrls.length === 0) {
             showToast("다운로드할 이미지가 없습니다.");
             return;
         }

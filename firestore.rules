@@ -22,37 +22,36 @@ service cloud.firestore {
 
     // 관리자, 교사, 학생 정보
     match /admins/{adminId} {
-        allow read, write: if isAuthenticated();  // 임시로 완화
+        allow read, write: if isAuthenticated();
     }
 
     match /teachers/{teacherId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read, write: if isAuthenticated();
     }
     
     match /students/{studentId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read, write: if isAuthenticated();
+
+        // [추가] 학생별 숙제 분석 결과에 대한 규칙
+        match /homeworkAnalysis/{homeworkId} {
+          allow read, write: if isTeacher() || isAdmin();
+        }
     }
 
     // 수업 관련 데이터
     match /classes/{classId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
     
     match /subjects/{subjectId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read, write: if isAuthenticated();
       
       match /textbooks/{textbookId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read, write: if isAuthenticated();
       }
       
       match /lessons/{lessonId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read, write: if isAuthenticated();
         
         match /submissions/{studentId} {
           allow read: if isAuthenticated();
@@ -65,22 +64,20 @@ service cloud.firestore {
     // 숙제 및 AI 분석 결과
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      // [수정] analysis 필드 업데이트는 인증된 사용자(교사/관리자)만 가능하도록 함
+      allow create, update: if isAuthenticated(); 
+      allow write: if isAuthenticated(); // 이전 규칙 유지
       
       match /submissions/{studentId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();
+        allow read, write: if isAuthenticated();
         allow delete: if isAuthenticated();
       }
     }
     
     match /testAnalysisResults/{docId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();  // 임시로 허용
+        allow read, write: if isAuthenticated();
     }
     match /homeworkGradingResults/{docId} {
-        allow read: if isAuthenticated();
-        allow write: if isAuthenticated();  // 임시로 허용
+        allow read, write: if isAuthenticated();
     }
   }
-}

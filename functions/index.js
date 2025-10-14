@@ -2,7 +2,7 @@
 
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
@@ -17,8 +17,10 @@ const auth = getAuth();
 const region = "asia-northeast3";
 
 // ========== 1. 시험지 PDF 분석 함수 ==========
+// ▼▼▼ [수정] secrets 설정을 추가합니다. ▼▼▼
 exports.analyzeTestPdf = onObjectFinalized({
     region: region,
+    secrets: ["GEMINI_API_KEY"], // 이 줄 추가
 }, async (event) => {
     const object = event.data;
     const filePath = object.name;
@@ -37,7 +39,7 @@ exports.analyzeTestPdf = onObjectFinalized({
         functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
         await resultDocRef.set({
             status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요. (키 설정 확인 필요)",
+            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
             errorAt: new Date()
         }, { merge: true });
         return;
@@ -117,111 +119,116 @@ exports.analyzeTestPdf = onObjectFinalized({
     }
 });
 
-// ========== 2. 숙제 이미지 채점 함수 ==========
-exports.gradeHomeworkImage = onObjectFinalized({
+// ========== 숙제 채점 및 분석 통합 함수 ==========
+// ▼▼▼ [수정] secrets 설정을 추가합니다. ▼▼▼
+exports.gradeAndAnalyzeHomework = onCall({ 
     region: region,
-}, async (event) => {
-    const object = event.data;
-    const filePath = object.name;
-    const contentType = object.contentType;
-
-    if (!contentType.startsWith("image/") || !filePath.startsWith("homework-grading/")) {
-        return functions.logger.log("Not a relevant image file.");
+    secrets: ["GEMINI_API_KEY"], // 이 줄 추가
+}, async (request) => {
+    // 1. 요청 인증 및 데이터 유효성 검사
+    if (!request.auth) {
+        throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
     }
-    
-    const parts = filePath.split("/");
-    const homeworkId = parts[1];
-    const fileName = parts[2];
-    const nameParts = fileName.split("_");
-    const studentName = nameParts[2];
-    const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
+    const { homeworkId, studentId } = request.data;
+    if (!homeworkId || !studentId) {
+        throw new functions.https.HttpsError('invalid-argument', 'homeworkId와 studentId가 필요합니다.');
+    }
 
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-    
+    // 2. 학생 제출물 정보 가져오기
+    const submissionRef = db.doc(`homeworks/${homeworkId}/submissions/${studentId}`);
+    const submissionDoc = await submissionRef.get();
+    if (!submissionDoc.exists) {
+        throw new functions.https.HttpsError('not-found', '해당 학생의 제출물을 찾을 수 없습니다.');
+    }
+    const submissionData = submissionDoc.data();
+    const imageUrls = submissionData.imageUrls;
+    if (!imageUrls || imageUrls.length === 0) {
+        throw new functions.https.HttpsError('not-found', '채점할 이미지가 없습니다.');
+    }
+
+    // 3. Gemini AI 설정 및 프롬프트 정의
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
-        functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
-        await resultDocRef.set({
-            status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요. (키 설정 확인 필요)",
-            errorAt: new Date()
-        }, { merge: true });
-        return;
+        throw new functions.https.HttpsError('internal', '서버에 API 키가 설정되지 않았습니다.');
     }
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = `
+        당신은 자동 채점 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하세요.
+        각 문제 번호를 확인하고 정답인지, 오답인지, 풀지 않았는지 판단하세요.
+        - 문제 번호 주위에 동그라미(O)가 있으면 'O' (정답)
+        - 엑스(X), 슬래시(/), 삼각형(△) 표시가 있으면 'X' (오답)
+        - 아무 표시가 없으면 'N' (안풂)
+        결과를 문제 번호를 키로, 값은 "O", "X", "N" 중 하나인 JSON 객체로 출력해주세요. 다른 설명은 절대 추가하지 마세요.
+    `.trim();
 
-    try {
-        await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
-        
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const prompt = `
-당신은 자동 채점 보조 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하세요.
-각 문제 번호를 확인하고 정답인지, 오답인지, 풀지 않았는지 판단하세요.
-- 번호 주위에 동그라미(O)가 있으면 정답
-- 엑스(X), 슬래시(/), 삼각형(△)이 있으면 오답
-- 표시가 없으면 안풂
-문제 번호를 키로, 값은 "정답", "오답", "안풂" 중 하나인 JSON 객체로 출력하세요.
-        `.trim();
-
-        const bucket = storage.bucket(object.bucket);
-        const file = bucket.file(filePath);
-        const [fileBuffer] = await file.download();
-        const base64Data = fileBuffer.toString('base64');
-        
-        const filePart = { 
-            inlineData: {
-                data: base64Data,
-                mimeType: contentType,
-            }
-        };
-
-        const result = await model.generateContent([ prompt, filePart ]);
-        const responseText = result.response.text();
-        
-        functions.logger.log("Raw grading response:", responseText);
-
-        let gradingData;
+    // 4. 각 이미지에 대해 AI 채점 실행
+    let allResults = {};
+    for (const url of imageUrls) {
         try {
-            const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
-            let jsonContent;
+            const path = new URL(url).pathname;
+            const filePath = decodeURIComponent(path.substring(path.indexOf('/o/') + 3).split('?')[0]);
+            
+            const file = storage.bucket().file(filePath);
+            const [fileBuffer] = await file.download();
+            
+            const filePart = { inlineData: { data: fileBuffer.toString('base64'), mimeType: 'image/jpeg' } };
+            const result = await model.generateContent([prompt, filePart]);
+            const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+            const pageResult = JSON.parse(responseText);
+            Object.assign(allResults, pageResult);
+        } catch (error) {
+            functions.logger.error(`이미지 처리 실패 (URL: ${url}):`, error);
+        }
+    }
+    
+    // 5. 결과 데이터베이스에 저장
+    const homeworkRef = db.doc(`homeworks/${homeworkId}`);
+    const studentAnalysisRef = db.doc(`students/${studentId}/homeworkAnalysis/${homeworkId}`);
+    
+    try {
+        await db.runTransaction(async (transaction) => {
+            const homeworkDoc = await transaction.get(homeworkRef);
+            if (!homeworkDoc.exists) {
+                throw new Error("숙제 문서를 찾을 수 없습니다.");
+            }
+            const analysisData = homeworkDoc.data().analysis || {};
 
-            if (jsonMatch && jsonMatch[1]) {
-                jsonContent = jsonMatch[1].trim();
-            } else {
-                const cleanedResponse = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-                const startIndex = cleanedResponse.indexOf('{');
-                const endIndex = cleanedResponse.lastIndexOf('}');
-                if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-                    jsonContent = cleanedResponse.substring(startIndex, endIndex + 1);
-                } else {
-                    jsonContent = cleanedResponse;
+            const oldStudentResultDoc = await transaction.get(studentAnalysisRef);
+            if (oldStudentResultDoc.exists) {
+                const oldResults = oldStudentResultDoc.data().results;
+                for (const qNum in oldResults) {
+                    if (oldResults[qNum] === 'X' && analysisData[qNum]) {
+                        analysisData[qNum] = Math.max(0, analysisData[qNum] - 1);
+                        if(analysisData[qNum] === 0) delete analysisData[qNum];
+                    }
                 }
             }
-            gradingData = JSON.parse(jsonContent);
-        } catch (parseError) {
-            throw new Error(`JSON 파싱 실패: ${parseError.message}. 응답: ${responseText.substring(0, 100)}...`);
-        }
+            
+            for (const qNum in allResults) {
+                if (allResults[qNum] === 'X') {
+                    analysisData[qNum] = (analysisData[qNum] || 0) + 1;
+                }
+            }
 
-        const studentUpdateData = {};
-        studentUpdateData[`results.${studentName}.${fileName}`] = gradingData;
-        studentUpdateData.lastUpdatedAt = new Date();
-
-        await resultDocRef.set(studentUpdateData, { merge: true });
-        functions.logger.log("Grading completed for:", homeworkId, studentName, fileName);
+            transaction.set(studentAnalysisRef, {
+                studentName: submissionData.studentName,
+                results: allResults,
+                analyzedAt: FieldValue.serverTimestamp()
+            });
+            transaction.update(homeworkRef, { analysis: analysisData });
+        });
         
+        functions.logger.log(`채점 및 분석 완료: homeworkId=${homeworkId}, studentId=${studentId}`);
+        return { success: true, message: "채점 및 분석이 완료되었습니다.", results: allResults };
     } catch (error) {
-        functions.logger.error("Error grading image:", error);
-        await resultDocRef.set({ 
-            status: "error", 
-            error: error.message,
-            errorDetails: error.stack,
-            errorAt: new Date()
-        }, { merge: true });
+        functions.logger.error("데이터베이스 업데이트 실패:", error);
+        throw new functions.https.HttpsError('internal', '결과를 데이터베이스에 저장하는 데 실패했습니다.');
     }
 });
 
 
-// ========== 3. (기존) 이메일로 사용자 역할 설정 함수 ==========
+// ========== 사용자 역할 설정 함수들 ==========
 exports.setCustomUserRole = onCall({ region: region }, async (request) => {
   const data = request.data;
   const authContext = request.auth;
@@ -253,14 +260,10 @@ exports.setCustomUserRole = onCall({ region: region }, async (request) => {
   }
 });
 
-// ========== 4. [신규 추가] UID로 사용자 역할 설정 함수 (일회성 সেট업용) ==========
-// 이 함수는 익명 계정에 'admin' 역할을 부여하기 위해 한 번만 사용됩니다.
-// 사용 후에는 보안을 위해 주석 처리하거나 삭제하는 것을 권장합니다.
 exports.setCustomUserRoleByUid = onCall({ region: region }, async (request) => {
     const data = request.data;
     const authContext = request.auth;
 
-    // 이 함수를 호출하는 사용자는 반드시 'admin'이어야 합니다.
     if (authContext.token.role !== 'admin') {
         throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
     }
