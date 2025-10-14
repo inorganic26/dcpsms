@@ -1,6 +1,6 @@
 // src/admin/studentManager.js
 
-import { collection, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc, where, query } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc, getDoc, query } from "firebase/firestore";
 import { db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
@@ -33,7 +33,8 @@ export const studentManager = {
                 password: password, 
                 phone: phone,
                 classId: null,
-                createdAt: serverTimestamp() 
+                createdAt: serverTimestamp(),
+                isInitialPassword: true // 최초 비밀번호 여부 플래그 추가
             });
             showToast(`새로운 학생이 추가되었습니다. (비밀번호: ${password})`, false);
             elements.newStudentNameInput.value = '';
@@ -107,21 +108,28 @@ export const studentManager = {
     },
 
     async resetStudentPassword(studentId, studentName) {
-        const newPhone = prompt(`'${studentName}' 학생의 새 전화번호를 입력하세요.\n(비밀번호는 전화번호 뒷 4자리로 자동 설정됩니다.)`);
-        if (newPhone === null) return;
+        if (confirm(`'${studentName}' 학생의 비밀번호를 전화번호 뒷 4자리로 초기화하시겠습니까?`)) {
+            try {
+                const studentRef = doc(db, 'students', studentId);
+                const studentSnap = await getDoc(studentRef);
 
-        if (!/^\d+$/.test(newPhone) || newPhone.length < 4) {
-            showToast("전화번호는 4자리 이상의 숫자로 입력해주세요."); 
-            return;
-        }
-
-        const finalPassword = newPhone.slice(-4);
-        try {
-            await updateDoc(doc(db, 'students', studentId), { password: finalPassword, phone: newPhone });
-            showToast(`'${studentName}' 학생의 비밀번호가 '${finalPassword}'로 초기화되었습니다.`, false);
-        } catch (error) { 
-            console.error("비밀번호 초기화 실패:", error); 
-            showToast("비밀번호 초기화에 실패했습니다."); 
+                if (studentSnap.exists()) {
+                    const phone = studentSnap.data().phone;
+                    if (phone && phone.length >= 4) {
+                        const newPassword = phone.slice(-4);
+                        await updateDoc(studentRef, { 
+                            password: newPassword, // 실제로는 해싱 처리 후 저장해야 합니다.
+                            isInitialPassword: true 
+                        });
+                        showToast(`'${studentName}' 학생의 비밀번호가 '${newPassword}'로 초기화되었습니다.`, false);
+                    } else {
+                        showToast("해당 학생의 전화번호 정보가 올바르지 않아 초기화할 수 없습니다.");
+                    }
+                }
+            } catch (error) { 
+                console.error("비밀번호 초기화 실패:", error); 
+                showToast("비밀번호 초기화에 실패했습니다."); 
+            }
         }
     },
 };

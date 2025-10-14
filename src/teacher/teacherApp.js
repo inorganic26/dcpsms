@@ -1,8 +1,7 @@
 // src/teacher/teacherApp.js
 
-import { doc, getDoc, getDocs, collection, query, where, onSnapshot } from "firebase/firestore";
-// ▼▼▼ [수정] import 항목 변경 ▼▼▼
-import { db, ensureAuthWithRole } from '../shared/firebase.js';
+import { doc, getDoc, getDocs, collection, query, where, onSnapshot, updateDoc } from "firebase/firestore";
+import { db, ensureAuthWithRole } from '../shared/firebase.js'; // ensureAuthWithRole은 로그인 성공 후 사용
 import { showToast } from '../shared/utils.js';
 
 import { lessonDashboard } from './lessonDashboard.js';
@@ -31,25 +30,120 @@ const TeacherApp = {
     },
 
     init() {
-        if (this.isInitialized) return;
-        this.isInitialized = true;
+        this.showLoginScreen();
+    },
 
-        this.cacheElements();
-        
-        // 모든 모듈 초기화
-        lessonDashboard.init(this);
-        homeworkDashboard.init(this);
-        lessonManager.init(this);
-        classEditor.init(this);
-        analysisDashboard.init(this);
+    showLoginScreen() {
+        document.body.innerHTML = `
+            <div id="toast-notification" style="transition: opacity 0.3s, transform 0.3s;" class="fixed top-8 right-8 z-[100] p-4 rounded-lg shadow-lg text-white transform translate-x-[120%] opacity-0">
+                <p id="toast-message"></p>
+            </div>
+            <div class="w-full min-h-screen flex items-center justify-center p-4 bg-slate-50">
+                <div class="w-full max-w-sm mx-auto p-8 bg-white rounded-xl shadow-md">
+                    <h1 class="text-3xl font-bold text-slate-800 mb-6 text-center">교사/관리자 로그인</h1>
+                    <div class="space-y-4 text-left">
+                        <div>
+                            <label for="teacher-phone" class="block text-sm font-medium text-slate-700 mb-1">전화번호</label>
+                            <input type="tel" id="teacher-phone" class="form-input" placeholder="전화번호를 입력하세요">
+                        </div>
+                        <div>
+                            <label for="teacher-password" class="block text-sm font-medium text-slate-700 mb-1">비밀번호</label>
+                            <input type="password" id="teacher-password" class="form-input" placeholder="비밀번호를 입력하세요">
+                        </div>
+                    </div>
+                    <button id="teacher-login-btn" class="btn-primary w-full mt-6 py-3">로그인</button>
+                    <a href="../../" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
+                </div>
+            </div>
+        `;
 
-        this.addEventListeners(); // 이벤트 리스너는 요소 캐싱과 모듈 초기화 후에 설정
-        
-        this.populateClassSelect();
-        this.listenForSubjects();
+        document.getElementById('teacher-login-btn').addEventListener('click', () => {
+            const phone = document.getElementById('teacher-phone').value;
+            const password = document.getElementById('teacher-password').value;
+            this.handleLogin(phone, password);
+        });
+    },
 
-        // 초기 뷰 설정
-        this.handleViewChange('lesson-dashboard');
+    async handleLogin(phone, password) {
+        if (!phone || !password) {
+            showToast("전화번호와 비밀번호를 모두 입력해주세요.");
+            return;
+        }
+
+        let userDoc = null;
+        let userRole = null;
+
+        const teacherQuery = query(collection(db, 'teachers'), where("phone", "==", phone), where("password", "==", password));
+        const teacherSnapshot = await getDocs(teacherQuery);
+
+        if (!teacherSnapshot.empty) {
+            userDoc = teacherSnapshot.docs[0];
+            userRole = 'teacher';
+        } else {
+            const adminQuery = query(collection(db, 'admins'), where("phone", "==", phone), where("password", "==", password));
+            const adminSnapshot = await getDocs(adminQuery);
+            if (!adminSnapshot.empty) {
+                userDoc = adminSnapshot.docs[0];
+                userRole = 'admin';
+            }
+        }
+
+        if (userDoc) {
+            const userData = userDoc.data();
+            showToast(`환영합니다, ${userData.name} 님!`, false);
+            this.loadDashboardUI(userDoc.id, userData, userRole);
+        } else {
+            showToast("전화번호 또는 비밀번호가 일치하지 않습니다.");
+        }
+    },
+
+    async loadDashboardUI(userId, userData, userRole) {
+        const response = await fetch('./index.html');
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        document.body.innerHTML = doc.body.innerHTML; // body 내용만 교체
+
+        ensureAuthWithRole([userRole], (user) => {
+            if (this.isInitialized) return;
+            this.isInitialized = true;
+    
+            this.cacheElements();
+    
+            lessonDashboard.init(this);
+            homeworkDashboard.init(this);
+            lessonManager.init(this);
+            classEditor.init(this);
+            analysisDashboard.init(this);
+    
+            this.addEventListeners();
+            this.populateClassSelect();
+            this.listenForSubjects();
+            this.handleViewChange('lesson-dashboard');
+    
+            if (userRole === 'teacher' && userData.isInitialPassword) {
+                this.promptPasswordChange(userId);
+            }
+        });
+    },
+    
+    async promptPasswordChange(teacherId) {
+        const newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
+        if (newPassword && newPassword.length >= 6) {
+            try {
+                const teacherRef = doc(db, 'teachers', teacherId);
+                await updateDoc(teacherRef, {
+                    password: newPassword, // 실제로는 해싱 처리 필요
+                    isInitialPassword: false
+                });
+                showToast("비밀번호가 성공적으로 변경되었습니다.", false);
+            } catch (error) {
+                console.error("비밀번호 변경 실패:", error);
+                showToast("비밀번호 변경에 실패했습니다.");
+            }
+        } else if (newPassword) {
+            showToast("비밀번호는 6자리 이상이어야 합니다.");
+        }
     },
 
     cacheElements() {
@@ -121,15 +215,12 @@ const TeacherApp = {
         });
     },
 
-    // ---▼▼▼▼▼ 버튼 스타일 제어 로직 수정 ▼▼▼▼▼---
     handleViewChange(viewName) {
         this.elements.navButtons.forEach(btn => {
             const isSelected = btn.dataset.view === viewName;
-            // 활성 상태 스타일
             btn.classList.toggle('bg-white', isSelected);
             btn.classList.toggle('text-blue-600', isSelected);
             btn.classList.toggle('shadow-sm', isSelected);
-            // 비활성 상태 스타일
             btn.classList.toggle('text-slate-600', !isSelected);
             btn.classList.toggle('hover:bg-slate-300', !isSelected);
         });
@@ -153,7 +244,6 @@ const TeacherApp = {
             analysisDashboard.renderStudentLists();
         }
     },
-    // ---▲▲▲▲▲ 버튼 스타일 제어 로직 수정 끝 ▲▲▲▲▲---
 
     async handleClassSelection(event) {
         const selectedOption = event.target.options[event.target.selectedIndex];
@@ -248,12 +338,8 @@ const TeacherApp = {
     },
 };
 
-// ▼▼▼ [수정] DOMContentLoaded 리스너 변경 ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
-    // 'admin' 또는 'teacher' 역할이 있으면 앱을 초기화합니다.
-    ensureAuthWithRole(['admin', 'teacher'], (user) => {
-        TeacherApp.init();
-    });
+    TeacherApp.init();
 });
 
 export default TeacherApp;

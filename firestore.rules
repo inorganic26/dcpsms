@@ -4,88 +4,81 @@ service cloud.firestore {
   match /databases/{database}/documents {
   
     // --- Helper Functions ---
-    // 사용자가 'admin' 역할을 가졌는지 확인
     function isAdmin() {
       return request.auth.token.role == 'admin';
     }
-    // 사용자가 'teacher' 역할을 가졌는지 확인
     function isTeacher() {
       return request.auth.token.role == 'teacher';
     }
-    // 사용자가 관리자 또는 선생님인지 확인
-    function isAdminOrTeacher() {
-      return isAdmin() || isTeacher();
+    function isStudent(userId) {
+        // 학생은 별도 role 없이, 자신의 ID와 일치하는 데이터에만 접근
+        return request.auth.uid == userId;
     }
-    // 문서의 소유자인지 확인 (사용자 UID와 문서 ID 비교)
-    function isOwner(userId) {
-      return request.auth.uid == userId;
-    }
-    // 인증된 사용자인지 확인
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     // --- Collection Rules ---
 
-    // 1. 관리 데이터 (classes, subjects, lessons, textbooks):
-    // 관리자/선생님만 생성, 수정, 삭제 가능. 모든 인증 사용자는 읽기 가능.
+    // 관리자, 교사, 학생 정보
+    match /admins/{adminId} {
+        allow read, write: if isAdmin(); // 관리자만 자신의 정보 읽기/쓰기 가능
+    }
+    match /teachers/{teacherId} {
+        allow read: if isAdmin() || request.auth.uid == teacherId; // 관리자 또는 본인만 읽기 가능
+        allow write: if isAdmin(); // 교사 정보 수정은 관리자만
+    }
+    match /students/{studentId} {
+        allow read: if isAdmin() || isTeacher() || isStudent(studentId); // 관리자, 교사, 본인만 읽기 가능
+        allow write: if isAdmin() || isStudent(studentId); // 정보 수정은 관리자 또는 본인만
+    }
+
+    // 수업 관련 데이터
     match /classes/{classId} {
       allow read: if isAuthenticated();
-allow write: if isAdminOrTeacher(); // 관리자와 선생님만 쓰기 허용
+      allow write: if isAdmin() || isTeacher();
     }
     
     match /subjects/{subjectId} {
       allow read: if isAuthenticated();
-allow write: if isAdminOrTeacher(); // 관리자와 선생님이 과목/학습 관리
+      allow write: if isAdmin() || isTeacher();
       
-      // 교재는 관리자만 관리
       match /textbooks/{textbookId} {
         allow read: if isAuthenticated();
-allow write: if isAdmin(); //
+        allow write: if isAdmin();
       }
       
-      // 학습(레슨)은 관리자 또는 선생님이 관리
       match /lessons/{lessonId} {
         allow read: if isAuthenticated();
-allow write: if isAdminOrTeacher(); //
+        allow write: if isAdmin() || isTeacher();
         
-        // 학생 본인의 학습 제출 기록
         match /submissions/{studentId} {
-          allow read: if isAdminOrTeacher() || isOwner(studentId); // 관리자, 선생님, 본인만 읽기
-allow create, update: if isOwner(studentId); // 생성/수정은 본인만 가능
-          allow delete: if isAdminOrTeacher(); // 삭제는 관리자/선생님만 가능 (기록 삭제 기능)
+          allow read: if isAdmin() || isTeacher() || isStudent(studentId);
+          allow create, update: if isStudent(studentId);
+          allow delete: if isAdmin() || isTeacher();
         }
       }
     }
-
-    // 2. 학생 데이터 (students):
-    // (보안 #1 문제 해결 전제: 비밀번호 필드 제거, 문서 ID = auth.uid 사용)
-    match /students/{studentId} {
-      allow read: if isAdminOrTeacher() || isOwner(studentId); // 관리자, 선생님, 본인만 읽기
-allow write: if isAdmin() || isOwner(studentId); // 관리자가 생성/수정, 학생은 본인 정보(예: 이름)만 수정
-    }
     
-    // 3. 숙제 (homeworks) 및 제출 기록 (Submissions):
+    // 숙제 및 AI 분석 결과
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
-allow write: if isAdminOrTeacher(); // 숙제 출제/수정/삭제는 관리자/선생님만
+      allow write: if isAdmin() || isTeacher();
       
       match /submissions/{studentId} {
-        allow read: if isAdminOrTeacher() || isOwner(studentId); // 관리자, 선생님, 본인만 읽기
-allow write: if isOwner(studentId); // 숙제 제출/수정은 본인만
-        allow delete: if isAdminOrTeacher(); // (필요시) 관리자/선생님이 삭제
+        allow read: if isAdmin() || isTeacher() || isStudent(studentId);
+        allow write: if isStudent(studentId);
+        allow delete: if isAdmin() || isTeacher();
       }
     }
     
-    // 4. AI 분석 결과:
-    // Cloud Function(Admin SDK)만 쓰기 가능, 관리자/선생님만 읽기 가능
     match /testAnalysisResults/{docId} {
-        allow read: if isAdminOrTeacher();
-allow write: if false; // 클라이언트에서 쓰기 절대 불가
+        allow read: if isAdmin() || isTeacher();
+        allow write: if false; // 클라이언트에서 쓰기 절대 불가
     }
     match /homeworkGradingResults/{docId} {
-        allow read: if isAdminOrTeacher();
-allow write: if false; // 클라이언트에서 쓰기 절대 불가
+        allow read: if isAdmin() || isTeacher();
+        allow write: if false; // 클라이언트에서 쓰기 절대 불가
     }
   }
 }
