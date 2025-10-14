@@ -1,19 +1,15 @@
 // src/admin/adminApp.js
 
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { auth } from '../shared/firebase.js';
+import { auth, onAuthStateChanged, signInAnonymously } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 import { subjectManager } from './subjectManager.js';
 import { textbookManager } from './textbookManager.js';
 import { classManager } from './classManager.js';
 import { studentManager } from './studentManager.js';
-// import { teacherManager } from './teacherManager.js'; // TODO: 교사 관리 모듈 생성 필요
+import { teacherManager } from './teacherManager.js';
 import { lessonManager } from './lessonManager.js';
 import { studentAssignmentManager } from './studentAssignmentManager.js';
-
-const functions = getFunctions();
 
 const AdminApp = {
     isInitialized: false,
@@ -22,6 +18,7 @@ const AdminApp = {
         subjects: [],
         classes: [],
         students: [],
+        teachers: [], // 교사 목록을 저장할 state 추가
         lessons: [],
         editingClass: null,
         selectedSubjectIdForLesson: null,
@@ -32,17 +29,11 @@ const AdminApp = {
     },
 
     init() {
+        document.getElementById('admin-initial-login').style.display = 'flex';
+        document.getElementById('admin-main-dashboard').style.display = 'none';
+
         const secretLoginBtn = document.getElementById('admin-secret-login-btn');
         secretLoginBtn?.addEventListener('click', this.handleSecretLogin.bind(this));
-
-        // 페이지 로드 시, 이미 익명 로그인이 되어 있는지 확인
-        onAuthStateChanged(auth, (user) => {
-            if (user && user.isAnonymous) {
-                // 이미 익명 로그인 상태라면, 역할 확인 절차 바로 진행
-                this.verifyRoleAndInitialize(user);
-            }
-            // 로그인되어 있지 않으면, 비밀번호 입력 대기
-        });
     },
 
     async handleSecretLogin() {
@@ -53,34 +44,19 @@ const AdminApp = {
         }
 
         try {
-            showToast("인증 중...", false);
-            // 기존 익명 사용자가 없으면 새로 생성, 있으면 기존 사용자 정보 반환
-            const userCredential = await signInAnonymously(auth);
-            await this.verifyRoleAndInitialize(userCredential.user);
+            await signInAnonymously(auth);
+            showToast("인증 성공!", false);
+            this.showDashboard();
         } catch (error) {
             console.error("익명 로그인 실패:", error);
             showToast("관리자 인증에 실패했습니다. 인터넷 연결을 확인해주세요.");
         }
     },
-    
-    async verifyRoleAndInitialize(user) {
-        try {
-            const idTokenResult = await user.getIdTokenResult(true);
-            const userRole = idTokenResult.claims.role;
 
-            if (userRole === 'admin') {
-                // 역할이 'admin'이면 대시보드 표시
-                document.getElementById('admin-initial-login').style.display = 'none';
-                document.getElementById('admin-main-dashboard').style.display = 'block';
-                this.initializeDashboard();
-            } else {
-                // 역할이 없으면, UID를 포함한 안내 메시지 표시
-                showToast(`관리자 권한이 없습니다. 다음 UID에 'admin' 역할을 부여해야 합니다: ${user.uid}`);
-            }
-        } catch (error) {
-            console.error("권한 확인 중 오류 발생:", error);
-            showToast("권한을 확인하는 중 오류가 발생했습니다.");
-        }
+    showDashboard() {
+        document.getElementById('admin-initial-login').style.display = 'none';
+        document.getElementById('admin-main-dashboard').style.display = 'block';
+        this.initializeDashboard();
     },
 
     initializeDashboard() {
@@ -93,7 +69,7 @@ const AdminApp = {
         textbookManager.init(this);
         classManager.init(this);
         studentManager.init(this);
-        // teacherManager.init(this);
+        teacherManager.init(this);
         lessonManager.init(this);
         studentAssignmentManager.init(this);
 
@@ -139,6 +115,19 @@ const AdminApp = {
             addStudentBtn: document.getElementById('admin-add-student-btn'),
             studentsList: document.getElementById('admin-students-list'),
             
+            newTeacherNameInput: document.getElementById('admin-new-teacher-name'),
+            newTeacherPhoneInput: document.getElementById('admin-new-teacher-phone'),
+            addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
+            teachersList: document.getElementById('admin-teachers-list'),
+            
+            // ▼▼▼ [추가] 교사 수정 모달 UI 요소 ▼▼▼
+            editTeacherModal: document.getElementById('admin-edit-teacher-modal'),
+            closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
+            cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
+            saveTeacherEditBtn: document.getElementById('admin-save-teacher-edit-btn'),
+            editTeacherNameInput: document.getElementById('admin-edit-teacher-name'),
+            editTeacherPhoneInput: document.getElementById('admin-edit-teacher-phone'),
+
             subjectSelectForLesson: document.getElementById('admin-subject-select-for-lesson'),
             lessonsManagementContent: document.getElementById('admin-lessons-management-content'),
             lessonPrompt: document.getElementById('admin-lesson-prompt'),

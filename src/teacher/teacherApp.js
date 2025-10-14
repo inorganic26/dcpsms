@@ -1,7 +1,8 @@
 // src/teacher/teacherApp.js
 
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot, updateDoc } from "firebase/firestore";
-import { db, ensureAuthWithRole } from '../shared/firebase.js'; // ensureAuthWithRole은 로그인 성공 후 사용
+// ▼▼▼ [수정] ensureAuthWithRole 대신 ensureAnonymousAuth를 가져옵니다. ▼▼▼
+import { db, ensureAnonymousAuth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 import { lessonDashboard } from './lessonDashboard.js';
@@ -30,110 +31,82 @@ const TeacherApp = {
     },
 
     init() {
-        this.showLoginScreen();
-    },
+        this.cacheElements();
 
-    showLoginScreen() {
-        document.body.innerHTML = `
-            <div id="toast-notification" style="transition: opacity 0.3s, transform 0.3s;" class="fixed top-8 right-8 z-[100] p-4 rounded-lg shadow-lg text-white transform translate-x-[120%] opacity-0">
-                <p id="toast-message"></p>
-            </div>
-            <div class="w-full min-h-screen flex items-center justify-center p-4 bg-slate-50">
-                <div class="w-full max-w-sm mx-auto p-8 bg-white rounded-xl shadow-md">
-                    <h1 class="text-3xl font-bold text-slate-800 mb-6 text-center">교사/관리자 로그인</h1>
-                    <div class="space-y-4 text-left">
-                        <div>
-                            <label for="teacher-phone" class="block text-sm font-medium text-slate-700 mb-1">전화번호</label>
-                            <input type="tel" id="teacher-phone" class="form-input" placeholder="전화번호를 입력하세요">
-                        </div>
-                        <div>
-                            <label for="teacher-password" class="block text-sm font-medium text-slate-700 mb-1">비밀번호</label>
-                            <input type="password" id="teacher-password" class="form-input" placeholder="비밀번호를 입력하세요">
-                        </div>
-                    </div>
-                    <button id="teacher-login-btn" class="btn-primary w-full mt-6 py-3">로그인</button>
-                    <a href="../../" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
-                </div>
-            </div>
-        `;
-
-        document.getElementById('teacher-login-btn').addEventListener('click', () => {
-            const phone = document.getElementById('teacher-phone').value;
-            const password = document.getElementById('teacher-password').value;
-            this.handleLogin(phone, password);
+        this.elements.loginBtn?.addEventListener('click', () => {
+            const name = this.elements.nameInput.value;
+            const password = this.elements.passwordInput.value;
+            this.handleLogin(name, password);
         });
+
+        if (this.elements.loginContainer) this.elements.loginContainer.style.display = 'flex';
+        if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'none';
     },
 
-    async handleLogin(phone, password) {
-        if (!phone || !password) {
-            showToast("전화번호와 비밀번호를 모두 입력해주세요.");
+    async handleLogin(name, password) {
+        if (!name || !password) {
+            showToast("이름과 비밀번호를 모두 입력해주세요.");
             return;
         }
 
         let userDoc = null;
-        let userRole = null;
-
-        const teacherQuery = query(collection(db, 'teachers'), where("phone", "==", phone), where("password", "==", password));
+        
+        const teacherQuery = query(collection(db, 'teachers'), where("name", "==", name), where("password", "==", password));
         const teacherSnapshot = await getDocs(teacherQuery);
 
         if (!teacherSnapshot.empty) {
             userDoc = teacherSnapshot.docs[0];
-            userRole = 'teacher';
         } else {
-            const adminQuery = query(collection(db, 'admins'), where("phone", "==", phone), where("password", "==", password));
+            const adminQuery = query(collection(db, 'admins'), where("name", "==", name), where("password", "==", password));
             const adminSnapshot = await getDocs(adminQuery);
             if (!adminSnapshot.empty) {
                 userDoc = adminSnapshot.docs[0];
-                userRole = 'admin';
             }
         }
 
         if (userDoc) {
             const userData = userDoc.data();
             showToast(`환영합니다, ${userData.name} 님!`, false);
-            this.loadDashboardUI(userDoc.id, userData, userRole);
+            this.showDashboard(userDoc.id, userData);
         } else {
-            showToast("전화번호 또는 비밀번호가 일치하지 않습니다.");
+            showToast("이름 또는 비밀번호가 일치하지 않습니다.");
         }
     },
 
-    async loadDashboardUI(userId, userData, userRole) {
-        const response = await fetch('./index.html');
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-        document.body.innerHTML = doc.body.innerHTML; // body 내용만 교체
+    showDashboard(userId, userData) {
+        if (this.elements.loginContainer) this.elements.loginContainer.style.display = 'none';
+        if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'block';
 
-        ensureAuthWithRole([userRole], (user) => {
-            if (this.isInitialized) return;
-            this.isInitialized = true;
-    
-            this.cacheElements();
-    
-            lessonDashboard.init(this);
-            homeworkDashboard.init(this);
-            lessonManager.init(this);
-            classEditor.init(this);
-            analysisDashboard.init(this);
-    
-            this.addEventListeners();
-            this.populateClassSelect();
-            this.listenForSubjects();
-            this.handleViewChange('lesson-dashboard');
-    
-            if (userRole === 'teacher' && userData.isInitialPassword) {
-                this.promptPasswordChange(userId);
-            }
-        });
+        this.initializeDashboard();
+
+        if (userData.isInitialPassword) {
+            this.promptPasswordChange(userId);
+        }
     },
     
+    initializeDashboard() {
+        if (this.isInitialized) return;
+        this.isInitialized = true;
+
+        lessonDashboard.init(this);
+        homeworkDashboard.init(this);
+        lessonManager.init(this);
+        classEditor.init(this);
+        analysisDashboard.init(this);
+
+        this.addEventListeners();
+        this.populateClassSelect();
+        this.listenForSubjects();
+        this.handleViewChange('lesson-dashboard');
+    },
+
     async promptPasswordChange(teacherId) {
         const newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
         if (newPassword && newPassword.length >= 6) {
             try {
                 const teacherRef = doc(db, 'teachers', teacherId);
                 await updateDoc(teacherRef, {
-                    password: newPassword, // 실제로는 해싱 처리 필요
+                    password: newPassword,
                     isInitialPassword: false
                 });
                 showToast("비밀번호가 성공적으로 변경되었습니다.", false);
@@ -148,6 +121,11 @@ const TeacherApp = {
 
     cacheElements() {
         this.elements = {
+            loginContainer: document.getElementById('teacher-login-container'),
+            dashboardContainer: document.getElementById('teacher-dashboard-container'),
+            nameInput: document.getElementById('teacher-name'),
+            passwordInput: document.getElementById('teacher-password'),
+            loginBtn: document.getElementById('teacher-login-btn'),
             classSelect: document.getElementById('teacher-class-select'),
             mainContent: document.getElementById('teacher-main-content'),
             navButtons: document.querySelectorAll('.teacher-nav-btn'),
@@ -338,8 +316,12 @@ const TeacherApp = {
     },
 };
 
+// ▼▼▼ [수정] DOMContentLoaded 리스너를 ensureAnonymousAuth로 감쌉니다. ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
-    TeacherApp.init();
+    // 앱이 시작되기 전에 항상 익명 로그인을 먼저 수행하여 권한을 확보합니다.
+    ensureAnonymousAuth(() => {
+        TeacherApp.init();
+    });
 });
 
 export default TeacherApp;

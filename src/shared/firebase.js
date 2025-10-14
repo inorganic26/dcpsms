@@ -2,7 +2,7 @@
 
 import { initializeApp } from "firebase/app";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
-// ▼▼▼ [수정] signInAnonymously를 import 목록에 추가합니다. ▼▼▼
+// ▼▼▼ [수정] 필요한 함수들을 모두 import 합니다. ▼▼▼
 import { getAuth, onAuthStateChanged, signInAnonymously, getIdTokenResult } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -67,5 +67,5 @@ const ensureAuthWithRole = (requiredRole, callback) => {
   });
 };
 
-// ▼▼▼ [수정] export 목록에 signInAnonymously를 추가합니다. ▼▼▼
-export { auth, db, storage, ensureAnonymousAuth, ensureAuthWithRole, signInAnonymously };
+// ▼▼▼ [수정] export 목록에 onAuthStateChanged와 signInAnonymously를 추가합니다. ▼▼▼
+export { auth, db, storage, ensureAnonymousAuth, ensureAuthWithRole, onAuthStateChanged, signInAnonymously };

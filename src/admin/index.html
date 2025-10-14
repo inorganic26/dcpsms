@@ -131,8 +131,34 @@
         </div>
         
         <div id="admin-teacher-mgmt-view" class="admin-section-view" style="display: none;">
-             <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
-             <div class="content-card"><h2 class="text-2xl font-bold text-slate-800">교사 명단 관리 (구현 예정)</h2></div>
+            <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+            <div class="content-card">
+                <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">교사 명단 관리</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-700 mb-4">신규 교사 등록</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="admin-new-teacher-name" class="block text-sm font-medium text-slate-700 mb-2">새 교사 이름</label>
+                                <input type="text" id="admin-new-teacher-name" class="form-input" placeholder="예: 김선생">
+                            </div>
+                            <div>
+                                <label for="admin-new-teacher-phone" class="block text-sm font-medium text-slate-700 mb-2">전화번호</label>
+                                <input type="tel" id="admin-new-teacher-phone" class="form-input" placeholder="비밀번호는 뒷 4자리로 자동 설정됩니다.">
+                            </div>
+                        </div>
+                        <div class="flex justify-end mt-4">
+                            <button id="admin-add-teacher-btn" class="btn-primary">+ 교사 추가</button>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-700 mb-2">전체 교사 목록</h3>
+                        <div id="admin-teachers-list" class="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+                            <p class="text-sm text-slate-400">등록된 교사가 없습니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div id="admin-student-assignment-view" class="admin-section-view" style="display: none;">
@@ -190,6 +216,29 @@
         </div>
     </div>
     
+    <div id="admin-edit-teacher-modal" class="modal-backdrop" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">교사 정보 수정</h2>
+                <button id="admin-close-edit-teacher-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
+            <main class="p-6 space-y-4">
+                <div>
+                    <label for="admin-edit-teacher-name" class="block text-sm font-medium text-slate-600 mb-1">이름</label>
+                    <input type="text" id="admin-edit-teacher-name" class="form-input">
+                </div>
+                <div>
+                    <label for="admin-edit-teacher-phone" class="block text-sm font-medium text-slate-600 mb-1">전화번호</label>
+                    <input type="tel" id="admin-edit-teacher-phone" class="form-input">
+                </div>
+            </main>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="admin-cancel-edit-teacher-btn" class="btn-secondary">취소</button>
+                <button id="admin-save-teacher-edit-btn" class="btn-primary">변경사항 저장</button>
+            </footer>
+        </div>
+    </div>
+
     <div id="admin-new-lesson-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
             <header class="p-6 border-b flex justify-between items-center"><h2 id="admin-lesson-modal-title" class="text-2xl font-bold text-slate-800">새 학습 세트 만들기</h2><button id="admin-close-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button></header>

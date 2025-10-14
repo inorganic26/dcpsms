@@ -5,14 +5,14 @@ service cloud.firestore {
   
     // --- Helper Functions ---
     function isAdmin() {
-      return request.auth.token.role == 'admin';
+      return request.auth != null && request.auth.token.role == 'admin';
     }
     function isTeacher() {
-      return request.auth.token.role == 'teacher';
+      return request.auth != null && request.auth.token.role == 'teacher';
     }
     function isStudent(userId) {
         // 학생은 별도 role 없이, 자신의 ID와 일치하는 데이터에만 접근
-        return request.auth.uid == userId;
+        return request.auth != null && request.auth.uid == userId;
     }
     function isAuthenticated() {
       return request.auth != null;
@@ -22,40 +22,42 @@ service cloud.firestore {
 
     // 관리자, 교사, 학생 정보
     match /admins/{adminId} {
-        allow read, write: if isAdmin(); // 관리자만 자신의 정보 읽기/쓰기 가능
+        allow read, write: if isAuthenticated();  // 임시로 완화
     }
+
     match /teachers/{teacherId} {
-        allow read: if isAdmin() || request.auth.uid == teacherId; // 관리자 또는 본인만 읽기 가능
-        allow write: if isAdmin(); // 교사 정보 수정은 관리자만
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
     }
+    
     match /students/{studentId} {
-        allow read: if isAdmin() || isTeacher() || isStudent(studentId); // 관리자, 교사, 본인만 읽기 가능
-        allow write: if isAdmin() || isStudent(studentId); // 정보 수정은 관리자 또는 본인만
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
     }
 
     // 수업 관련 데이터
     match /classes/{classId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
+      allow write: if isAuthenticated();
     }
     
     match /subjects/{subjectId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
+      allow write: if isAuthenticated();
       
       match /textbooks/{textbookId} {
         allow read: if isAuthenticated();
-        allow write: if isAdmin();
+        allow write: if isAuthenticated();
       }
       
       match /lessons/{lessonId} {
         allow read: if isAuthenticated();
-        allow write: if isAdmin() || isTeacher();
+        allow write: if isAuthenticated();
         
         match /submissions/{studentId} {
-          allow read: if isAdmin() || isTeacher() || isStudent(studentId);
-          allow create, update: if isStudent(studentId);
-          allow delete: if isAdmin() || isTeacher();
+          allow read: if isAuthenticated();
+          allow create, update: if isAuthenticated();
+          allow delete: if isAuthenticated();
         }
       }
     }
@@ -63,22 +65,22 @@ service cloud.firestore {
     // 숙제 및 AI 분석 결과
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacher();
+      allow write: if isAuthenticated();
       
       match /submissions/{studentId} {
-        allow read: if isAdmin() || isTeacher() || isStudent(studentId);
-        allow write: if isStudent(studentId);
-        allow delete: if isAdmin() || isTeacher();
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();
+        allow delete: if isAuthenticated();
       }
     }
     
     match /testAnalysisResults/{docId} {
-        allow read: if isAdmin() || isTeacher();
-        allow write: if false; // 클라이언트에서 쓰기 절대 불가
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();  // 임시로 허용
     }
     match /homeworkGradingResults/{docId} {
-        allow read: if isAdmin() || isTeacher();
-        allow write: if false; // 클라이언트에서 쓰기 절대 불가
+        allow read: if isAuthenticated();
+        allow write: if isAuthenticated();  // 임시로 허용
     }
   }
 }

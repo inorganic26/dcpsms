@@ -41,8 +41,9 @@ const StudentApp = {
         this.elements = {
             loadingScreen: document.getElementById('student-loading-screen'),
             loginScreen: document.getElementById('student-login-screen'),
-            // classSelect와 nameSelect를 phoneInput으로 변경
-            phoneInput: document.getElementById('student-phone'),
+            // ▼▼▼ [수정] phoneInput을 classSelect와 nameInput으로 변경 ▼▼▼
+            classSelect: document.getElementById('student-class-select'),
+            nameInput: document.getElementById('student-name'),
             passwordInput: document.getElementById('student-password'),
             loginBtn: document.getElementById('student-login-btn'),
             
@@ -147,6 +148,11 @@ const StudentApp = {
 
     async loadAvailableSubjects() {
         this.showScreen(this.elements.loadingScreen);
+        // classId가 없는 경우 (미배정 학생) 바로 빈 배열 처리
+        if (!this.state.classId) {
+            this.state.activeSubjects = [];
+            return;
+        }
         try {
             const classDoc = await getDoc(doc(db, 'classes', this.state.classId));
             if (!classDoc.exists() || !classDoc.data().subjects) { 

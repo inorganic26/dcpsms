@@ -17,123 +17,143 @@
         <p id="toast-message"></p>
     </div>
 
-    <div class="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
-        <a href="../../" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
-        
-        <div class="content-card">
-            <header class="border-b border-slate-200 pb-6 mb-6">
-                <label for="teacher-class-select" class="block text-sm font-medium text-slate-700 mb-2">반 선택</label>
-                <select id="teacher-class-select" class="form-select max-w-sm">
-                    <option value="">-- 반 목록을 불러오는 중... --</option>
-                </select>
-            </header>
+    <div id="teacher-login-container" class="w-full min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-sm mx-auto p-8 bg-white rounded-xl shadow-md">
+            <h1 class="text-3xl font-bold text-slate-800 mb-6 text-center">교사/관리자 로그인</h1>
+            <div class="space-y-4 text-left">
+                <div>
+                    <label for="teacher-name" class="block text-sm font-medium text-slate-700 mb-1">이름</label>
+                    <input type="text" id="teacher-name" class="form-input" placeholder="이름을 입력하세요">
+                </div>
+                <div>
+                    <label for="teacher-password" class="block text-sm font-medium text-slate-700 mb-1">비밀번호</label>
+                    <input type="password" id="teacher-password" class="form-input" placeholder="비밀번호를 입력하세요">
+                </div>
+            </div>
+            <button id="teacher-login-btn" class="btn-primary w-full mt-6 py-3">로그인</button>
+            <a href="../../" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
+        </div>
+    </div>
 
-            <div id="teacher-main-content" style="display: none;">
-                <nav class="p-1 mb-6 flex space-x-1 bg-slate-200 rounded-lg">
-                    <button data-view="lesson-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">학습 현황</button>
-                    <button data-view="homework-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">숙제 현황</button>
-                    <button data-view="analysis-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">AI 분석</button>
-                    <button data-view="lesson-mgmt" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">학습 관리</button>
-                    <button data-view="class-mgmt" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">반 설정</button>
-                </nav>
+    <div id="teacher-dashboard-container" style="display: none;">
+        <div class="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
+            <a href="../../" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
+            
+            <div class="content-card">
+                <header class="border-b border-slate-200 pb-6 mb-6">
+                    <label for="teacher-class-select" class="block text-sm font-medium text-slate-700 mb-2">반 선택</label>
+                    <select id="teacher-class-select" class="form-select max-w-sm">
+                        <option value="">-- 반 목록을 불러오는 중... --</option>
+                    </select>
+                </header>
 
-                <main>
-                    <div id="view-lesson-dashboard" class="teacher-view">
-                        <div class="flex items-center gap-4 mb-4">
-                            <div class="flex-grow">
-                                <label for="teacher-subject-select-lesson" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label>
-                                <select id="teacher-subject-select-lesson" class="form-select"></select>
-                            </div>
-                            <div class="flex-grow">
-                                <label for="teacher-lesson-select" class="block text-sm font-medium text-slate-700 mb-2">학습 선택</label>
-                                <select id="teacher-lesson-select" class="form-select" disabled></select>
-                            </div>
-                        </div>
-                        <div id="teacher-lesson-dashboard-content" style="display: none;">
-                            <h3 id="teacher-selected-lesson-title" class="text-xl font-bold text-slate-800 my-6"></h3>
-                            <div class="relative overflow-x-auto shadow-md sm:rounded-lg"><table class="w-full text-sm text-left text-gray-500"><tbody id="teacher-results-table-body"></tbody></table></div>
-                        </div>
-                    </div>
-                    <div id="view-homework-dashboard" class="teacher-view" style="display: none;">
-                        <div class="flex justify-between items-center mb-4">
-                            <div>
-                                <label for="teacher-homework-select" class="block text-sm font-medium text-slate-700 mb-2">숙제 선택</label>
-                                <select id="teacher-homework-select" class="form-select max-w-xs"></select>
-                            </div>
-                            <button id="teacher-assign-homework-btn" class="btn-primary">+ 새 숙제 출제</button>
-                        </div>
-                        <div id="teacher-homework-management-buttons" class="flex justify-end gap-2 mb-4" style="display: none;">
-                            <button id="teacher-edit-homework-btn" class="btn-warning btn-sm">정보 수정</button>
-                            <button id="teacher-delete-homework-btn" class="btn-danger btn-sm">숙제 삭제</button>
-                        </div>
-                        <div id="teacher-homework-content" style="display: none;">
-                            <h3 id="teacher-selected-homework-title" class="text-xl font-bold text-slate-800 my-6"></h3>
-                            <div class="relative overflow-x-auto shadow-md sm:rounded-lg"><table class="w-full text-sm text-left text-gray-500"><tbody id="teacher-homework-table-body"></tbody></table></div>
-                        </div>
-                    </div>
-                    <div id="view-analysis-dashboard" class="teacher-view" style="display: none;">
-                        <h2 class="text-2xl font-bold text-slate-800 mb-6 border-b border-slate-200 pb-4">AI 분석 및 채점 대시보드</h2>
-                        <div class="bg-slate-100 p-6 rounded-2xl shadow-inner mb-8 border border-slate-200">
-                            <h3 class="text-xl font-semibold text-slate-800 mb-4">📝 AI 시험지 문항 분석</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label for="test-pdf-upload-input" class="block text-sm font-medium text-slate-700 mb-2">1. 시험지 파일 (PDF) 업로드</label>
-                                    <input type="file" id="test-pdf-upload-input" accept=".pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
-                                    <p id="pdf-analysis-status" class="text-xs text-slate-500 mt-2 min-h-[20px]">AI가 분석할 시험지 PDF를 업로드하세요.</p>
+                <div id="teacher-main-content" style="display: none;">
+                    <nav class="p-1 mb-6 flex space-x-1 bg-slate-200 rounded-lg">
+                        <button data-view="lesson-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">학습 현황</button>
+                        <button data-view="homework-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">숙제 현황</button>
+                        <button data-view="analysis-dashboard" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">AI 분석</button>
+                        <button data-view="lesson-mgmt" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">학습 관리</button>
+                        <button data-view="class-mgmt" class="teacher-nav-btn flex-1 py-2 px-3 rounded-md text-sm font-semibold text-center transition-colors">반 설정</button>
+                    </nav>
+
+                    <main>
+                        <div id="view-lesson-dashboard" class="teacher-view">
+                            <div class="flex items-center gap-4 mb-4">
+                                <div class="flex-grow">
+                                    <label for="teacher-subject-select-lesson" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label>
+                                    <select id="teacher-subject-select-lesson" class="form-select"></select>
                                 </div>
-                                <div>
-                                    <label for="student-data-upload-input" class="block text-sm font-medium text-slate-700 mb-2">2. 학생 성적 파일 (XLSX) 업로드</label>
-                                    <input type="file" id="student-data-upload-input" accept=".xlsx" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"/>
-                                     <p class="text-xs text-slate-500 mt-2">※ 헤더: 학생명, q1, q2, ...</p>
+                                <div class="flex-grow">
+                                    <label for="teacher-lesson-select" class="block text-sm font-medium text-slate-700 mb-2">학습 선택</label>
+                                    <select id="teacher-lesson-select" class="form-select" disabled></select>
                                 </div>
                             </div>
-                            <div class="mt-6">
-                                <h3 class="text-lg font-semibold text-slate-700 mb-3">3. 학생별 분석 리포트 보기</h3>
-                                <div id="test-analysis-student-list" class="grid grid-cols-3 gap-3">
-                                    <p class="text-slate-400 col-span-full text-center py-4">반을 선택하고 파일을 업로드하세요.</p>
-                                </div>
-                                </div>
+                            <div id="teacher-lesson-dashboard-content" style="display: none;">
+                                <h3 id="teacher-selected-lesson-title" class="text-xl font-bold text-slate-800 my-6"></h3>
+                                <div class="relative overflow-x-auto shadow-md sm:rounded-lg"><table class="w-full text-sm text-left text-gray-500"><tbody id="teacher-results-table-body"></tbody></table></div>
+                            </div>
                         </div>
-                        <div class="bg-slate-100 p-6 rounded-2xl shadow-inner border border-slate-200">
-                            <h3 class="text-xl font-semibold text-slate-800 mb-4">📸 AI 숙제 자동 채점</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div id="view-homework-dashboard" class="teacher-view" style="display: none;">
+                            <div class="flex justify-between items-center mb-4">
                                 <div>
-                                    <label for="homework-image-upload-input" class="block text-sm font-medium text-slate-700 mb-2">숙제 이미지 업로드 (여러 장 선택 가능)</label>
-                                    <input type="file" id="homework-image-upload-input" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"/>
-                                    <p class="text-xs text-slate-500 mt-2">채점할 숙제 사진을 모두 선택하여 업로드하세요.</p>
+                                    <label for="teacher-homework-select" class="block text-sm font-medium text-slate-700 mb-2">숙제 선택</label>
+                                    <select id="teacher-homework-select" class="form-select max-w-xs"></select>
                                 </div>
-                                <div>
-                                     <h3 class="text-sm font-medium text-slate-700 mb-2">학생별 채점 결과 보기</h3>
-                                    <div id="homework-analysis-student-list" class="grid grid-cols-3 gap-3 h-full min-h-[100px]">
-                                        <p class="text-slate-400 col-span-full text-center py-4">숙제 이미지를 업로드하면 채점 결과가 여기에 표시됩니다.</p>
+                                <button id="teacher-assign-homework-btn" class="btn-primary">+ 새 숙제 출제</button>
+                            </div>
+                            <div id="teacher-homework-management-buttons" class="flex justify-end gap-2 mb-4" style="display: none;">
+                                <button id="teacher-edit-homework-btn" class="btn-warning btn-sm">정보 수정</button>
+                                <button id="teacher-delete-homework-btn" class="btn-danger btn-sm">숙제 삭제</button>
+                            </div>
+                            <div id="teacher-homework-content" style="display: none;">
+                                <h3 id="teacher-selected-homework-title" class="text-xl font-bold text-slate-800 my-6"></h3>
+                                <div class="relative overflow-x-auto shadow-md sm:rounded-lg"><table class="w-full text-sm text-left text-gray-500"><tbody id="teacher-homework-table-body"></tbody></table></div>
+                            </div>
+                        </div>
+                        <div id="view-analysis-dashboard" class="teacher-view" style="display: none;">
+                            <h2 class="text-2xl font-bold text-slate-800 mb-6 border-b border-slate-200 pb-4">AI 분석 및 채점 대시보드</h2>
+                            <div class="bg-slate-100 p-6 rounded-2xl shadow-inner mb-8 border border-slate-200">
+                                <h3 class="text-xl font-semibold text-slate-800 mb-4">📝 AI 시험지 문항 분석</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label for="test-pdf-upload-input" class="block text-sm font-medium text-slate-700 mb-2">1. 시험지 파일 (PDF) 업로드</label>
+                                        <input type="file" id="test-pdf-upload-input" accept=".pdf" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                                        <p id="pdf-analysis-status" class="text-xs text-slate-500 mt-2 min-h-[20px]">AI가 분석할 시험지 PDF를 업로드하세요.</p>
+                                    </div>
+                                    <div>
+                                        <label for="student-data-upload-input" class="block text-sm font-medium text-slate-700 mb-2">2. 학생 성적 파일 (XLSX) 업로드</label>
+                                        <input type="file" id="student-data-upload-input" accept=".xlsx" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"/>
+                                         <p class="text-xs text-slate-500 mt-2">※ 헤더: 학생명, q1, q2, ...</p>
+                                    </div>
+                                </div>
+                                <div class="mt-6">
+                                    <h3 class="text-lg font-semibold text-slate-700 mb-3">3. 학생별 분석 리포트 보기</h3>
+                                    <div id="test-analysis-student-list" class="grid grid-cols-3 gap-3">
+                                        <p class="text-slate-400 col-span-full text-center py-4">반을 선택하고 파일을 업로드하세요.</p>
+                                    </div>
+                                    </div>
+                            </div>
+                            <div class="bg-slate-100 p-6 rounded-2xl shadow-inner border border-slate-200">
+                                <h3 class="text-xl font-semibold text-slate-800 mb-4">📸 AI 숙제 자동 채점</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label for="homework-image-upload-input" class="block text-sm font-medium text-slate-700 mb-2">숙제 이미지 업로드 (여러 장 선택 가능)</label>
+                                        <input type="file" id="homework-image-upload-input" accept="image/*" multiple class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100"/>
+                                        <p class="text-xs text-slate-500 mt-2">채점할 숙제 사진을 모두 선택하여 업로드하세요.</p>
+                                    </div>
+                                    <div>
+                                         <h3 class="text-sm font-medium text-slate-700 mb-2">학생별 채점 결과 보기</h3>
+                                        <div id="homework-analysis-student-list" class="grid grid-cols-3 gap-3 h-full min-h-[100px]">
+                                            <p class="text-slate-400 col-span-full text-center py-4">숙제 이미지를 업로드하면 채점 결과가 여기에 표시됩니다.</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div id="view-lesson-mgmt" class="teacher-view" style="display: none;">
-                        <div class="border-b pb-4 mb-6">
-                            <h1 class="text-2xl font-bold text-slate-800">학습 세트 관리</h1>
-                            <div class="w-full md:w-1/2 mt-4">
-                                <label for="teacher-subject-select-mgmt" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label>
-                                <select id="teacher-subject-select-mgmt" class="form-select"></select>
+                        <div id="view-lesson-mgmt" class="teacher-view" style="display: none;">
+                            <div class="border-b pb-4 mb-6">
+                                <h1 class="text-2xl font-bold text-slate-800">학습 세트 관리</h1>
+                                <div class="w-full md:w-1/2 mt-4">
+                                    <label for="teacher-subject-select-mgmt" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label>
+                                    <select id="teacher-subject-select-mgmt" class="form-select"></select>
+                                </div>
                             </div>
-                        </div>
-                        <div id="teacher-lessons-management-content" style="display:none;">
-                            <div class="flex justify-end gap-2">
-                                <button id="teacher-save-lesson-order-btn" class="btn bg-green-600 text-white hover:bg-green-700 focus:ring-green-500">순서 저장</button>
-                                <button id="teacher-show-new-lesson-modal-btn" class="btn-primary">+ 새 학습 세트 만들기</button>
+                            <div id="teacher-lessons-management-content" style="display:none;">
+                                <div class="flex justify-end gap-2">
+                                    <button id="teacher-save-lesson-order-btn" class="btn bg-green-600 text-white hover:bg-green-700 focus:ring-green-500">순서 저장</button>
+                                    <button id="teacher-show-new-lesson-modal-btn" class="btn-primary">+ 새 학습 세트 만들기</button>
+                                </div>
+                                <div id="teacher-lessons-list" class="mt-6 space-y-4"></div>
                             </div>
-                            <div id="teacher-lessons-list" class="mt-6 space-y-4"></div>
+                            <p id="teacher-lesson-prompt" class="text-center text-slate-500 py-8">먼저 과목을 선택해주세요.</p>
                         </div>
-                        <p id="teacher-lesson-prompt" class="text-center text-slate-500 py-8">먼저 과목을 선택해주세요.</p>
-                    </div>
-                    <div id="view-class-mgmt" class="teacher-view" style="display: none;">
-                        <h2 class="text-2xl font-bold text-slate-800 mb-4">반 설정 관리</h2>
-                        <p class="text-slate-600 mb-4">현재 선택된 반에 연결된 과목과 교재를 수정할 수 있습니다.</p>
-                        <button id="teacher-edit-class-btn" class="btn-primary">과목 및 교재 설정</button>
-                    </div>
-                </main>
+                        <div id="view-class-mgmt" class="teacher-view" style="display: none;">
+                            <h2 class="text-2xl font-bold text-slate-800 mb-4">반 설정 관리</h2>
+                            <p class="text-slate-600 mb-4">현재 선택된 반에 연결된 과목과 교재를 수정할 수 있습니다.</p>
+                            <button id="teacher-edit-class-btn" class="btn-primary">과목 및 교재 설정</button>
+                        </div>
+                    </main>
+                </div>
             </div>
         </div>
     </div>
