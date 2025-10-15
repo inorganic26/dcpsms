@@ -3,7 +3,7 @@ const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
-const { GoogleGenerativeAI } = require("@google/genai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall } = require("firebase-functions/v2/https");
 const { getAuth } = require("firebase-admin/auth");
@@ -18,7 +18,6 @@ const region = "asia-northeast3";
 // ========== 1. 시험지 PDF 분석 함수 ==========
 exports.analyzeTestPdf = onObjectFinalized({
     region: region,
-    secrets: ["GEMINI_API_KEY"],
     memory: "128MiB",
 }, async (event) => {
     const object = event.data;
@@ -32,8 +31,8 @@ exports.analyzeTestPdf = onObjectFinalized({
     const testId = filePath.split("/")[1];
     const resultDocRef = db.collection("testAnalysisResults").doc(testId);
 
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-    
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
     if (!GEMINI_API_KEY) {
         functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
         await resultDocRef.set({
@@ -47,8 +46,9 @@ exports.analyzeTestPdf = onObjectFinalized({
 
     try {
         await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
-        
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
+        // 모델 이름을 "gemini-2.5-flash"로 수정
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         const prompt = `
 당신은 수학 시험지 분석 전문가입니다. 제공된 PDF 수학 시험지를 분석하세요.
@@ -64,8 +64,8 @@ exports.analyzeTestPdf = onObjectFinalized({
         const [fileBuffer] = await file.download();
 
         const base64Data = fileBuffer.toString('base64');
-        
-        const filePart = { 
+
+        const filePart = {
             inlineData: {
                 data: base64Data,
                 mimeType: contentType,
@@ -74,7 +74,7 @@ exports.analyzeTestPdf = onObjectFinalized({
 
         const result = await model.generateContent([ prompt, filePart ]);
         const responseText = result.response.text();
-        
+
         functions.logger.log("Raw response:", responseText);
 
         let analysisData;
@@ -101,8 +101,8 @@ exports.analyzeTestPdf = onObjectFinalized({
             throw new Error(errorMsg);
         }
 
-        await resultDocRef.set({ 
-            status: "completed", 
+        await resultDocRef.set({
+            status: "completed",
             analysis: analysisData,
             completedAt: new Date()
         }, { merge: true });
@@ -110,8 +110,8 @@ exports.analyzeTestPdf = onObjectFinalized({
         functions.logger.log("Analysis completed for testId:", testId);
     } catch (error) {
         functions.logger.error("Error analyzing PDF:", error);
-        await resultDocRef.set({ 
-            status: "error", 
+        await resultDocRef.set({
+            status: "error",
             error: error.message,
             errorDetails: error.stack,
             errorAt: new Date()
@@ -123,34 +123,34 @@ exports.analyzeTestPdf = onObjectFinalized({
 
 // ========== 사용자 역할 설정 함수들 ==========
 exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (request) => {
-  const data = request.data;
-  const authContext = request.auth;
+    const data = request.data;
+    const authContext = request.auth;
 
-  if (authContext.token.role !== 'admin') {
-    functions.logger.warn(`Unauthorized user (${authContext.uid}) attempted role assignment.`);
-    throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
-  }
+    if (authContext.token.role !== 'admin') {
+        functions.logger.warn(`Unauthorized user (${authContext.uid}) attempted role assignment.`);
+        throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
+    }
 
-  const email = data.email;
-  const role = data.role;
+    const email = data.email;
+    const role = data.role;
 
-  if (!email || !role) {
-    throw new functions.https.HttpsError('invalid-argument', '이메일과 역할이 필요합니다.');
-  }
-  if (!['admin', 'teacher', 'student'].includes(role)) {
-     throw new functions.https.HttpsError('invalid-argument', '유효하지 않은 역할입니다.');
-  }
+    if (!email || !role) {
+        throw new functions.https.HttpsError('invalid-argument', '이메일과 역할이 필요합니다.');
+    }
+    if (!['admin', 'teacher', 'student'].includes(role)) {
+        throw new functions.https.HttpsError('invalid-argument', '유효하지 않은 역할입니다.');
+    }
 
-  try {
-    const user = await auth.getUserByEmail(email);
-    await auth.setCustomUserClaims(user.uid, { role: role });
-    
-    functions.logger.log(`Success: ${authContext.uid} assigned '${role}' to ${user.uid} (${email}).`);
-    return { message: `성공: ${email} 님에게 '${role}' 역할을 부여했습니다.` };
-  } catch (error) {
-    functions.logger.error("Role assignment failed:", error);
-    throw new functions.https.HttpsError('internal', '사용자 역할을 설정하는 데 실패했습니다.');
-  }
+    try {
+        const user = await auth.getUserByEmail(email);
+        await auth.setCustomUserClaims(user.uid, { role: role });
+
+        functions.logger.log(`Success: ${authContext.uid} assigned '${role}' to ${user.uid} (${email}).`);
+        return { message: `성공: ${email} 님에게 '${role}' 역할을 부여했습니다.` };
+    } catch (error) {
+        functions.logger.error("Role assignment failed:", error);
+        throw new functions.https.HttpsError('internal', '사용자 역할을 설정하는 데 실패했습니다.');
+    }
 });
 
 exports.setCustomUserRoleByUid = onCall({ region: region, memory: "128MiB" }, async (request) => {
