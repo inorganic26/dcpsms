@@ -3,7 +3,7 @@ const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getStorage } = require("firebase-admin/storage");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenerativeAI } = require("@google/genai");
 const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const { onCall } = require("firebase-functions/v2/https");
 const { getAuth } = require("firebase-admin/auth");
@@ -119,123 +119,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     }
 });
 
-// ========== 숙제 채점 및 분석 통합 함수 ==========
-exports.gradeAndAnalyzeHomework = onCall({ 
-    region: region,
-    secrets: ["GEMINI_API_KEY"]
-}, async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
-    }
-    const { homeworkId, studentId } = request.data;
-    if (!homeworkId || !studentId) {
-        throw new functions.https.HttpsError('invalid-argument', 'homeworkId와 studentId가 필요합니다.');
-    }
-
-    const submissionRef = db.doc(`homeworks/${homeworkId}/submissions/${studentId}`);
-    const submissionDoc = await submissionRef.get();
-    if (!submissionDoc.exists) {
-        throw new functions.https.HttpsError('not-found', '해당 학생의 제출물을 찾을 수 없습니다.');
-    }
-    const submissionData = submissionDoc.data();
-    const imageUrls = submissionData.imageUrls;
-    if (!imageUrls || imageUrls.length === 0) {
-        throw new functions.https.HttpsError('not-found', '채점할 이미지가 없습니다.');
-    }
-
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-        throw new functions.https.HttpsError('internal', '서버에 API 키가 설정되지 않았습니다.');
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
-    const prompt = `
-        당신은 수학 자동 채점 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하고 다음 규칙에 따라 채점하세요.
-
-        - 정답('O'): 문제 번호 또는 문제 전체에 붉은색 원형 표시가 있으면 정답입니다.
-        - 오답('X'): 문제에 선(슬래시, X 등), 세모, 별 등 원형이 아닌 다른 표시가 있으면 오답입니다.
-        - 오답('X'): 아무런 채점 표시가 없는 문제도 오답으로 처리합니다.
-
-        결과는 반드시 문제 번호를 키로, 값은 "O" 또는 "X" 중 하나인 JSON 객체로만 출력해주세요. 다른 설명은 절대 추가하지 마세요.
-    `.trim();
-
-    let allResults = {};
-    for (const url of imageUrls) {
-        try {
-            const path = new URL(url).pathname;
-            const filePath = decodeURIComponent(path.substring(path.indexOf('/o/') + 3).split('?')[0]);
-            
-            const file = storage.bucket().file(filePath);
-            const [fileBuffer] = await file.download();
-            
-            const filePart = { inlineData: { data: fileBuffer.toString('base64'), mimeType: 'image/jpeg' } };
-            const result = await model.generateContent([prompt, filePart]);
-            const responseText = result.response.text();
-            
-            let pageResult;
-            try {
-                const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
-                if (jsonMatch && jsonMatch[1]) {
-                    pageResult = JSON.parse(jsonMatch[1].trim());
-                } else {
-                    const cleanedResponse = responseText.replace(/```/g, "").trim();
-                    pageResult = JSON.parse(cleanedResponse);
-                }
-                Object.assign(allResults, pageResult);
-            } catch (error) {
-                functions.logger.error(`JSON parsing failed for URL: ${url}`, error, "Response:", responseText);
-                continue;
-            }
-        } catch (error) {
-            functions.logger.error(`Image processing failed for URL: ${url}`, error);
-        }
-    }
-    
-    const homeworkRef = db.doc(`homeworks/${homeworkId}`);
-    const studentAnalysisRef = db.doc(`students/${studentId}/homeworkAnalysis/${homeworkId}`);
-    
-    try {
-        await db.runTransaction(async (transaction) => {
-            const homeworkDoc = await transaction.get(homeworkRef);
-            if (!homeworkDoc.exists) {
-                throw new Error("숙제 문서를 찾을 수 없습니다.");
-            }
-            const analysisData = homeworkDoc.data().analysis || {};
-
-            const oldStudentResultDoc = await transaction.get(studentAnalysisRef);
-            if (oldStudentResultDoc.exists) {
-                const oldResults = oldStudentResultDoc.data().results;
-                for (const qNum in oldResults) {
-                    if (oldResults[qNum] === 'X' && analysisData[qNum]) {
-                        analysisData[qNum] = Math.max(0, analysisData[qNum] - 1);
-                        if(analysisData[qNum] === 0) delete analysisData[qNum];
-                    }
-                }
-            }
-            
-            for (const qNum in allResults) {
-                if (allResults[qNum] === 'X') {
-                    analysisData[qNum] = (analysisData[qNum] || 0) + 1;
-                }
-            }
-
-            transaction.set(studentAnalysisRef, {
-                studentName: submissionData.studentName,
-                results: allResults,
-                analyzedAt: FieldValue.serverTimestamp()
-            });
-            transaction.update(homeworkRef, { analysis: analysisData });
-        });
-        
-        functions.logger.log(`Grading completed: homeworkId=${homeworkId}, studentId=${studentId}`);
-        return { success: true, message: "채점 및 분석이 완료되었습니다.", results: allResults };
-    } catch (error) {
-        functions.logger.error("Database update failed:", error);
-        throw new functions.https.HttpsError('internal', '결과를 데이터베이스에 저장하는 데 실패했습니다.');
-    }
-});
-
+// ========== [삭제] 숙제 채점 및 분석 통합 함수 제거 ==========
 
 // ========== 사용자 역할 설정 함수들 ==========
 exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (request) => {

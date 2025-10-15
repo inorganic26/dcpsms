@@ -23,7 +23,7 @@ export const analysisDashboard = {
             analysisHeader: document.getElementById('analysis-report-header'),
             analysisMain: document.getElementById('analysis-report-main'),
             analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
-            analysisSaveBtn: document.getElementById('analysis-report-save-btn'), // 저장 버튼 추가
+            analysisSaveBtn: document.getElementById('analysis-report-save-btn'),
         };
 
         this.addEventListeners();
@@ -214,61 +214,8 @@ export const analysisDashboard = {
 
         this.elements.analysisMain.innerHTML = tableHtml;
         this.elements.analysisModal.style.display = 'flex';
-        // 시험지 분석 결과는 저장 버튼을 숨깁니다.
+        
         if (this.elements.analysisSaveBtn) this.elements.analysisSaveBtn.style.display = 'none';
-    },
-
-    // --- ▼▼▼ [수정] 저장 콜백 함수를 인자로 받도록 수정 ▼▼▼ ---
-    showHomeworkGradingReport(studentName, analysisData, saveCallback) {
-        if (!analysisData || !analysisData.results) {
-            showToast(`'${studentName}' 학생의 채점 결과가 없습니다.`);
-            return;
-        }
-
-        const { results, analyzedAt } = analysisData;
-        const date = (analyzedAt && analyzedAt.toDate) ? analyzedAt.toDate().toLocaleString() : '날짜 정보 없음';
-        
-        this.elements.analysisHeader.innerHTML = `<h2 class="text-2xl font-bold text-slate-800">${studentName} 학생 숙제 채점 결과</h2><p class="text-sm text-slate-500 mt-1">채점 일시: ${date}</p>`;
-
-        const sortedResults = Object.entries(results).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-        
-        let resultHtml = '';
-        
-        if (sortedResults.length === 0) {
-            resultHtml = `
-                <div class="text-center py-10 col-span-full">
-                    <p class="text-slate-600 font-semibold">채점된 문제가 없습니다.</p>
-                    <p class="text-sm text-slate-400 mt-2">AI가 이미지에서 문제 번호나 채점 표시(O, X)를 인식하지 못했을 수 있습니다.</p>
-                </div>
-            `;
-        } else {
-            resultHtml = '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">';
-            sortedResults.forEach(([qNum, result]) => {
-                let bgColor, textColor;
-                switch(result) {
-                    case 'O': bgColor = 'bg-green-100'; textColor = 'text-green-800'; break;
-                    case 'X': bgColor = 'bg-red-100'; textColor = 'text-red-800'; break;
-                    default: bgColor = 'bg-slate-100'; textColor = 'text-slate-600';
-                }
-                resultHtml += `<div class="p-3 rounded-lg text-center ${bgColor} ${textColor}">
-                                 <p class="font-bold text-lg">${qNum}번</p>
-                                 <p class="text-sm font-semibold">${result}</p>
-                               </div>`;
-            });
-            resultHtml += '</div>';
-        }
-
-        this.elements.analysisMain.innerHTML = resultHtml;
-        this.elements.analysisModal.style.display = 'flex';
-        
-        // 저장 버튼을 표시하고, 클릭 시 콜백 함수를 실행합니다.
-        if (this.elements.analysisSaveBtn) {
-            this.elements.analysisSaveBtn.style.display = 'inline-block';
-            // 기존 이벤트 리스너를 제거하고 새로 할당하여 중복 실행 방지
-            this.elements.analysisSaveBtn.replaceWith(this.elements.analysisSaveBtn.cloneNode(true));
-            this.elements.analysisSaveBtn = document.getElementById('analysis-report-save-btn'); // 교체된 버튼 다시 참조
-            this.elements.analysisSaveBtn.addEventListener('click', saveCallback);
-        }
     },
 
     renderStudentLists() {
