@@ -171,10 +171,14 @@ export const homeworkDashboard = {
         this.app.elements.selectedHomeworkTitle.innerHTML = `
             '${hwText}' 숙제 제출 현황
             <div id="homework-analysis-container" class="mt-4 p-4 bg-slate-100 rounded-lg text-sm">
-                <h4 class="font-bold text-slate-700 mb-2">📊 반 전체 오답 통계</h4>
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="font-bold text-slate-700">📊 반 전체 오답 통계</h4>
+                    <button id="teacher-save-analysis-btn" class="btn-secondary btn-sm">통계 저장</button>
+                </div>
                 <div id="homework-analysis-content">통계를 불러오는 중...</div>
             </div>
         `;
+        document.getElementById('teacher-save-analysis-btn')?.addEventListener('click', () => this.saveAnalysisToFile());
 
         this.renderTableHeader(this.app.elements.homeworkTableBody, ['학생 이름', '제출 상태', '제출 시간', '관리']);
         
@@ -197,9 +201,17 @@ export const homeworkDashboard = {
                     return;
                 }
 
-                analysisContent.innerHTML = sorted
-                    .map(([qNum, count]) => `<span class="inline-block bg-red-200 text-red-800 text-xs font-semibold mr-2 px-2.5 py-0.5 rounded-full">${qNum}번 (${count}명)</span>`)
-                    .join(' ');
+                const totalStudents = this.app.state.studentsInClass.size;
+                let contentHtml = `<div class="flex flex-wrap gap-2">`;
+                sorted.forEach(([qNum, count]) => {
+                    const percentage = totalStudents > 0 ? (count / totalStudents) * 100 : 0;
+                    const isHighErrorRate = percentage >= 40;
+                    const bgColor = isHighErrorRate ? 'bg-red-500 text-white' : 'bg-red-200 text-red-800';
+                    contentHtml += `<span class="inline-block ${bgColor} text-xs font-semibold mr-2 px-2.5 py-1 rounded-full">${qNum}번 (${count}명, ${percentage.toFixed(0)}%)</span>`;
+                });
+                contentHtml += `</div>`;
+                analysisContent.innerHTML = contentHtml;
+
             } else {
                 analysisContent.innerHTML = '<p class="text-slate-500">AI 채점 후 통계가 표시됩니다.</p>';
             }
@@ -249,6 +261,21 @@ export const homeworkDashboard = {
             }
         });
     
+        let submittedCount = 0;
+        snapshot.docs.forEach(doc => {
+            if (this.app.state.studentsInClass.has(doc.id)) {
+                submittedCount++;
+            }
+        });
+        const analysisContainer = document.getElementById('homework-analysis-container');
+        let countEl = analysisContainer.querySelector('.submission-count');
+        if (!countEl) {
+            countEl = document.createElement('p');
+            countEl.className = 'submission-count text-sm text-slate-600 mb-2';
+            analysisContainer.prepend(countEl);
+        }
+        countEl.textContent = `제출 현황: ${submittedCount}명 / ${this.app.state.studentsInClass.size}명`;
+
         this.app.state.studentsInClass.forEach((name, id) => {
             const row = document.createElement('tr');
             row.className = 'bg-white border-b hover:bg-slate-50';
@@ -273,7 +300,8 @@ export const homeworkDashboard = {
                 let buttons = `<button class="download-btn text-xs bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg">전체 다운로드</button>`;
                 
                 if (analysisData) {
-                    buttons += `<button class="show-grade-report-btn text-xs bg-green-600 text-white font-semibold px-3 py-1 rounded-lg">채점 결과 보기</button>`;
+                    buttons += `<button class="show-grade-report-btn text-xs bg-green-600 text-white font-semibold px-3 py-1 rounded-lg">채점 결과</button>`;
+                    buttons += `<button class="grade-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">재채점</button>`;
                 } else {
                     buttons += `<button class="grade-btn text-xs bg-purple-600 text-white font-semibold px-3 py-1 rounded-lg">AI 채점</button>`;
                 }
@@ -294,7 +322,10 @@ export const homeworkDashboard = {
                 const submissionData = submissionDoc.data();
                 row.querySelector('.download-btn')?.addEventListener('click', () => this.downloadHomework(submissionData, textbookName));
                 row.querySelector('.grade-btn')?.addEventListener('click', (e) => this.runAIGrading(e, id));
-                row.querySelector('.show-grade-report-btn')?.addEventListener('click', () => this.app.analysisDashboard.showHomeworkGradingReport(name, analysisData));
+                
+                row.querySelector('.show-grade-report-btn')?.addEventListener('click', () => {
+                    this.app.analysisDashboard.showHomeworkGradingReport(name, analysisData, () => this.saveStudentReportToFile(name, analysisData));
+                });
             }
         });
     },
@@ -322,7 +353,6 @@ export const homeworkDashboard = {
         } catch (error) {
             console.error("AI 채점 함수 호출 실패:", error);
             showToast(`AI 채점 실패: ${error.message}`);
-            // 실패 시 버튼을 원상 복구
             button.textContent = originalText;
             button.disabled = false;
         }
@@ -366,5 +396,86 @@ export const homeworkDashboard = {
         headerHtml += '</tr>';
         thead.innerHTML = headerHtml;
         table.insertBefore(thead, tbody);
+    },
+
+    async saveAnalysisToFile() {
+        const homeworkId = this.app.state.selectedHomeworkId;
+        if (!homeworkId) return;
+
+        const homeworkDoc = await getDoc(doc(db, 'homeworks', homeworkId));
+        if (!homeworkDoc.exists() || !homeworkDoc.data().analysis) {
+            showToast("저장할 통계 데이터가 없습니다.");
+            return;
+        }
+
+        const analysis = homeworkDoc.data().analysis;
+        const totalStudents = this.app.state.studentsInClass.size;
+        const hwText = this.app.elements.homeworkSelect.options[this.app.elements.homeworkSelect.selectedIndex].text;
+        
+        let textContent = `숙제 통계: ${hwText}\n`;
+        textContent += `대상 인원: ${totalStudents}명\n`;
+        textContent += "==================================\n\n";
+        
+        const sorted = Object.entries(analysis).sort(([,a],[,b]) => b - a);
+
+        if (sorted.length > 0) {
+            textContent += "🔥 주요 오답 문항 (오답률 40% 이상)\n";
+            sorted.forEach(([qNum, count]) => {
+                const percentage = totalStudents > 0 ? (count / totalStudents) * 100 : 0;
+                if (percentage >= 40) {
+                    textContent += `- ${qNum}번: ${count}명 (${percentage.toFixed(0)}%)\n`;
+                }
+            });
+            textContent += "\n";
+
+            textContent += "✅ 전체 오답 문항 목록\n";
+            sorted.forEach(([qNum, count]) => {
+                const percentage = totalStudents > 0 ? (count / totalStudents) * 100 : 0;
+                textContent += `- ${qNum}번: ${count}명 (${percentage.toFixed(0)}%)\n`;
+            });
+        } else {
+            textContent += "집계된 오답 문항이 없습니다.\n";
+        }
+        
+        this.downloadAsTextFile(`[통계]${hwText}.txt`, textContent);
+    },
+    
+    saveStudentReportToFile(studentName, analysisData) {
+        if (!analysisData || !analysisData.results) return;
+        
+        const { results, analyzedAt } = analysisData;
+        const date = (analyzedAt && analyzedAt.toDate) ? analyzedAt.toDate().toLocaleString() : '날짜 정보 없음';
+        const hwText = this.app.elements.homeworkSelect.options[this.app.elements.homeworkSelect.selectedIndex].text;
+
+        let textContent = `학생 숙제 채점 결과\n`;
+        textContent += `숙제: ${hwText}\n`;
+        textContent += `학생: ${studentName}\n`;
+        textContent += `채점 일시: ${date}\n`;
+        textContent += "==================================\n\n";
+        
+        const sortedResults = Object.entries(results).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+        
+        const correct = sortedResults.filter(([, result]) => result === 'O').map(([qNum]) => qNum);
+        const incorrect = sortedResults.filter(([, result]) => result === 'X').map(([qNum]) => qNum);
+        
+        textContent += `총 문제 수: ${sortedResults.length}개\n`;
+        textContent += `정답: ${correct.length}개\n`;
+        textContent += `오답: ${incorrect.length}개\n\n`;
+        
+        textContent += `✅ 정답 문항: ${correct.join(', ') || '없음'}\n`;
+        textContent += `❌ 오답 문항: ${incorrect.join(', ') || '없음'}\n`;
+
+        this.downloadAsTextFile(`[${studentName}]${hwText}_결과.txt`, textContent);
+    },
+
+    downloadAsTextFile(filename, text) {
+        const element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', filename);
+        element.style.display = 'none';
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
+        showToast("파일이 저장되었습니다.", false);
     }
 };

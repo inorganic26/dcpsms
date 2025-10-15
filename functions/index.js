@@ -1,5 +1,4 @@
 // functions/index.js
-
 const functions = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
@@ -17,11 +16,9 @@ const auth = getAuth();
 const region = "asia-northeast3";
 
 // ========== 1. 시험지 PDF 분석 함수 ==========
-// ▼▼▼ [수정] secrets 설정을 추가합니다. ▼▼▼
 exports.analyzeTestPdf = onObjectFinalized({
     region: region,
     secrets: ["GEMINI_API_KEY"],
-    // ▼▼▼ [수정] 메모리 설정을 128MiB로 변경합니다. ▼▼▼
     memory: "128MiB",
 }, async (event) => {
     const object = event.data;
@@ -51,7 +48,7 @@ exports.analyzeTestPdf = onObjectFinalized({
     try {
         await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
         
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
         const prompt = `
 당신은 수학 시험지 분석 전문가입니다. 제공된 PDF 수학 시험지를 분석하세요.
@@ -100,7 +97,8 @@ exports.analyzeTestPdf = onObjectFinalized({
             }
             analysisData = JSON.parse(jsonContent);
         } catch (parseError) {
-            throw new Error(`JSON 파싱 실패: ${parseError.message}. 응답: ${responseText.substring(0, 100)}...`);
+            const errorMsg = `JSON parsing failed: ${parseError.message}. Response: ${responseText.substring(0, 100)}...`;
+            throw new Error(errorMsg);
         }
 
         await resultDocRef.set({ 
@@ -122,14 +120,10 @@ exports.analyzeTestPdf = onObjectFinalized({
 });
 
 // ========== 숙제 채점 및 분석 통합 함수 ==========
-// ▼▼▼ [수정] secrets 설정을 추가합니다. ▼▼▼
 exports.gradeAndAnalyzeHomework = onCall({ 
     region: region,
-    secrets: ["GEMINI_API_KEY"],
-    // ▼▼▼ [수정] 메모리 설정을 128MiB로 변경합니다. ▼▼▼
-    memory: "128MiB",
+    secrets: ["GEMINI_API_KEY"]
 }, async (request) => {
-    // 1. 요청 인증 및 데이터 유효성 검사
     if (!request.auth) {
         throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
     }
@@ -138,7 +132,6 @@ exports.gradeAndAnalyzeHomework = onCall({
         throw new functions.https.HttpsError('invalid-argument', 'homeworkId와 studentId가 필요합니다.');
     }
 
-    // 2. 학생 제출물 정보 가져오기
     const submissionRef = db.doc(`homeworks/${homeworkId}/submissions/${studentId}`);
     const submissionDoc = await submissionRef.get();
     if (!submissionDoc.exists) {
@@ -150,23 +143,23 @@ exports.gradeAndAnalyzeHomework = onCall({
         throw new functions.https.HttpsError('not-found', '채점할 이미지가 없습니다.');
     }
 
-    // 3. Gemini AI 설정 및 프롬프트 정의
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     if (!GEMINI_API_KEY) {
         throw new functions.https.HttpsError('internal', '서버에 API 키가 설정되지 않았습니다.');
     }
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+
     const prompt = `
-        당신은 자동 채점 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하세요.
-        각 문제 번호를 확인하고 정답인지, 오답인지, 풀지 않았는지 판단하세요.
-        - 문제 번호 주위에 동그라미(O)가 있으면 'O' (정답)
-        - 엑스(X), 슬래시(/), 삼각형(△) 표시가 있으면 'X' (오답)
-        - 아무 표시가 없으면 'N' (안풂)
-        결과를 문제 번호를 키로, 값은 "O", "X", "N" 중 하나인 JSON 객체로 출력해주세요. 다른 설명은 절대 추가하지 마세요.
+        당신은 수학 자동 채점 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하고 다음 규칙에 따라 채점하세요.
+
+        - 정답('O'): 문제 번호 또는 문제 전체에 붉은색 원형 표시가 있으면 정답입니다.
+        - 오답('X'): 문제에 선(슬래시, X 등), 세모, 별 등 원형이 아닌 다른 표시가 있으면 오답입니다.
+        - 오답('X'): 아무런 채점 표시가 없는 문제도 오답으로 처리합니다.
+
+        결과는 반드시 문제 번호를 키로, 값은 "O" 또는 "X" 중 하나인 JSON 객체로만 출력해주세요. 다른 설명은 절대 추가하지 마세요.
     `.trim();
 
-    // 4. 각 이미지에 대해 AI 채점 실행
     let allResults = {};
     for (const url of imageUrls) {
         try {
@@ -178,15 +171,27 @@ exports.gradeAndAnalyzeHomework = onCall({
             
             const filePart = { inlineData: { data: fileBuffer.toString('base64'), mimeType: 'image/jpeg' } };
             const result = await model.generateContent([prompt, filePart]);
-            const responseText = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-            const pageResult = JSON.parse(responseText);
-            Object.assign(allResults, pageResult);
+            const responseText = result.response.text();
+            
+            let pageResult;
+            try {
+                const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
+                if (jsonMatch && jsonMatch[1]) {
+                    pageResult = JSON.parse(jsonMatch[1].trim());
+                } else {
+                    const cleanedResponse = responseText.replace(/```/g, "").trim();
+                    pageResult = JSON.parse(cleanedResponse);
+                }
+                Object.assign(allResults, pageResult);
+            } catch (error) {
+                functions.logger.error(`JSON parsing failed for URL: ${url}`, error, "Response:", responseText);
+                continue;
+            }
         } catch (error) {
-            functions.logger.error(`이미지 처리 실패 (URL: ${url}):`, error);
+            functions.logger.error(`Image processing failed for URL: ${url}`, error);
         }
     }
     
-    // 5. 결과 데이터베이스에 저장
     const homeworkRef = db.doc(`homeworks/${homeworkId}`);
     const studentAnalysisRef = db.doc(`students/${studentId}/homeworkAnalysis/${homeworkId}`);
     
@@ -223,22 +228,22 @@ exports.gradeAndAnalyzeHomework = onCall({
             transaction.update(homeworkRef, { analysis: analysisData });
         });
         
-        functions.logger.log(`채점 및 분석 완료: homeworkId=${homeworkId}, studentId=${studentId}`);
+        functions.logger.log(`Grading completed: homeworkId=${homeworkId}, studentId=${studentId}`);
         return { success: true, message: "채점 및 분석이 완료되었습니다.", results: allResults };
     } catch (error) {
-        functions.logger.error("데이터베이스 업데이트 실패:", error);
+        functions.logger.error("Database update failed:", error);
         throw new functions.https.HttpsError('internal', '결과를 데이터베이스에 저장하는 데 실패했습니다.');
     }
 });
 
 
 // ========== 사용자 역할 설정 함수들 ==========
-exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (request) => { // 메모리 설정 추가
+exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (request) => {
   const data = request.data;
   const authContext = request.auth;
 
   if (authContext.token.role !== 'admin') {
-    functions.logger.warn(`권한 없는 사용자(${authContext.uid})가 역할 설정을 시도했습니다.`);
+    functions.logger.warn(`Unauthorized user (${authContext.uid}) attempted role assignment.`);
     throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
   }
 
@@ -256,15 +261,15 @@ exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (
     const user = await auth.getUserByEmail(email);
     await auth.setCustomUserClaims(user.uid, { role: role });
     
-    functions.logger.log(`성공: ${authContext.uid}가 ${user.uid}(${email})에게 '${role}' 역할을 부여했습니다.`);
+    functions.logger.log(`Success: ${authContext.uid} assigned '${role}' to ${user.uid} (${email}).`);
     return { message: `성공: ${email} 님에게 '${role}' 역할을 부여했습니다.` };
   } catch (error) {
-    functions.logger.error("역할 설정 실패:", error);
+    functions.logger.error("Role assignment failed:", error);
     throw new functions.https.HttpsError('internal', '사용자 역할을 설정하는 데 실패했습니다.');
   }
 });
 
-exports.setCustomUserRoleByUid = onCall({ region: region, memory: "128MiB" }, async (request) => { // 메모리 설정 추가
+exports.setCustomUserRoleByUid = onCall({ region: region, memory: "128MiB" }, async (request) => {
     const data = request.data;
     const authContext = request.auth;
 
@@ -280,10 +285,10 @@ exports.setCustomUserRoleByUid = onCall({ region: region, memory: "128MiB" }, as
 
     try {
         await auth.setCustomUserClaims(uid, { role: role });
-        functions.logger.log(`성공: ${authContext.uid}가 ${uid}에게 '${role}' 역할을 부여했습니다.`);
+        functions.logger.log(`Success: ${authContext.uid} assigned '${role}' to ${uid}.`);
         return { message: `성공: UID ${uid}에게 '${role}' 역할을 부여했습니다.` };
     } catch (error) {
-        functions.logger.error("UID로 역할 설정 실패:", error);
+        functions.logger.error("Role assignment by UID failed:", error);
         throw new functions.https.HttpsError('internal', 'UID로 사용자 역할을 설정하는 데 실패했습니다.');
     }
 });

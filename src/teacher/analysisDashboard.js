@@ -18,13 +18,12 @@ export const analysisDashboard = {
             studentDataUploadInput: document.getElementById('student-data-upload-input'),
             pdfAnalysisStatus: document.getElementById('pdf-analysis-status'),
             testStudentListContainer: document.getElementById('test-analysis-student-list'),
-            homeworkImageUploadInput: document.getElementById('homework-image-upload-input'),
-            homeworkStudentListContainer: document.getElementById('homework-analysis-student-list'),
             
             analysisModal: document.getElementById('analysis-report-modal'),
             analysisHeader: document.getElementById('analysis-report-header'),
             analysisMain: document.getElementById('analysis-report-main'),
             analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
+            analysisSaveBtn: document.getElementById('analysis-report-save-btn'), // 저장 버튼 추가
         };
 
         this.addEventListeners();
@@ -34,7 +33,6 @@ export const analysisDashboard = {
         document.addEventListener('class-changed', () => this.renderStudentLists());
         this.elements.testPdfUploadInput?.addEventListener('change', (e) => this.handlePdfUpload(e));
         this.elements.studentDataUploadInput?.addEventListener('change', (e) => this.handleStudentDataUpload(e));
-        this.elements.homeworkImageUploadInput?.addEventListener('change', (e) => this.handleHomeworkImageUpload(e));
         
         this.elements.analysisCloseBtn?.addEventListener('click', () => {
             if (this.elements.analysisModal) {
@@ -216,51 +214,12 @@ export const analysisDashboard = {
 
         this.elements.analysisMain.innerHTML = tableHtml;
         this.elements.analysisModal.style.display = 'flex';
+        // 시험지 분석 결과는 저장 버튼을 숨깁니다.
+        if (this.elements.analysisSaveBtn) this.elements.analysisSaveBtn.style.display = 'none';
     },
 
-    async handleHomeworkImageUpload(event) {
-        const files = event.target.files;
-        if (files.length === 0 || !this.app.state.selectedClassId) {
-            showToast("반을 먼저 선택한 후 이미지를 업로드해주세요.");
-            return;
-        }
-
-        const homeworkId = `homework_${this.app.state.selectedClassId}_${Date.now()}`;
-        showToast(`${files.length}개의 숙제 이미지 업로드를 시작합니다...`, false);
-
-        const uploadPromises = Array.from(files).map(file => {
-            const filePath = `homework-grading/${homeworkId}/${file.name}`;
-            const storageRef = ref(storage, filePath);
-            return uploadBytes(storageRef, file);
-        });
-
-        try {
-            await Promise.all(uploadPromises);
-            this.elements.homeworkImageUploadInput.value = '';
-            showToast("모든 이미지 업로드 완료! AI가 채점을 시작합니다.", false);
-            this.listenForHomeworkGradingResult(homeworkId);
-        } catch (error) {
-            console.error("병렬 업로드 실패:", error);
-            showToast("이미지 업로드에 실패했습니다. (네트워크 오류 가능성)");
-        }
-    },
-    
-    listenForHomeworkGradingResult(homeworkId) {
-        const resultDocRef = doc(db, "homeworkGradingResults", homeworkId);
-        onSnapshot(resultDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const result = docSnap.data();
-                if (result.status === 'completed' || result.results) {
-                    showToast("숙제 AI 채점 진행 중/완료!", false);
-                    this.renderStudentListForHomework();
-                } else if (result.status === 'error') {
-                    showToast(`숙제 채점 실패: ${result.error}`);
-                }
-            }
-        });
-    },
-    
-    showHomeworkGradingReport(studentName, analysisData) {
+    // --- ▼▼▼ [수정] 저장 콜백 함수를 인자로 받도록 수정 ▼▼▼ ---
+    showHomeworkGradingReport(studentName, analysisData, saveCallback) {
         if (!analysisData || !analysisData.results) {
             showToast(`'${studentName}' 학생의 채점 결과가 없습니다.`);
             return;
@@ -301,11 +260,19 @@ export const analysisDashboard = {
 
         this.elements.analysisMain.innerHTML = resultHtml;
         this.elements.analysisModal.style.display = 'flex';
+        
+        // 저장 버튼을 표시하고, 클릭 시 콜백 함수를 실행합니다.
+        if (this.elements.analysisSaveBtn) {
+            this.elements.analysisSaveBtn.style.display = 'inline-block';
+            // 기존 이벤트 리스너를 제거하고 새로 할당하여 중복 실행 방지
+            this.elements.analysisSaveBtn.replaceWith(this.elements.analysisSaveBtn.cloneNode(true));
+            this.elements.analysisSaveBtn = document.getElementById('analysis-report-save-btn'); // 교체된 버튼 다시 참조
+            this.elements.analysisSaveBtn.addEventListener('click', saveCallback);
+        }
     },
 
     renderStudentLists() {
         this.renderStudentListForTest();
-        this.renderStudentListForHomework();
     },
 
     renderStudentListForTest() {
@@ -342,11 +309,5 @@ export const analysisDashboard = {
             }
             listEl.appendChild(studentCard);
         });
-    },
-    
-    renderStudentListForHomework() {
-        const listEl = this.elements.homeworkStudentListContainer;
-        if (!listEl) return;
-        listEl.innerHTML = '<p class="text-slate-400 col-span-full text-center py-4">숙제 이미지를 업로드하면 채점 결과가 여기에 표시됩니다.</p>';
     },
 };
