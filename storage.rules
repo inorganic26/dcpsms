@@ -14,11 +14,7 @@ service firebase.storage {
       allow read, write: if request.auth != null;
     }
 
-    // ▼▼▼ [수정] AI 시험지 분석 폴더의 쓰기 권한을 임시로 모두에게 허용합니다 ▼▼▼
-    match /test-analysis/{testId}/{fileName} {
-      allow write: if true; // request.auth != null; 에서 변경
-      allow read: if true; 
-    }
+    // ▼▼▼ [수정] AI 시험지 분석 폴더 규칙을 삭제합니다. ▼▼▼
     
     // 3. AI 숙제 채점 이미지 폴더 (homework-grading):
     // 선생님 업로드 및 Cloud Functions 접근을 위해 인증된 사용자에게 허용

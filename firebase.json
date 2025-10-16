@@ -19,10 +19,7 @@
       "runtime": "nodejs20",
       "memory": "256MiB",
       "timeoutSeconds": 300,
-      "region": "asia-northeast3",
-      "env": {
-        "GEMINI_API_KEY": "AIzaSyBFTWstMLWTaFEbOKGqkCslY6jrsL1S8i0"
-      }
+      "region": "asia-northeast3"
     }
   ],
   "storage": {
@@ -38,15 +35,15 @@
     "rewrites": [
       {
         "source": "/admin/**",
-        "destination": "/admin/index.html"
+        "destination": "/src/admin/index.html"
       },
       {
         "source": "/teacher/**",
-        "destination": "/teacher/index.html"
+        "destination": "/src/teacher/index.html"
       },
       {
         "source": "/student/**",
-        "destination": "/student/index.html"
+        "destination": "/src/student/index.html"
       },
       {
         "source": "**",

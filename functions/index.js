@@ -1,12 +1,14 @@
 // functions/index.js
-const functions = require("firebase-functions");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { getStorage } = require("firebase-admin/storage");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { onObjectFinalized } = require("firebase-functions/v2/storage");
-const { onCall } = require("firebase-functions/v2/https");
-const { getAuth } = require("firebase-admin/auth");
+import { onObjectFinalized } from "firebase-functions/v2/storage";
+import { onCall } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { getAuth } from "firebase-admin/auth";
+import dotenv from "dotenv";
+
+dotenv.config(); // ✅ .env 파일 자동 로드
 
 initializeApp();
 
@@ -15,280 +17,75 @@ const storage = getStorage();
 const auth = getAuth();
 const region = "asia-northeast3";
 
-// ========== 1. 시험지 PDF 분석 함수 ==========
-exports.analyzeTestPdf = onObjectFinalized({
-    region: region,
-    secrets: ["GEMINI_API_KEY"],
-    memory: "128MiB",
-}, async (event) => {
-    const object = event.data;
-    const filePath = object.name;
-    const contentType = object.contentType;
+// =====================================================
+// 1️⃣ Google Generative AI 클라이언트 생성 헬퍼 (제거됨)
+// =====================================================
+// AI 관련 기능이 제거되었으므로 해당 헬퍼 함수는 필요하지 않습니다.
 
-    if (!contentType.startsWith("application/pdf") || !filePath.startsWith("test-analysis/")) {
-        return functions.logger.log("Not a relevant PDF file.");
-    }
+// =====================================================
+// 2️⃣ Gemini API 키 로드 (제거됨)
+// =====================================================
+// AI 관련 기능이 제거되었으므로 API 키 로드 코드는 필요하지 않습니다.
 
-    const testId = filePath.split("/")[1];
-    const resultDocRef = db.collection("testAnalysisResults").doc(testId);
 
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY; 
-    
-    if (!GEMINI_API_KEY) {
-        functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing");
-        await resultDocRef.set({
-            status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
-            errorAt: new Date()
-        }, { merge: true });
-        return;
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-    try {
-        await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
-        
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
-        const prompt = `
-당신은 수학 시험지 분석 전문가입니다. 제공된 PDF 수학 시험지를 분석하세요.
-각 문제 번호에 대해 다음 세 가지 정보를 JSON 형식으로 제공하세요.
-1. "단원명": 해당 문제의 구체적인 수학 단원명 또는 핵심 개념 (예: '삼각함수', '미분계수의 정의')
-2. "난이도": [쉬움, 보통, 어려움] 중 하나로 분류
-3. "오답대응방안": 틀린 학생을 위한 **핵심만 요약된, 15자 내외의 구체적이고 간결한 조언** (예: '미분계수 공식 반복 숙달').
-출력은 문제 번호를 키로 하는 하나의 JSON 객체여야 합니다 (예: "1", "2", "3").
-        `.trim();
-
-        const bucket = storage.bucket(object.bucket);
-        const file = bucket.file(filePath);
-        const [fileBuffer] = await file.download();
-
-        const base64Data = fileBuffer.toString('base64');
-        
-        const filePart = { 
-            inlineData: {
-                data: base64Data,
-                mimeType: contentType,
-            }
-        };
-
-        const result = await model.generateContent([ prompt, filePart ]);
-        const responseText = result.response.text();
-        
-        functions.logger.log("Raw response:", responseText);
-
-        let analysisData;
-        try {
-            const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
-            let jsonContent;
-
-            if (jsonMatch && jsonMatch[1]) {
-                jsonContent = jsonMatch[1].trim();
-            } else {
-                const cleanedResponse = responseText.replace(/```json/g, "").replace(/```/g, "").replace(/AI 분석 요약:/i, "").trim();
-                const startIndex = cleanedResponse.indexOf('{');
-                const endIndex = cleanedResponse.lastIndexOf('}');
-
-                if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-                    jsonContent = cleanedResponse.substring(startIndex, endIndex + 1);
-                } else {
-                    jsonContent = cleanedResponse;
-                }
-            }
-            analysisData = JSON.parse(jsonContent);
-        } catch (parseError) {
-            const errorMsg = `JSON parsing failed: ${parseError.message}. Response: ${responseText.substring(0, 100)}...`;
-            throw new Error(errorMsg);
-        }
-
-        await resultDocRef.set({ 
-            status: "completed", 
-            analysis: analysisData,
-            completedAt: new Date()
-        }, { merge: true });
-
-        functions.logger.log("Analysis completed for testId:", testId);
-    } catch (error) {
-        functions.logger.error("Error analyzing PDF:", error);
-        await resultDocRef.set({ 
-            status: "error", 
-            error: error.message,
-            errorDetails: error.stack,
-            errorAt: new Date()
-        }, { merge: true });
-    }
+// =====================================================
+// 3️⃣ 시험지 PDF 분석 함수 (제거됨)
+// =====================================================
+/*
+export const analyzeTestPdf = onObjectFinalized({ region }, async (event) => {
+  // AI 분석 기능이 제거되었습니다.
 });
+*/
 
-// ========== 숙제 채점 및 분석 통합 함수 ==========
-exports.gradeAndAnalyzeHomework = onCall({ 
-    region: region,
-    secrets: ["GEMINI_API_KEY"]
-}, async (request) => {
-    if (!request.auth) {
-        throw new functions.https.HttpsError('unauthenticated', '인증되지 않은 사용자입니다.');
-    }
-    const { homeworkId, studentId } = request.data;
-    if (!homeworkId || !studentId) {
-        throw new functions.https.HttpsError('invalid-argument', 'homeworkId와 studentId가 필요합니다.');
-    }
-
-    const submissionRef = db.doc(`homeworks/${homeworkId}/submissions/${studentId}`);
-    const submissionDoc = await submissionRef.get();
-    if (!submissionDoc.exists) {
-        throw new functions.https.HttpsError('not-found', '해당 학생의 제출물을 찾을 수 없습니다.');
-    }
-    const submissionData = submissionDoc.data();
-    const imageUrls = submissionData.imageUrls;
-    if (!imageUrls || imageUrls.length === 0) {
-        throw new functions.https.HttpsError('not-found', '채점할 이미지가 없습니다.');
-    }
-
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-        throw new functions.https.HttpsError('internal', '서버에 API 키가 설정되지 않았습니다.');
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
-
-    const prompt = `
-        당신은 수학 자동 채점 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하고 다음 규칙에 따라 채점하세요.
-
-        - 정답('O'): 문제 번호 또는 문제 전체에 붉은색 원형 표시가 있으면 정답입니다.
-        - 오답('X'): 문제에 선(슬래시, X 등), 세모, 별 등 원형이 아닌 다른 표시가 있으면 오답입니다.
-        - 오답('X'): 아무런 채점 표시가 없는 문제도 오답으로 처리합니다.
-
-        결과는 반드시 문제 번호를 키로, 값은 "O" 또는 "X" 중 하나인 JSON 객체로만 출력해주세요. 다른 설명은 절대 추가하지 마세요.
-    `.trim();
-
-    let allResults = {};
-    for (const url of imageUrls) {
-        try {
-            const path = new URL(url).pathname;
-            const filePath = decodeURIComponent(path.substring(path.indexOf('/o/') + 3).split('?')[0]);
-            
-            const file = storage.bucket().file(filePath);
-            const [fileBuffer] = await file.download();
-            
-            const filePart = { inlineData: { data: fileBuffer.toString('base64'), mimeType: 'image/jpeg' } };
-            const result = await model.generateContent([prompt, filePart]);
-            const responseText = result.response.text();
-            
-            let pageResult;
-            try {
-                const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/);
-                if (jsonMatch && jsonMatch[1]) {
-                    pageResult = JSON.parse(jsonMatch[1].trim());
-                } else {
-                    const cleanedResponse = responseText.replace(/```/g, "").trim();
-                    pageResult = JSON.parse(cleanedResponse);
-                }
-                Object.assign(allResults, pageResult);
-            } catch (error) {
-                functions.logger.error(`JSON parsing failed for URL: ${url}`, error, "Response:", responseText);
-                continue;
-            }
-        } catch (error) {
-            functions.logger.error(`Image processing failed for URL: ${url}`, error);
-        }
-    }
-    
-    const homeworkRef = db.doc(`homeworks/${homeworkId}`);
-    const studentAnalysisRef = db.doc(`students/${studentId}/homeworkAnalysis/${homeworkId}`);
-    
-    try {
-        await db.runTransaction(async (transaction) => {
-            const homeworkDoc = await transaction.get(homeworkRef);
-            if (!homeworkDoc.exists) {
-                throw new Error("숙제 문서를 찾을 수 없습니다.");
-            }
-            const analysisData = homeworkDoc.data().analysis || {};
-
-            const oldStudentResultDoc = await transaction.get(studentAnalysisRef);
-            if (oldStudentResultDoc.exists) {
-                const oldResults = oldStudentResultDoc.data().results;
-                for (const qNum in oldResults) {
-                    if (oldResults[qNum] === 'X' && analysisData[qNum]) {
-                        analysisData[qNum] = Math.max(0, analysisData[qNum] - 1);
-                        if(analysisData[qNum] === 0) delete analysisData[qNum];
-                    }
-                }
-            }
-            
-            for (const qNum in allResults) {
-                if (allResults[qNum] === 'X') {
-                    analysisData[qNum] = (analysisData[qNum] || 0) + 1;
-                }
-            }
-
-            transaction.set(studentAnalysisRef, {
-                studentName: submissionData.studentName,
-                results: allResults,
-                analyzedAt: FieldValue.serverTimestamp()
-            });
-            transaction.update(homeworkRef, { analysis: analysisData });
-        });
-        
-        functions.logger.log(`Grading completed: homeworkId=${homeworkId}, studentId=${studentId}`);
-        return { success: true, message: "채점 및 분석이 완료되었습니다.", results: allResults };
-    } catch (error) {
-        functions.logger.error("Database update failed:", error);
-        throw new functions.https.HttpsError('internal', '결과를 데이터베이스에 저장하는 데 실패했습니다.');
-    }
+// =====================================================
+// 4️⃣ 숙제 이미지 채점 함수 (제거됨)
+// =====================================================
+/*
+export const gradeHomeworkImage = onObjectFinalized({ region }, async (event) => {
+  // AI 분석 기능이 제거되었습니다.
 });
+*/
 
+// =====================================================
+// 5️⃣ 사용자 역할 설정 함수들
+// =====================================================
+export const setCustomUserRole = onCall({ region }, async (req) => {
+  const { email, role } = req.data;
+  const caller = req.auth;
 
-// ========== 사용자 역할 설정 함수들 ==========
-exports.setCustomUserRole = onCall({ region: region, memory: "128MiB" }, async (request) => {
-  const data = request.data;
-  const authContext = request.auth;
-
-  if (authContext.token.role !== 'admin') {
-    functions.logger.warn(`Unauthorized user (${authContext.uid}) attempted role assignment.`);
-    throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
+  if (!caller?.token?.role || caller.token.role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "관리자 권한이 필요합니다.");
   }
-
-  const email = data.email;
-  const role = data.role;
-
   if (!email || !role) {
-    throw new functions.https.HttpsError('invalid-argument', '이메일과 역할이 필요합니다.');
-  }
-  if (!['admin', 'teacher', 'student'].includes(role)) {
-     throw new functions.https.HttpsError('invalid-argument', '유효하지 않은 역할입니다.');
+    throw new functions.https.HttpsError("invalid-argument", "이메일과 역할이 필요합니다.");
   }
 
   try {
     const user = await auth.getUserByEmail(email);
-    await auth.setCustomUserClaims(user.uid, { role: role });
-    
-    functions.logger.log(`Success: ${authContext.uid} assigned '${role}' to ${user.uid} (${email}).`);
-    return { message: `성공: ${email} 님에게 '${role}' 역할을 부여했습니다.` };
-  } catch (error) {
-    functions.logger.error("Role assignment failed:", error);
-    throw new functions.https.HttpsError('internal', '사용자 역할을 설정하는 데 실패했습니다.');
+    await auth.setCustomUserClaims(user.uid, { role });
+    return { message: `${email} → '${role}' 역할 부여 완료` };
+  } catch (err) {
+    functions.logger.error("❌ 역할 설정 실패:", err);
+    throw new functions.https.HttpsError("internal", err.message);
   }
 });
 
-exports.setCustomUserRoleByUid = onCall({ region: region, memory: "128MiB" }, async (request) => {
-    const data = request.data;
-    const authContext = request.auth;
+export const setCustomUserRoleByUid = onCall({ region }, async (req) => {
+  const { uid, role } = req.data;
+  const caller = req.auth;
 
-    if (authContext.token.role !== 'admin') {
-        throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
-    }
+  if (!caller?.token?.role || caller.token.role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "관리자 권한이 필요합니다.");
+  }
+  if (!uid || !role) {
+    throw new functions.https.HttpsError("invalid-argument", "UID와 역할이 필요합니다.");
+  }
 
-    const { uid, role } = data;
-
-    if (!uid || !role) {
-        throw new functions.https.HttpsError('invalid-argument', 'UID와 역할이 필요합니다.');
-    }
-
-    try {
-        await auth.setCustomUserClaims(uid, { role: role });
-        functions.logger.log(`Success: ${authContext.uid} assigned '${role}' to ${uid}.`);
-        return { message: `성공: UID ${uid}에게 '${role}' 역할을 부여했습니다.` };
-    } catch (error) {
-        functions.logger.error("Role assignment by UID failed:", error);
-        throw new functions.https.HttpsError('internal', 'UID로 사용자 역할을 설정하는 데 실패했습니다.');
-    }
+  try {
+    await auth.setCustomUserClaims(uid, { role });
+    return { message: `UID ${uid} → '${role}' 역할 부여 완료` };
+  } catch (err) {
+    functions.logger.error("❌ UID 역할 설정 실패:", err);
+    throw new functions.https.HttpsError("internal", err.message);
+  }
 });

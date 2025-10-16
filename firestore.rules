@@ -11,7 +11,6 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.role == 'teacher';
     }
     function isStudent(userId) {
-        // 학생은 별도 role 없이, 자신의 ID와 일치하는 데이터에만 접근
         return request.auth != null && request.auth.uid == userId;
     }
     function isAuthenticated() {
@@ -19,8 +18,6 @@ service cloud.firestore {
     }
 
     // --- Collection Rules ---
-
-    // 관리자, 교사, 학생 정보
     match /admins/{adminId} {
         allow read, write: if isAuthenticated();
     }
@@ -31,25 +28,22 @@ service cloud.firestore {
     
     match /students/{studentId} {
         allow read, write: if isAuthenticated();
-        // [수정] 학생별 숙제 분석 결과에 대한 규칙
-        match /homeworkAnalysis/{homeworkId} {
-          allow read, write: if isAuthenticated();
-        }
     }
 
-    // 수업 관련 데이터
     match /classes/{classId} {
       allow read, write: if isAuthenticated();
     }
     
     match /subjects/{subjectId} {
       allow read, write: if isAuthenticated();
+      
       match /textbooks/{textbookId} {
         allow read, write: if isAuthenticated();
       }
       
       match /lessons/{lessonId} {
         allow read, write: if isAuthenticated();
+        
         match /submissions/{studentId} {
           allow read: if isAuthenticated();
           allow create, update: if isAuthenticated();
@@ -58,12 +52,10 @@ service cloud.firestore {
       }
     }
     
-    // 숙제 및 AI 분석 결과
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
-      // [수정] analysis 필드 업데이트는 인증된 사용자(교사/관리자)만 가능하도록 함
       allow create, update: if isAuthenticated();
-      allow write: if isAuthenticated(); // 이전 규칙 유지
+      allow write: if isAuthenticated();
       
       match /submissions/{studentId} {
         allow read, write: if isAuthenticated();
@@ -72,9 +64,6 @@ service cloud.firestore {
     }
     
     match /testAnalysisResults/{docId} {
-        allow read, write: if isAuthenticated();
-    }
-    match /homeworkGradingResults/{docId} {
         allow read, write: if isAuthenticated();
     }
   }

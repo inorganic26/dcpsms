@@ -12,15 +12,15 @@ import { studentHomework } from './studentHomework.js';
 const StudentApp = {
     isInitialized: false,
     elements: {},
-    state: { 
-        studentId: null, studentName: '', classId: null, 
-        activeSubjects: [], selectedSubject: null, activeLesson: null, 
-        currentQuestionIndex: 0, score: 0, quizQuestions: [], 
+    state: {
+        studentId: null, studentName: '', classId: null,
+        activeSubjects: [], selectedSubject: null, activeLesson: null,
+        currentQuestionIndex: 0, score: 0, quizQuestions: [],
         passScore: 4, totalQuizQuestions: 5,
         currentHomeworkId: null, filesToUpload: [], isEditingHomework: false,
         initialImageUrls: [],
         // 보충 영상 순서를 기억하기 위한 변수 추가
-        currentRevVideoIndex: 0, 
+        currentRevVideoIndex: 0,
     },
 
     init() {
@@ -33,7 +33,7 @@ const StudentApp = {
         studentHomework.init(this);
 
         this.addEventListeners();
-        
+
         studentAuth.showLoginScreen();
     },
 
@@ -41,17 +41,16 @@ const StudentApp = {
         this.elements = {
             loadingScreen: document.getElementById('student-loading-screen'),
             loginScreen: document.getElementById('student-login-screen'),
-            // ▼▼▼ [수정] phoneInput을 classSelect와 nameInput으로 변경 ▼▼▼
             classSelect: document.getElementById('student-class-select'),
-            nameInput: document.getElementById('student-name'),
+            nameSelect: document.getElementById('student-name-select'), // nameInput -> nameSelect로 변경
             passwordInput: document.getElementById('student-password'),
             loginBtn: document.getElementById('student-login-btn'),
-            
+
             subjectSelectionScreen: document.getElementById('student-subject-selection-screen'),
             welcomeMessage: document.getElementById('student-welcome-message'),
             subjectsList: document.getElementById('student-subjects-list'),
             gotoHomeworkBtn: document.getElementById('student-goto-homework-btn'),
-            
+
             lessonSelectionScreen: document.getElementById('student-lesson-selection-screen'),
             selectedSubjectTitle: document.getElementById('student-selected-subject-title'),
             lessonsList: document.getElementById('student-lessons-list'),
@@ -61,7 +60,7 @@ const StudentApp = {
             homeworkScreen: document.getElementById('student-homework-screen'),
             homeworkList: document.getElementById('student-homework-list'),
             backToSubjectsFromHomeworkBtn: document.getElementById('student-back-to-subjects-from-homework-btn'),
-            
+
             uploadModal: document.getElementById('student-upload-modal'),
             uploadModalTitle: document.getElementById('student-upload-modal-title'),
             closeUploadModalBtn: document.getElementById('student-close-upload-modal-btn'),
@@ -78,14 +77,14 @@ const StudentApp = {
             gotoRev1Btn: document.getElementById('student-goto-rev1-btn'),
             startQuizBtn: document.getElementById('student-start-quiz-btn'),
             backToLessonsFromVideoBtn: document.getElementById('student-back-to-lessons-from-video-btn'),
-            
+
             quizScreen: document.getElementById('student-quiz-screen'),
             progressText: document.getElementById('student-progress-text'),
             scoreText: document.getElementById('student-score-text'),
             progressBar: document.getElementById('student-progress-bar'),
             questionText: document.getElementById('student-question-text'),
             optionsContainer: document.getElementById('student-options-container'),
-            
+
             resultScreen: document.getElementById('student-result-screen'),
             successMessage: document.getElementById('student-success-message'),
             failureMessage: document.getElementById('student-failure-message'),
@@ -110,9 +109,9 @@ const StudentApp = {
     showScreen(screenElement) {
         this.stopAllVideos();
         const screens = [
-            this.elements.loadingScreen, this.elements.loginScreen, 
-            this.elements.subjectSelectionScreen, this.elements.lessonSelectionScreen, 
-            this.elements.video1Screen, this.elements.quizScreen, 
+            this.elements.loadingScreen, this.elements.loginScreen,
+            this.elements.subjectSelectionScreen, this.elements.lessonSelectionScreen,
+            this.elements.video1Screen, this.elements.quizScreen,
             this.elements.resultScreen, this.elements.homeworkScreen
         ];
         screens.forEach(s => { if(s) s.style.display = 'none' });
@@ -121,7 +120,7 @@ const StudentApp = {
 
     stopAllVideos() {
         [this.elements.video1Iframe, this.elements.video2Iframe, this.elements.reviewVideo2Iframe].forEach(iframe => {
-            if (iframe && iframe.src) { 
+            if (iframe && iframe.src) {
                 const tempSrc = iframe.src;
                 iframe.src = "";
                 iframe.src = tempSrc;
@@ -137,6 +136,16 @@ const StudentApp = {
         } else {
             this.state.activeSubjects.forEach(subject => this.renderSubjectChoice(subject));
         }
+
+        // --- ▼▼▼ 여기가 수정된 핵심 부분입니다 ▼▼▼ ---
+        // 학생이 반에 배정된 경우에만 '숙제 제출' 버튼을 보여줍니다.
+        if (this.state.classId) {
+            this.elements.gotoHomeworkBtn.style.display = 'block';
+        } else {
+            this.elements.gotoHomeworkBtn.style.display = 'none';
+        }
+        // --- ▲▲▲ 여기까지가 수정된 핵심 부분입니다 ▲▲▲ ---
+
         this.showScreen(this.elements.subjectSelectionScreen);
     },
 
@@ -155,26 +164,26 @@ const StudentApp = {
         }
         try {
             const classDoc = await getDoc(doc(db, 'classes', this.state.classId));
-            if (!classDoc.exists() || !classDoc.data().subjects) { 
-                this.state.activeSubjects = []; 
-                return; 
+            if (!classDoc.exists() || !classDoc.data().subjects) {
+                this.state.activeSubjects = [];
+                return;
             }
             const subjectIds = Object.keys(classDoc.data().subjects);
             const subjectDocs = await Promise.all(subjectIds.map(id => getDoc(doc(db, 'subjects', id))));
             this.state.activeSubjects = subjectDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() }));
-        } catch (error) { 
+        } catch (error) {
             console.error("수강 과목 로딩 실패:", error);
-            this.state.activeSubjects = []; 
+            this.state.activeSubjects = [];
         }
     },
 
     async listenForAvailableLessons() {
         this.elements.lessonsList.innerHTML = '';
         this.elements.noLessonScreen.style.display = 'none';
-        
+
         const q = query(collection(db, 'subjects', this.state.selectedSubject.id, 'lessons'), where("isActive", "==", true));
         const lessonsSnapshot = await getDocs(q);
-        
+
         const activeLessons = lessonsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         if (activeLessons.length === 0) {
             this.elements.noLessonScreen.style.display = 'block';
@@ -195,9 +204,9 @@ const StudentApp = {
         const button = document.createElement('button');
         button.className = "w-full p-4 text-lg font-semibold text-slate-700 border-2 border-slate-200 rounded-lg hover:bg-slate-100 transition";
         button.textContent = subject.name;
-        button.addEventListener('click', () => { 
-            this.state.selectedSubject = subject; 
-            this.showLessonSelectionScreen(); 
+        button.addEventListener('click', () => {
+            this.state.selectedSubject = subject;
+            this.showLessonSelectionScreen();
         });
         this.elements.subjectsList.appendChild(button);
     },

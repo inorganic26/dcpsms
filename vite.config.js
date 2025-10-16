@@ -13,10 +13,16 @@ export default defineConfig({
         teacher: resolve(__dirname, 'src/teacher/index.html'),
         student: resolve(__dirname, 'src/student/index.html'),
       },
+      output: {
+        // 여기부터 추가된 부분입니다.
+        entryFileNames: `assets/[name].js`,
+        chunkFileNames: `assets/[name].js`,
+        assetFileNames: `assets/[name].[ext]`
+        // 여기까지 추가된 부분입니다.
+      }
     },
   },
 
-  // ✅ Netlify용 redirects 자동 복사 플러그인
   plugins: [
     {
       name: 'copy-redirects-plugin',

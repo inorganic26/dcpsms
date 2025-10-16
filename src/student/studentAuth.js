@@ -13,12 +13,12 @@ export const studentAuth = {
         this.app.elements.loginBtn?.addEventListener('click', () => this.handleLogin());
         
         // 엔터 키로 로그인 시도
-        this.app.elements.nameInput?.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') this.handleLogin();
-        });
         this.app.elements.passwordInput?.addEventListener('keyup', (e) => {
             if (e.key === 'Enter') this.handleLogin();
         });
+
+        // 반 선택 시 학생 이름 목록 채우기
+        this.app.elements.classSelect?.addEventListener('change', (e) => this.populateStudentNameSelect(e.target.value));
     },
 
     // 로그인 화면에 반 목록을 채워넣는 함수
@@ -40,6 +40,31 @@ export const studentAuth = {
         }
     },
 
+    async populateStudentNameSelect(classId) {
+        const nameSelect = this.app.elements.nameSelect;
+        if (!nameSelect) return;
+        nameSelect.innerHTML = '<option value="">-- 이름을 선택하세요 --</option>';
+        nameSelect.disabled = true;
+
+        if (!classId) return;
+
+        try {
+            const q = query(collection(db, 'students'), where("classId", "==", classId));
+            const snapshot = await getDocs(q);
+            snapshot.forEach(doc => {
+                const option = document.createElement('option');
+                option.value = doc.data().name;
+                option.textContent = doc.data().name;
+                nameSelect.appendChild(option);
+            });
+            nameSelect.disabled = false;
+        } catch (error) {
+            console.error("Error fetching students:", error);
+            showToast("학생 목록을 불러오는 데 실패했습니다.");
+        }
+    },
+
+
     // 로그인 화면을 바로 표시합니다.
     showLoginScreen() {
         this.populateClassSelect(); // 반 목록을 불러옵니다.
@@ -48,9 +73,9 @@ export const studentAuth = {
 
     // 로그인 버튼 클릭 시 인증을 처리합니다.
     async handleLogin() {
-        const { classSelect, nameInput, passwordInput } = this.app.elements;
+        const { classSelect, nameSelect, passwordInput } = this.app.elements;
         const classId = classSelect.value;
-        const name = nameInput.value.trim();
+        const name = nameSelect.value;
         const password = passwordInput.value.trim();
 
         if (!classId || !name || !password) { 
