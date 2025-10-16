@@ -41,9 +41,8 @@ const StudentApp = {
         this.elements = {
             loadingScreen: document.getElementById('student-loading-screen'),
             loginScreen: document.getElementById('student-login-screen'),
-            // ▼▼▼ [수정] phoneInput을 classSelect와 nameInput으로 변경 ▼▼▼
             classSelect: document.getElementById('student-class-select'),
-            nameInput: document.getElementById('student-name'),
+            nameSelect: document.getElementById('student-name-select'), // nameInput -> nameSelect로 변경
             passwordInput: document.getElementById('student-password'),
             loginBtn: document.getElementById('student-login-btn'),
             
