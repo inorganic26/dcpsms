@@ -50,17 +50,17 @@ export const analysisDashboard = {
         
         if (this.analysisUnsubscribe) this.analysisUnsubscribe();
 
-        const testId = `test_${this.app.state.selectedClassId}_${Date.now()}`;
+        const testId = \`test_\${this.app.state.selectedClassId}_\${Date.now()}\`;
         this.currentTestId = testId;
         this.pdfAnalysisResult = null;
 
-        const storageRef = ref(storage, `test-analysis/${testId}/${file.name}`);
+        const storageRef = ref(storage, \`test-analysis/\${testId}/\${file.name}\`);
         
-        this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>PDF 업로드 중...</span></div>`;
+        this.elements.pdfAnalysisStatus.innerHTML = \`<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>PDF 업로드 중...</span></div>\`;
         
         try {
             await uploadBytes(storageRef, file);
-            this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>✅ PDF 업로드 완료! AI 분석 요청 중입니다.</span></div>`;
+            this.elements.pdfAnalysisStatus.innerHTML = \`<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>✅ PDF 업로드 완료! AI 분석 요청 중입니다.</span></div>\`;
             showToast("PDF 업로드 성공! AI 분석이 시작되었습니다.", false);
             this.listenForPdfAnalysisResult(testId);
         } catch (error) {
@@ -74,10 +74,19 @@ export const analysisDashboard = {
         
         if (this.analysisUnsubscribe) this.analysisUnsubscribe();
 
+        const TIMEOUT_DURATION_MS = 180000; // 3분 타임아웃
+        const timeoutId = setTimeout(() => {
+            this.elements.pdfAnalysisStatus.innerHTML = \`<span class="text-red-600">❌ 분석 시간 초과(3분). PDF 파일이 너무 크거나 복잡할 수 있습니다. 다시 시도해 주세요.</span>\`;
+            if (this.analysisUnsubscribe) {
+                this.analysisUnsubscribe(); 
+                this.analysisUnsubscribe = null;
+            }
+        }, TIMEOUT_DURATION_MS);
+
         if (!document.getElementById('loader-style')) {
              const style = document.createElement('style');
              style.id = 'loader-style';
-             style.textContent = `.loader-small { border: 2px solid rgba(0, 0, 0, 0.1); border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+             style.textContent = \`.loader-small { border: 2px solid rgba(0, 0, 0, 0.1); border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; } @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }\`;
              document.head.appendChild(style);
         }
 
@@ -85,23 +94,40 @@ export const analysisDashboard = {
             if (docSnap.exists()) {
                 const result = docSnap.data();
                 if (result.status === 'processing') {
-                    this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-orange-600"><div class="loader-small" style="border-top-color: #f97316;"></div><span>AI가 시험지를 분석 중입니다... (최대 5분 소요)</span></div>`;
+                    this.elements.pdfAnalysisStatus.innerHTML = \`<div class="flex items-center gap-2 text-orange-600"><div class="loader-small" style="border-top-color: #f97316;"></div><span>AI가 시험지를 분석 중입니다... (최대 3분 소요)</span></div>\`;
                 } else if (result.status === 'completed') {
-                    this.pdfAnalysisResult = result.analysis;
-                    const qCount = Object.keys(result.analysis).length;
-                    this.elements.pdfAnalysisStatus.innerHTML = `<span class="text-green-600">✅ AI 분석 완료! ${qCount}개 문항 분석됨.</span>`;
-                    showToast("시험지 AI 분석이 완료되었습니다!", false);
-                    this.renderStudentListForTest();
-                    this.analysisUnsubscribe();
+                    clearTimeout(timeoutId);
+
+                    // ✅✅✅ 오류 수정: result.analysis가 존재하는지 확인하는 안전장치 추가 ✅✅✅
+                    if (result.analysis && typeof result.analysis === 'object') {
+                        this.pdfAnalysisResult = result.analysis;
+                        const qCount = Object.keys(result.analysis).length;
+                        this.elements.pdfAnalysisStatus.innerHTML = \`<span class="text-green-600">✅ AI 분석 완료! \${qCount}개 문항 분석됨.</span>\`;
+                        showToast("시험지 AI 분석이 완료되었습니다!", false);
+                        this.renderStudentListForTest();
+                    } else {
+                        // analysis 필드가 없거나 형식이 잘못된 경우
+                        this.elements.pdfAnalysisStatus.innerHTML = \`<span class="text-red-600">❌ 분석 결과 처리 오류. AI 응답 형식이 잘못되었습니다.</span>\`;
+                        showToast("AI 분석은 완료되었으나 결과 형식이 올바르지 않습니다.");
+                    }
+
+                    if (this.analysisUnsubscribe) { 
+                        this.analysisUnsubscribe();
+                        this.analysisUnsubscribe = null;
+                    }
                 } else if (result.status === 'error') {
+                    clearTimeout(timeoutId); 
                     const errorMessage = result.error || '알 수 없는 오류';
-                    this.elements.pdfAnalysisStatus.innerHTML = `<span class="text-red-600">❌ AI 분석 실패: ${errorMessage}</span>`;
-                    this.analysisUnsubscribe();
+                    this.elements.pdfAnalysisStatus.innerHTML = \`<span class="text-red-600">❌ AI 분석 실패: \${errorMessage}</span>\`;
+                    if (this.analysisUnsubscribe) { 
+                        this.analysisUnsubscribe();
+                        this.analysisUnsubscribe = null;
+                    }
                 }
             } else if (testId === this.currentTestId) {
-                 this.elements.pdfAnalysisStatus.innerHTML = `<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>AI 분석 요청 중...</span></div>`;
+                 this.elements.pdfAnalysisStatus.innerHTML = \`<div class="flex items-center gap-2 text-blue-600"><div class="loader-small"></div><span>AI 분석 요청 중...</span></div>\`;
             } else {
-                 this.elements.pdfAnalysisStatus.innerHTML = `<p class="text-xs text-slate-500 mt-1">AI가 분석할 시험지 PDF를 업로드하세요.</p>`;
+                 this.elements.pdfAnalysisStatus.innerHTML = \`<p class="text-xs text-slate-500 mt-1">AI가 분석할 시험지 PDF를 업로드하세요.</p>\`;
             }
         });
     },
@@ -123,7 +149,7 @@ export const analysisDashboard = {
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
                 this.studentData = XLSX.utils.sheet_to_json(worksheet);
-                showToast(`성공적으로 ${this.studentData.length}명의 학생 성적을 불러왔습니다.`, false);
+                showToast(\`성공적으로 \${this.studentData.length}명의 학생 성적을 불러왔습니다.\`, false);
                 this.renderStudentListForTest();
             } catch (error) {
                 console.error("XLSX 파일 처리 오류:", error);
@@ -163,7 +189,7 @@ export const analysisDashboard = {
         const studentResult = this.studentData.find(row => row[nameKey] === studentName);
 
         if (!studentResult) {
-            showToast(`성적 파일에서 '${studentName}' 학생 정보를 찾을 수 없습니다.`);
+            showToast(\`성적 파일에서 '\${studentName}' 학생 정보를 찾을 수 없습니다.\`);
             return;
         }
 
@@ -182,13 +208,13 @@ export const analysisDashboard = {
             }
         });
 
-        this.elements.analysisHeader.innerHTML = `<h2 class="text-2xl font-bold text-slate-800">${studentName} 학생 오답 분석표 (총점: ${totalScore}점)</h2>`;
+        this.elements.analysisHeader.innerHTML = \`<h2 class="text-2xl font-bold text-slate-800">\${studentName} 학생 오답 분석표 (총점: \${totalScore}점)</h2>\`;
 
         let tableHtml;
         if (wrongAnswers.length === 0) {
-            tableHtml = `<div class="text-center py-10"><p class="text-lg text-green-600 font-semibold">🎉 모든 문제를 맞혔습니다! 🎉</p></div>`;
+            tableHtml = \`<div class="text-center py-10"><p class="text-lg text-green-600 font-semibold">🎉 모든 문제를 맞혔습니다! 🎉</p></div>\`;
         } else {
-            tableHtml = `<div class="overflow-x-auto relative shadow-md sm:rounded-lg">
+            tableHtml = \`<div class="overflow-x-auto relative shadow-md sm:rounded-lg">
                            <table class="w-full text-sm text-left text-gray-500">
                              <thead class="text-xs text-gray-700 uppercase bg-gray-50">
                                <tr>
@@ -198,18 +224,18 @@ export const analysisDashboard = {
                                  <th scope="col" class="px-6 py-3">오답 대응 방안</th>
                                </tr>
                              </thead>
-                             <tbody>`;
+                             <tbody>\`;
             
             wrongAnswers.forEach(item => {
-                tableHtml += `<tr class="bg-red-50 border-b hover:bg-slate-100">
-                                <th scope="row" class="py-4 px-6 font-medium text-gray-900">${item.qNum}번</th>
-                                <td class="py-4 px-6">${item.metadata['단원명'] || 'N/A'}</td>
-                                <td class="py-4 px-6">${item.metadata['난이도'] || 'N/A'}</td>
-                                <td class="py-4 px-6 text-sm">${item.metadata['오답대응방안'] || 'N/A'}</td>
-                              </tr>`;
+                tableHtml += \`<tr class="bg-red-50 border-b hover:bg-slate-100">
+                                <th scope="row" class="py-4 px-6 font-medium text-gray-900">\${item.qNum}번</th>
+                                <td class="py-4 px-6">\${item.metadata['단원명'] || 'N/A'}</td>
+                                <td class="py-4 px-6">\${item.metadata['난이도'] || 'N/A'}</td>
+                                <td class="py-4 px-6 text-sm">\${item.metadata['오답대응방안'] || 'N/A'}</td>
+                              </tr>\`;
             });
 
-            tableHtml += `</tbody></table></div>`;
+            tableHtml += \`</tbody></table></div>\`;
         }
 
         this.elements.analysisMain.innerHTML = tableHtml;
@@ -238,17 +264,17 @@ export const analysisDashboard = {
         
         this.app.state.studentsInClass.forEach((name, id) => {
             const studentCard = document.createElement('div');
-            studentCard.className = `p-3 border rounded-lg cursor-pointer bg-white transition shadow-sm text-center ${isReady ? 'hover:bg-blue-50 hover:border-blue-300' : 'opacity-50 cursor-not-allowed'}`;
+            studentCard.className = \`p-3 border rounded-lg cursor-pointer bg-white transition shadow-sm text-center \${isReady ? 'hover:bg-blue-50 hover:border-blue-300' : 'opacity-50 cursor-not-allowed'}\`;
             
             let statusText = '';
             if (!isDataLoaded) statusText = '성적 파일 필요';
             else if (!isAnalysisCompleted) statusText = 'AI 분석 필요';
             else statusText = '리포트 보기';
             
-            studentCard.innerHTML = `
-                <h3 class="font-semibold text-slate-800 text-sm">${name}</h3>
-                <p class="text-xs ${isReady ? 'text-blue-500' : 'text-slate-400'}">${statusText}</p>
-            `;
+            studentCard.innerHTML = \`
+                <h3 class="font-semibold text-slate-800 text-sm">\${name}</h3>
+                <p class="text-xs \${isReady ? 'text-blue-500' : 'text-slate-400'}">\${statusText}</p>
+            \`;
             if (isReady) {
                 studentCard.addEventListener('click', () => this.showTestAnalysisReport(name));
             } else {
