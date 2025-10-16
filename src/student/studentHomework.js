@@ -18,10 +18,22 @@ export const studentHomework = {
         this.app.elements.uploadBtn?.addEventListener('click', () => this.handleUpload());
     },
 
-    // 숙제 목록 화면 표시 (최적화됨)
+    // 숙제 목록 화면 표시
     async showHomeworkScreen() {
         this.app.showScreen(this.app.elements.loadingScreen);
-        const homeworksQuery = query(collection(db, 'homeworks'), where('classId', '==', this.app.state.classId), orderBy('dueDate', 'desc'));
+        
+        // classId가 없으면 빈 화면 표시
+        if (!this.app.state.classId) {
+            this.app.elements.homeworkList.innerHTML = '<p class="text-center text-slate-500 py-8">배정된 반이 없어 숙제를 확인할 수 없습니다.</p>';
+            this.app.showScreen(this.app.elements.homeworkScreen);
+            return;
+        }
+
+        const homeworksQuery = query(
+            collection(db, 'homeworks'), 
+            where('classId', '==', this.app.state.classId), 
+            orderBy('dueDate', 'desc')
+        );
         
         try {
             const homeworkSnapshot = await getDocs(homeworksQuery);
@@ -29,7 +41,11 @@ export const studentHomework = {
             
             const twoWeeksAgo = new Date();
             twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-            const recentHomeworks = homeworks.filter(hw => (hw.dueDate && new Date(hw.dueDate) >= twoWeeksAgo));
+            const recentHomeworks = homeworks.filter(hw => {
+                if (!hw.dueDate) return true; // 기한 없는 숙제는 항상 표시
+                const dueDate = new Date(hw.dueDate);
+                return dueDate >= twoWeeksAgo;
+            });
 
             this.app.elements.homeworkList.innerHTML = '';
             if (recentHomeworks.length === 0) {
@@ -49,7 +65,11 @@ export const studentHomework = {
             }
         } catch (error) {
             console.error("숙제 로딩 실패:", error);
-            this.app.elements.homeworkList.innerHTML = `<div class="text-center text-red-500 py-8"><p>숙제 목록을 불러오는 데 실패했습니다.</p><p class="text-sm text-slate-500 mt-2">관리자에게 문의하거나 잠시 후 다시 시도해주세요.</p></div>`;
+            this.app.elements.homeworkList.innerHTML = `
+                <div class="text-center text-red-500 py-8">
+                    <p>숙제 목록을 불러오는 데 실패했습니다.</p>
+                    <p class="text-sm text-slate-500 mt-2">관리자에게 문의하거나 잠시 후 다시 시도해주세요.</p>
+                </div>`;
         }
         this.app.showScreen(this.app.elements.homeworkScreen);
     },
@@ -59,7 +79,7 @@ export const studentHomework = {
         const item = document.createElement('div');
         const isSubmitted = !!submissionData;
         const submittedPages = submissionData?.imageUrls?.length || 0;
-        const totalPages = hw.pages;
+        const totalPages = hw.pages || 0;
         const isComplete = totalPages > 0 && submittedPages >= totalPages;
 
         item.className = `p-4 border rounded-lg flex items-center justify-between ${isComplete ? 'bg-green-50 border-green-200' : 'bg-white'}`;
@@ -68,9 +88,9 @@ export const studentHomework = {
         const statusHtml = isSubmitted 
             ? `<div class="flex items-center gap-2">
                  <span class="text-sm font-semibold ${isComplete ? 'text-green-700' : 'text-yellow-600'}">${isComplete ? '제출 완료' : '제출 중'} ${pagesInfo}</span>
-                 <button class="edit-homework-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">수정하기</button>
+                 <button class="edit-homework-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg hover:bg-yellow-600 transition">수정하기</button>
                </div>`
-            : `<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg">숙제 올리기</button>`;
+            : `<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg hover:bg-blue-700 transition">숙제 올리기</button>`;
         
         const displayDate = hw.dueDate || '기한없음';
         const titlePages = totalPages ? `(${totalPages}p)` : '';
@@ -79,7 +99,7 @@ export const studentHomework = {
                 <p class="text-xs text-slate-500">기한: ${displayDate}</p>
                 <h3 class="font-bold text-slate-800">${hw.textbookName} ${titlePages}</h3>
             </div>
-            <div data-id="${hw.id}" data-textbook="${hw.textbookName}" data-pages="${totalPages || 0}">${statusHtml}</div>`;
+            <div data-id="${hw.id}" data-textbook="${hw.textbookName}" data-pages="${totalPages}">${statusHtml}</div>`;
         this.app.elements.homeworkList.appendChild(item);
 
         item.querySelector('.upload-homework-btn')?.addEventListener('click', (e) => {
@@ -101,29 +121,34 @@ export const studentHomework = {
         state.filesToUpload = [];
         state.initialImageUrls = [];
 
-        const homeworkDocRef = doc(db, 'homeworks', homeworkId);
-        const homeworkDoc = await getDoc(homeworkDocRef);
-        const totalPages = homeworkDoc.data()?.pages || 0;
-        state.currentHomeworkPages = totalPages;
+        try {
+            const homeworkDocRef = doc(db, 'homeworks', homeworkId);
+            const homeworkDoc = await getDoc(homeworkDocRef);
+            const totalPages = homeworkDoc.data()?.pages || 0;
+            state.currentHomeworkPages = totalPages;
 
-        elements.uploadModalTitle.textContent = `[${textbookName}] 숙제 ${isEditing ? '수정' : '업로드'}`;
-        this.updateUploadButtonText(0);
-        elements.previewContainer.innerHTML = '';
-        elements.filesInput.value = '';
+            elements.uploadModalTitle.textContent = `[${textbookName}] 숙제 ${isEditing ? '수정' : '업로드'}`;
+            this.updateUploadButtonText(0);
+            elements.previewContainer.innerHTML = '';
+            elements.filesInput.value = '';
 
-        if (isEditing) {
-            const submissionDoc = await getDoc(doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.studentId));
-            if (submissionDoc.exists()) {
-                const existingUrls = submissionDoc.data().imageUrls || [];
-                state.initialImageUrls = existingUrls;
-                state.filesToUpload = existingUrls.map(url => ({ type: 'existing', url }));
+            if (isEditing) {
+                const submissionDoc = await getDoc(doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.studentId));
+                if (submissionDoc.exists()) {
+                    const existingUrls = submissionDoc.data().imageUrls || [];
+                    state.initialImageUrls = existingUrls;
+                    state.filesToUpload = existingUrls.map(url => ({ type: 'existing', url }));
+                    this.renderImagePreviews();
+                }
+            } else {
                 this.renderImagePreviews();
             }
-        } else {
-             this.renderImagePreviews();
-        }
 
-        elements.uploadModal.style.display = 'flex';
+            elements.uploadModal.style.display = 'flex';
+        } catch (error) {
+            console.error("모달 열기 실패:", error);
+            showToast("숙제 정보를 불러오는 데 실패했습니다.");
+        }
     },
 
     closeUploadModal() {
@@ -132,6 +157,7 @@ export const studentHomework = {
         state.isEditingHomework = false;
         state.filesToUpload = [];
         state.initialImageUrls = [];
+        state.currentHomeworkPages = 0;
         elements.uploadModal.style.display = 'none';
     },
 
@@ -140,6 +166,8 @@ export const studentHomework = {
         const newFiles = Array.from(event.target.files).map(file => ({ type: 'new', file }));
         this.app.state.filesToUpload.push(...newFiles);
         this.renderImagePreviews();
+        // input 초기화 (같은 파일 다시 선택 가능하도록)
+        event.target.value = '';
     },
 
     updateUploadButtonText(uploadedCount) {
@@ -157,12 +185,14 @@ export const studentHomework = {
             previewWrapper.className = 'relative';
             
             const img = document.createElement('img');
-            img.className = 'w-full h-24 object-cover rounded-md';
+            img.className = 'w-full h-24 object-cover rounded-md border border-slate-200';
 
             const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs';
-            deleteBtn.textContent = 'X';
-            deleteBtn.onclick = () => {
+            deleteBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition shadow-md';
+            deleteBtn.textContent = '×';
+            deleteBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 this.app.state.filesToUpload.splice(index, 1);
                 this.renderImagePreviews();
             };
@@ -196,7 +226,8 @@ export const studentHomework = {
 
         try {
             const uploadPromises = newFiles.map((file, i) => {
-                const filePath = `homeworks/${state.currentHomeworkId}/${state.studentId}/${Date.now()}_${i+1}_${file.name}`;
+                const timestamp = Date.now();
+                const filePath = `homeworks/${state.currentHomeworkId}/${state.studentId}/${timestamp}_${i+1}_${file.name}`;
                 const fileRef = ref(storage, filePath);
                 return uploadBytes(fileRef, file).then(snapshot => getDownloadURL(snapshot.ref));
             });
@@ -218,24 +249,28 @@ export const studentHomework = {
                 showToast("숙제를 성공적으로 제출했습니다.", false);
             }
 
+            // 수정 시 삭제된 이미지 파일 제거
             if (state.isEditingHomework) {
                 const urlsToDelete = state.initialImageUrls.filter(url => !finalImageUrls.includes(url));
                 if (urlsToDelete.length > 0) {
                     urlsToDelete.forEach(url => {
                         try {
-                            deleteObject(ref(storage, url));
+                            const fileRef = ref(storage, url);
+                            deleteObject(fileRef).catch(err => {
+                                console.error("파일 삭제 실패:", url, err);
+                            });
                         } catch (error) {
-                            console.error("삭제 실패한 파일:", url, error);
+                            console.error("파일 참조 생성 실패:", url, error);
                         }
                     });
                 }
             }
 
             this.closeUploadModal();
-            this.showHomeworkScreen();
+            await this.showHomeworkScreen();
         } catch (error) {
             console.error("업로드/수정 실패:", error);
-            showToast("숙제 처리에 실패했습니다.");
+            showToast("숙제 처리에 실패했습니다. 다시 시도해주세요.");
         } finally {
             this.setUploadButtonLoading(false);
         }
