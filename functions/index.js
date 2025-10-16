@@ -1,12 +1,14 @@
 // functions/index.js
-const functions = require("firebase-functions");
-const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { getStorage } = require("firebase-admin/storage");
-const { getAuth } = require("firebase-admin/auth");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { onObjectFinalized } = require("firebase-functions/v2/storage");
-const { onCall } = require("firebase-functions/v2/https");
+import { onObjectFinalized } from "firebase-functions/v2/storage";
+import { onCall } from "firebase-functions/v2/https";
+import * as functions from "firebase-functions";
+import { initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { getAuth } from "firebase-admin/auth";
+import dotenv from "dotenv";
+
+dotenv.config(); // ✅ .env 파일 자동 로드
 
 initializeApp();
 
@@ -15,249 +17,230 @@ const storage = getStorage();
 const auth = getAuth();
 const region = "asia-northeast3";
 
-// ========== 1. 시험지 PDF 분석 함수 ==========
-exports.analyzeTestPdf = onObjectFinalized({
-    region: region,
-    memory: "256MiB", // ✅ 요청하신대로 메모리를 256MB로 상향 조정
-}, async (event) => {
-    const object = event.data;
-    const filePath = object.name;
-    const contentType = object.contentType;
+// =====================================================
+// 1️⃣ Google Generative AI 클라이언트 생성 헬퍼
+// =====================================================
+function createGenerativeClient(apiKey) {
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY가 설정되지 않았습니다.");
+  }
 
-    if (!contentType.startsWith("application/pdf") || !filePath.startsWith("test-analysis/")) {
-        return functions.logger.log("Not a relevant PDF file.");
+  // ✅ @google/generative-ai 시도
+  try {
+    const pkg = require("@google/generative-ai");
+    if (pkg && typeof pkg.GoogleGenerativeAI === "function") {
+      return { client: new pkg.GoogleGenerativeAI(apiKey), lib: "@google/generative-ai" };
+    }
+  } catch (err) {
+    functions.logger.debug("Legacy SDK 불러오기 실패:", err.message);
+  }
+
+  // ✅ @google/genai 시도
+  try {
+    const genai = require("@google/genai");
+    if (genai && typeof genai.GenAIClient === "function") {
+      return { client: new genai.GenAIClient({ apiKey }), lib: "@google/genai" };
+    }
+  } catch (err) {
+    functions.logger.debug("New SDK 불러오기 실패:", err.message);
+  }
+
+  throw new Error(
+    "Google GenAI SDK를 찾을 수 없습니다. 'npm install @google/genai' 또는 '@google/generative-ai' 실행 후 다시 배포하세요."
+  );
+}
+
+// =====================================================
+// 2️⃣ Gemini API 키 로드 (dotenv 사용)
+// =====================================================
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+if (!GEMINI_API_KEY) {
+  functions.logger.error("❌ GEMINI_API_KEY 환경변수가 없습니다. .env 또는 CLI 환경변수 설정을 확인하세요.");
+}
+
+// =====================================================
+// 3️⃣ 시험지 PDF 분석 함수
+// =====================================================
+export const analyzeTestPdf = onObjectFinalized({ region }, async (event) => {
+  const object = event.data;
+  const filePath = object.name || "";
+  const contentType = object.contentType || "";
+
+  if (!contentType.startsWith("application/pdf") || !filePath.startsWith("test-analysis/")) {
+    functions.logger.log("Skip non-PDF file:", filePath);
+    return;
+  }
+
+  const testId = filePath.split("/")[1];
+  const resultDocRef = db.collection("testAnalysisResults").doc(testId);
+
+  await resultDocRef.set({ status: "processing", startedAt: new Date() }, { merge: true });
+
+  try {
+    const { client, lib } = createGenerativeClient(GEMINI_API_KEY);
+    functions.logger.log(`✅ Using ${lib} for PDF analysis`);
+
+    const modelName = "gemini-2.5-flash";
+    const prompt = `
+당신은 수학 시험지 분석 전문가입니다. PDF 시험지를 분석하고 각 문제 번호별로
+1) 단원명, 2) 난이도(쉬움/보통/어려움), 3) 오답대응방안(15자 이내)을 JSON 형식으로 정리하세요.
+`;
+
+    const fileUri = `gs://${object.bucket}/${filePath}`;
+    let rawResult;
+
+    if (typeof client.getGenerativeModel === "function") {
+      const model = client.getGenerativeModel({ model: modelName });
+      rawResult = await model.generateContent([
+        prompt,
+        { fileData: { mimeType: contentType, fileUri } },
+      ]);
+    } else if (typeof client.generateContent === "function") {
+      rawResult = await client.generateContent({
+        model: modelName,
+        input: [prompt, { fileData: { mimeType: contentType, fileUri } }],
+      });
+    } else {
+      throw new Error("GenAI 클라이언트에서 generateContent를 찾을 수 없습니다.");
     }
 
-    const testId = filePath.split("/")[1];
-    const resultDocRef = db.collection("testAnalysisResults").doc(testId);
+    const text =
+      rawResult?.response?.text?.() ||
+      rawResult?.text ||
+      JSON.stringify(rawResult);
 
-    // .env 파일에서 API 키를 가져오도록 수정 (최신 권장 방식)
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-        functions.logger.error("Cannot analyze PDF: GEMINI_API_KEY is missing from .env file.");
-        await resultDocRef.set({
-            status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
-            errorAt: new Date()
-        }, { merge: true });
-        return;
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 
-    try {
-        await resultDocRef.set({ status: "processing", timestamp: new Date() }, { merge: true });
+    await resultDocRef.set({
+      status: "completed",
+      analysis,
+      completedAt: new Date(),
+    }, { merge: true });
 
-        // 모델 이름을 "gemini-2.5-flash"로 설정
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-        const prompt = `
-당신은 수학 시험지 분석 전문가입니다. 제공된 PDF 수학 시험지를 분석하세요.
-각 문제 번호에 대해 다음 세 가지 정보를 JSON 형식으로 제공하세요.
-1. "단원명": 해당 문제의 구체적인 수학 단원명 또는 핵심 개념 (예: '삼각함수', '미분계수의 정의')
-2. "난이도": [쉬움, 보통, 어려움] 중 하나로 분류
-3. "오답대응방안": 틀린 학생을 위한 **핵심만 요약된, 15자 내외의 구체적이고 간결한 조언** (예: '미분계수 공식 반복 숙달').
-출력은 문제 번호를 키로 하는 하나의 JSON 객체여야 합니다 (예: "1", "2", "3").
-        `.trim();
-
-        const fileUri = \`gs://${object.bucket}/${filePath}\`;
-        functions.logger.log("Analyzing file via URI:", fileUri);
-
-        const filePart = {
-            fileData: {
-                mimeType: contentType,
-                fileUri: fileUri
-            }
-        };
-
-        const result = await model.generateContent([ prompt, filePart ]);
-        const responseText = result.response.text();
-        functions.logger.log("Raw response:", responseText);
-
-        let analysisData;
-        try {
-            const jsonMatch = responseText.match(/\\\`\\\`\\\`json\n([\s\S]*?)\n\\\`\\\`\\\`/);
-            let jsonContent;
-
-            if (jsonMatch && jsonMatch[1]) {
-                jsonContent = jsonMatch[1].trim();
-            } else {
-                const cleanedResponse = responseText.replace(/```json/g, "").replace(/```/g, "").replace(/AI 분석 요약:/i, "").trim();
-                const startIndex = cleanedResponse.indexOf('{');
-                const endIndex = cleanedResponse.lastIndexOf('}');
-
-                if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-                    jsonContent = cleanedResponse.substring(startIndex, endIndex + 1);
-                } else {
-                    jsonContent = cleanedResponse;
-                }
-            }
-            analysisData = JSON.parse(jsonContent);
-        } catch (parseError) {
-            const errorMsg = \`JSON parsing failed: \${parseError.message}. Response: \${responseText.substring(0, 100)}...\`;
-            throw new Error(errorMsg);
-        }
-
-        await resultDocRef.set({
-            status: "completed",
-            analysis: analysisData,
-            completedAt: new Date()
-        }, { merge: true });
-
-        functions.logger.log("Analysis completed for testId:", testId);
-    } catch (error) {
-        functions.logger.error("Error analyzing PDF:", error);
-        await resultDocRef.set({
-            status: "error",
-            error: error.message,
-            errorDetails: error.stack,
-            errorAt: new Date()
-        }, { merge: true });
-    }
+    functions.logger.log(`✅ 시험지 분석 완료: ${testId}`);
+  } catch (err) {
+    functions.logger.error("❌ 시험지 분석 오류:", err);
+    await resultDocRef.set({
+      status: "error",
+      error: err.message,
+      errorAt: new Date(),
+    }, { merge: true });
+  }
 });
 
-// ========== 2. 숙제 이미지 채점 함수 ==========
-exports.gradeHomeworkImage = onObjectFinalized({
-    region: region,
-    memory: "256MiB", // ✅ 메모리 256MB로 상향 조정
-}, async (event) => {
-    const object = event.data;
-    const filePath = object.name;
-    const contentType = object.contentType;
+// =====================================================
+// 4️⃣ 숙제 이미지 채점 함수
+// =====================================================
+export const gradeHomeworkImage = onObjectFinalized({ region }, async (event) => {
+  const object = event.data;
+  const filePath = object.name || "";
+  const contentType = object.contentType || "";
 
-    if (!contentType.startsWith("image/") || !filePath.startsWith("homework-grading/")) {
-        return functions.logger.log("Not a relevant image file.");
+  if (!contentType.startsWith("image/") || !filePath.startsWith("homework-grading/")) {
+    functions.logger.log("Skip non-image:", filePath);
+    return;
+  }
+
+  const [_, homeworkId, fileName] = filePath.split("/");
+  const studentName = fileName?.split("_")[2] || "unknown";
+  const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
+
+  await resultDocRef.set({ status: "processing", startedAt: new Date() }, { merge: true });
+
+  try {
+    const { client, lib } = createGenerativeClient(GEMINI_API_KEY);
+    functions.logger.log(`✅ Using ${lib} for image grading`);
+
+    const modelName = "gemini-1.5-flash";
+    const prompt = `
+당신은 자동 채점 시스템입니다. 수학 풀이 이미지에서 각 문제의 정답 여부를 분석하세요.
+- 동그라미(O): 정답
+- 엑스(X)/삼각형(△)/슬래시(/): 오답
+- 표시 없음: 안풀음
+JSON 형식으로 {"1": "정답", "2": "오답", ...} 형태로 출력하세요.
+`;
+
+    const fileUri = `gs://${object.bucket}/${filePath}`;
+    let rawResult;
+
+    if (typeof client.getGenerativeModel === "function") {
+      const model = client.getGenerativeModel({ model: modelName });
+      rawResult = await model.generateContent([prompt, { fileData: { mimeType: contentType, fileUri } }]);
+    } else if (typeof client.generateContent === "function") {
+      rawResult = await client.generateContent({
+        model: modelName,
+        input: [prompt, { fileData: { mimeType: contentType, fileUri } }],
+      });
+    } else {
+      throw new Error("GenAI 클라이언트에서 generateContent를 찾을 수 없습니다.");
     }
-    
-    const parts = filePath.split("/");
-    const homeworkId = parts[1];
-    const fileName = parts[2];
-    const nameParts = fileName.split("_");
-    const studentName = nameParts[2];
-    const resultDocRef = db.collection("homeworkGradingResults").doc(homeworkId);
 
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY) {
-        functions.logger.error("Cannot grade image: GEMINI_API_KEY is missing");
-        await resultDocRef.set({
-            status: "error",
-            error: "서버에 API 키가 설정되지 않았습니다. 관리자에게 문의하세요.",
-            errorAt: new Date()
-        }, { merge: true });
-        return;
-    }
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const text =
+      rawResult?.response?.text?.() ||
+      rawResult?.text ||
+      JSON.stringify(rawResult);
 
-    try {
-        await resultDocRef.set({ 
-            status: "processing",
-            timestamp: new Date()
-        }, { merge: true });
-        
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const grading = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
 
-        const prompt = \`
-당신은 자동 채점 보조 시스템입니다. 제공된 수학 문제 풀이 이미지를 분석하세요.
-각 문제 번호를 확인하고 정답인지, 오답인지, 풀지 않았는지 판단하세요.
+    await resultDocRef.set({
+      status: "completed",
+      [`results.${studentName}.${fileName}`]: grading,
+      completedAt: new Date(),
+    }, { merge: true });
 
-- 번호 주위에 동그라미(O)가 있으면 정답
-- 엑스(X), 슬래시(/), 삼각형(△)이 있으면 오답
-- 표시가 없으면 안풂
-
-문제 번호를 키로, 값은 "정답", "오답", "안풂" 중 하나인 JSON 객체로 출력하세요.
-        \`.trim();
-        
-        const fileUri = \`gs://\${object.bucket}/\${filePath}\`;
-        functions.logger.log("Grading file via URI:", fileUri);
-        
-        const filePart = { 
-            fileData: {
-                mimeType: contentType,
-                fileUri: fileUri
-            }
-        };
-
-        const result = await model.generateContent([ prompt, filePart ]);
-        const responseText = result.response.text()
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
-        
-        functions.logger.log("Raw grading response:", responseText);
-        
-        const gradingData = JSON.parse(responseText);
-
-        const studentUpdateData = {};
-        studentUpdateData[\`results.\${studentName}.\${fileName}\`] = gradingData;
-        studentUpdateData.lastUpdatedAt = new Date();
-
-        await resultDocRef.set(studentUpdateData, { merge: true });
-        
-        functions.logger.log("Grading completed for:", homeworkId, studentName, fileName);
-        
-    } catch (error) {
-        functions.logger.error("Error grading image:", error);
-        await resultDocRef.set({ 
-            status: "error", 
-            error: error.message,
-            errorDetails: error.stack,
-            errorAt: new Date()
-        }, { merge: true });
-    }
+    functions.logger.log(`✅ 채점 완료: ${homeworkId}/${studentName}`);
+  } catch (err) {
+    functions.logger.error("❌ 채점 오류:", err);
+    await resultDocRef.set({
+      status: "error",
+      error: err.message,
+      errorAt: new Date(),
+    }, { merge: true });
+  }
 });
 
+// =====================================================
+// 5️⃣ 사용자 역할 설정 함수들
+// =====================================================
+export const setCustomUserRole = onCall({ region }, async (req) => {
+  const { email, role } = req.data;
+  const caller = req.auth;
 
-// ========== 사용자 역할 설정 함수들 ==========
-exports.setCustomUserRole = onCall({ region: region, memory: "256MiB" }, async (request) => { // ✅ 메모리 256MB로 상향 조정
-    const data = request.data;
-    const authContext = request.auth;
+  if (!caller?.token?.role || caller.token.role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "관리자 권한이 필요합니다.");
+  }
+  if (!email || !role) {
+    throw new functions.https.HttpsError("invalid-argument", "이메일과 역할이 필요합니다.");
+  }
 
-    if (authContext.token.role !== 'admin') {
-        functions.logger.warn(\`Unauthorized user (\${authContext.uid}) attempted role assignment.\`);
-        throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
-    }
-
-    const email = data.email;
-    const role = data.role;
-
-    if (!email || !role) {
-        throw new functions.https.HttpsError('invalid-argument', '이메일과 역할이 필요합니다.');
-    }
-    if (!['admin', 'teacher', 'student'].includes(role)) {
-        throw new functions.https.HttpsError('invalid-argument', '유효하지 않은 역할입니다.');
-    }
-
-    try {
-        const user = await auth.getUserByEmail(email);
-        await auth.setCustomUserClaims(user.uid, { role: role });
-
-        functions.logger.log(\`Success: \${authContext.uid} assigned '\${role}' to \${user.uid} (\${email}).\`);
-        return { message: \`성공: \${email} 님에게 '\${role}' 역할을 부여했습니다.\` };
-    } catch (error) {
-        functions.logger.error("Role assignment failed:", error);
-        throw new functions.https.HttpsError('internal', '사용자 역할을 설정하는 데 실패했습니다.');
-    }
+  try {
+    const user = await auth.getUserByEmail(email);
+    await auth.setCustomUserClaims(user.uid, { role });
+    return { message: `${email} → '${role}' 역할 부여 완료` };
+  } catch (err) {
+    functions.logger.error("❌ 역할 설정 실패:", err);
+    throw new functions.https.HttpsError("internal", err.message);
+  }
 });
 
-exports.setCustomUserRoleByUid = onCall({ region: region, memory: "256MiB" }, async (request) => { // ✅ 메모리 256MB로 상향 조정
-    const data = request.data;
-    const authContext = request.auth;
+export const setCustomUserRoleByUid = onCall({ region }, async (req) => {
+  const { uid, role } = req.data;
+  const caller = req.auth;
 
-    if (authContext.token.role !== 'admin') {
-        throw new functions.https.HttpsError('permission-denied', '이 작업을 수행하려면 관리자 권한이 필요합니다.');
-    }
+  if (!caller?.token?.role || caller.token.role !== "admin") {
+    throw new functions.https.HttpsError("permission-denied", "관리자 권한이 필요합니다.");
+  }
+  if (!uid || !role) {
+    throw new functions.https.HttpsError("invalid-argument", "UID와 역할이 필요합니다.");
+  }
 
-    const { uid, role } = data;
-
-    if (!uid || !role) {
-        throw new functions.https.HttpsError('invalid-argument', 'UID와 역할이 필요합니다.');
-    }
-
-    try {
-        await auth.setCustomUserClaims(uid, { role: role });
-        functions.logger.log(\`Success: \${authContext.uid} assigned '\${role}' to \${uid}.\`);
-        return { message: \`성공: UID \${uid}에게 '\${role}' 역할을 부여했습니다.\` };
-    } catch (error) {
-        functions.logger.error("Role assignment by UID failed:", error);
-        throw new functions.https.HttpsError('internal', 'UID로 사용자 역할을 설정하는 데 실패했습니다.');
-    }
+  try {
+    await auth.setCustomUserClaims(uid, { role });
+    return { message: `UID ${uid} → '${role}' 역할 부여 완료` };
+  } catch (err) {
+    functions.logger.error("❌ UID 역할 설정 실패:", err);
+    throw new functions.https.HttpsError("internal", err.message);
+  }
 });
