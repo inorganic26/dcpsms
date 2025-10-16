@@ -8,7 +8,7 @@ import { lessonDashboard } from './lessonDashboard.js';
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js';
-import { analysisDashboard } from './analysisDashboard.js';
+// import { analysisDashboard } from './analysisDashboard.js'; // AI 대시보드 import 제거
 
 const TeacherApp = {
     isInitialized: false,
@@ -92,14 +92,14 @@ const TeacherApp = {
         this.homeworkDashboard = homeworkDashboard;
         this.lessonManager = lessonManager;
         this.classEditor = classEditor;
-        this.analysisDashboard = analysisDashboard;
+        // this.analysisDashboard = analysisDashboard; // AI 대시보드 속성 제거
 
         // 초기화
         this.lessonDashboard.init(this);
         this.homeworkDashboard.init(this);
         this.lessonManager.init(this);
         this.classEditor.init(this);
-        this.analysisDashboard.init(this);
+        // this.analysisDashboard.init(this); // AI 대시보드 초기화 제거
 
         this.addEventListeners();
         this.populateClassSelect();
@@ -139,7 +139,7 @@ const TeacherApp = {
             views: {
                 'lesson-dashboard': document.getElementById('view-lesson-dashboard'),
                 'homework-dashboard': document.getElementById('view-homework-dashboard'),
-                'analysis-dashboard': document.getElementById('view-analysis-dashboard'),
+                // 'analysis-dashboard': document.getElementById('view-analysis-dashboard'), // AI 뷰 제거
                 'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
                 'class-mgmt': document.getElementById('view-class-mgmt'),
             },
@@ -225,9 +225,8 @@ const TeacherApp = {
             this.homeworkDashboard.populateHomeworkSelect();
         } else if (viewName === 'lesson-mgmt') {
              this.populateSubjectSelectForMgmt();
-        } else if (viewName === 'analysis-dashboard') {
-            this.analysisDashboard.renderStudentLists();
-        }
+        } 
+        // AI 대시보드 관련 로직 제거
     },
 
     async handleClassSelection(event) {

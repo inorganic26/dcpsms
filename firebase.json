@@ -35,15 +35,15 @@
     "rewrites": [
       {
         "source": "/admin/**",
-        "destination": "/admin/index.html"
+        "destination": "/src/admin/index.html"
       },
       {
         "source": "/teacher/**",
-        "destination": "/teacher/index.html"
+        "destination": "/src/teacher/index.html"
       },
       {
         "source": "/student/**",
-        "destination": "/student/index.html"
+        "destination": "/src/student/index.html"
       },
       {
         "source": "**",
