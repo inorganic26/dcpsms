@@ -39,17 +39,17 @@ export const studentHomework = {
             const homeworkSnapshot = await getDocs(homeworksQuery);
             const homeworks = homeworkSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
             
-            const twoWeeksAgo = new Date();
-            twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1); // 한 달 전으로 설정
             const recentHomeworks = homeworks.filter(hw => {
                 if (!hw.dueDate) return true; // 기한 없는 숙제는 항상 표시
                 const dueDate = new Date(hw.dueDate);
-                return dueDate >= twoWeeksAgo;
+                return dueDate >= oneMonthAgo;
             });
 
             this.app.elements.homeworkList.innerHTML = '';
             if (recentHomeworks.length === 0) {
-                this.app.elements.homeworkList.innerHTML = '<p class="text-center text-slate-500 py-8">최근 2주 내에 출제된 숙제가 없습니다.</p>';
+                this.app.elements.homeworkList.innerHTML = '<p class="text-center text-slate-500 py-8">최근 1개월 내에 출제된 숙제가 없습니다.</p>';
             } else {
                 // 각 숙제에 대한 학생의 제출 정보를 병렬로 조회
                 const submissionPromises = recentHomeworks.map(hw => 
