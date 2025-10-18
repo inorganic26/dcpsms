@@ -1,6 +1,7 @@
 // src/teacher/teacherApp.js
 
-import { doc, getDoc, getDocs, collection, query, where, onSnapshot, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"; // ✅ addDoc, serverTimestamp 추가
+// FIX: orderBy를 import 목록에 추가하여 ReferenceError 해결
+import { doc, getDoc, getDocs, collection, query, where, onSnapshot, updateDoc, addDoc, serverTimestamp, orderBy } from "firebase/firestore"; 
 import { db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
@@ -8,7 +9,7 @@ import { lessonDashboard } from './lessonDashboard.js';
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js';
-import { classVideoManager } from './classVideoManager.js'; // ✅ 신규 모듈 import
+import { classVideoManager } from './classVideoManager.js'; 
 
 const TeacherApp = {
     isInitialized: false,
@@ -16,11 +17,11 @@ const TeacherApp = {
     state: {
         selectedClassId: null,
         selectedClassName: null,
-        selectedClassData: null, // ✅ 여기에 classType 포함될 예정
+        selectedClassData: null, 
         studentsInClass: new Map(),
         subjects: [],
-        selectedSubjectId: null, // 학습 현황용 (이제 사용 안 함)
-        selectedLessonId: null, // 학습 현황용 (이제 사용 안 함)
+        selectedSubjectId: null, 
+        selectedLessonId: null, 
         selectedHomeworkId: null,
         selectedSubjectIdForMgmt: null,
         lessons: [],
@@ -32,77 +33,73 @@ const TeacherApp = {
     init() {
         this.cacheElements();
 
-        // 기존 로그인 로직 유지
+        // 로그인 로직 (이름/비밀번호 사용)
         this.elements.loginBtn?.addEventListener('click', () => {
-             // ✅ 실제 로그인 로직에서는 Firebase Auth 사용 권장
-             // 현재는 teacherAuth.js가 없으므로 임시로 하드코딩된 이름/비번 로직 사용
-             const email = this.elements.emailInput?.value; // ✅ emailInput 사용 (teacherAuth.js 미사용 시 가정)
+             const name = this.elements.nameInput?.value; // ✅ 수정: nameInput 사용
              const password = this.elements.passwordInput?.value;
-             this.handleLogin(email, password); // ✅ email 전달하도록 수정
+             this.handleLogin(name, password); // ✅ 수정: 이름(name) 전달
         });
 
         this.elements.passwordInput?.addEventListener('keyup', (e) => {
              if (e.key === 'Enter') {
-                 const email = this.elements.emailInput?.value; // ✅ emailInput 사용
+                 const name = this.elements.nameInput?.value; // ✅ 수정: nameInput 사용
                  const password = this.elements.passwordInput?.value;
-                 this.handleLogin(email, password); // ✅ email 전달하도록 수정
+                 this.handleLogin(name, password); // ✅ 수정: 이름(name) 전달
              }
         });
 
-        // ✅ 교사 로그인 로직 변경 (Firebase Auth 미사용 가정)
-        // ensureAuthWithRole(['teacher', 'admin'], (user) => {
-        //     this.showDashboard(user);
-        // });
         if (this.elements.loginContainer) this.elements.loginContainer.style.display = 'flex';
         if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'none';
     },
 
-    // ✅ 로그인 핸들러 수정 (Firebase Auth 미사용 시 이름/비번 기반으로 변경)
-    async handleLogin(email, password) {
-        if (!email || !password) {
-            showToast("이메일과 비밀번호를 모두 입력해주세요."); // 이름 -> 이메일로 변경
+    // ✅ 로그인 핸들러: 이름(name)과 비밀번호로 조회하도록 수정
+    async handleLogin(name, password) {
+        if (!name || !password) {
+            showToast("이름과 비밀번호를 모두 입력해주세요."); // ✅ 메시지 수정
             return;
         }
 
         try {
-            // Firestore 'teachers' 컬렉션에서 이메일과 비밀번호로 사용자 조회
-            const q = query(collection(db, 'teachers'), where("email", "==", email), where("password", "==", password));
+            // Firestore 'teachers' 컬렉션에서 이름과 비밀번호로 사용자 조회
+            const q = query(collection(db, 'teachers'), where("name", "==", name), where("password", "==", password)); // ✅ 수정: "email" -> "name"
             const querySnapshot = await getDocs(q);
 
             if (!querySnapshot.empty) {
                 const userDoc = querySnapshot.docs[0];
                 const userData = userDoc.data();
                 showToast(`환영합니다, ${userData.name} 선생님!`, false);
-                this.showDashboard(userDoc.id, userData); // 사용자 ID와 데이터 전달
+                this.showDashboard(userDoc.id, userData); 
             } else {
-                 // 관리자 계정도 확인 (임시 방편)
-                 const adminQ = query(collection(db, 'admins'), where("email", "==", email), where("password", "==", password));
+                 // 관리자 계정
+                 const adminQ = query(collection(db, 'admins'), where("name", "==", name), where("password", "==", password)); // ✅ 수정: "email" -> "name"
                  const adminSnapshot = await getDocs(adminQ);
                  if(!adminSnapshot.empty) {
                      const adminDoc = adminSnapshot.docs[0];
                      const adminData = adminDoc.data();
                      showToast(`환영합니다, ${adminData.name} 관리자님!`, false);
-                     this.showDashboard(adminDoc.id, adminData); // 관리자 ID와 데이터 전달
+                     this.showDashboard(adminDoc.id, adminData); 
                  } else {
-                    showToast("이메일 또는 비밀번호가 일치하지 않습니다.");
+                    showToast("이름 또는 비밀번호가 일치하지 않습니다."); // ✅ 메시지 수정
                  }
             }
         } catch (error) {
             console.error("Login error:", error);
-            showToast("로그인 중 오류가 발생했습니다. 다시 시도해주세요.");
+            if (error.code === 'permission-denied') {
+                 showToast("로그인 정보 조회 권한이 부족합니다. (Firebase 규칙 확인 필요)");
+            } else {
+                showToast("로그인 중 오류가 발생했습니다. 다시 시도해주세요.");
+            }
         }
     },
 
 
-    // ✅ showDashboard 인자 수정: user -> userId, userData
     showDashboard(userId, userData) {
         if (this.elements.loginContainer) this.elements.loginContainer.style.display = 'none';
         if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'block';
 
-        this.initializeDashboard(); // 대시보드 초기화
+        this.initializeDashboard(); 
 
-         // ✅ 초기 비밀번호 변경 로직 (teacherAuth.js 미사용 시 가정)
-         if (userData.isInitialPassword === true && userData.role !== 'admin') { // 관리자는 제외
+         if (userData.isInitialPassword === true && userData.role !== 'admin') { 
              this.promptPasswordChange(userId);
          }
     },
@@ -114,28 +111,27 @@ const TeacherApp = {
         this.homeworkDashboard = homeworkDashboard;
         this.lessonManager = lessonManager;
         this.classEditor = classEditor;
-        this.classVideoManager = classVideoManager; // ✅ 신규 모듈 초기화
+        this.classVideoManager = classVideoManager; 
 
         this.homeworkDashboard.init(this);
         this.lessonManager.init(this);
         this.classEditor.init(this);
-        this.classVideoManager.init(this); // ✅ 신규 모듈 초기화
+        this.classVideoManager.init(this); 
 
         this.addEventListeners();
         this.populateClassSelect();
         this.listenForSubjects();
-        this.showDashboardMenu(); // 메뉴 먼저 표시
+        this.showDashboardMenu(); 
     },
 
-     // ✅ 비밀번호 변경 로직 추가 (teacherAuth.js 미사용 시 가정)
+     // 비밀번호 변경 로직 (기존 유지)
      async promptPasswordChange(teacherId) {
          const newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
          if (newPassword && newPassword.length >= 6) {
              try {
                  const teacherRef = doc(db, 'teachers', teacherId);
-                 // ❗ 보안 주의: 실제 운영 환경에서는 비밀번호 해싱 필요 (Cloud Function 등 사용)
                  await updateDoc(teacherRef, {
-                     password: newPassword, // 임시로 평문 저장 (보안 취약!)
+                     password: newPassword,
                      isInitialPassword: false
                  });
                  showToast("비밀번호가 성공적으로 변경되었습니다.", false);
@@ -154,7 +150,7 @@ const TeacherApp = {
         this.elements = {
             loginContainer: document.getElementById('teacher-login-container'),
             dashboardContainer: document.getElementById('teacher-dashboard-container'),
-            emailInput: document.getElementById('teacher-email'), // ✅ nameInput -> emailInput
+            nameInput: document.getElementById('teacher-name'), // ✅ 수정: nameInput 사용
             passwordInput: document.getElementById('teacher-password'),
             loginBtn: document.getElementById('teacher-login-btn'),
             classSelect: document.getElementById('teacher-class-select'),
@@ -162,10 +158,10 @@ const TeacherApp = {
             navButtonsContainer: document.getElementById('teacher-navigation-buttons'),
             views: {
                 'homework-dashboard': document.getElementById('view-homework-dashboard'),
-                'qna-video-mgmt': document.getElementById('view-qna-video-mgmt'), // 기존 질문 영상
+                'qna-video-mgmt': document.getElementById('view-qna-video-mgmt'), 
                 'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
                 'class-mgmt': document.getElementById('view-class-mgmt'),
-                'class-video-mgmt': document.getElementById('view-class-video-mgmt'), // ✅ 신규 수업 영상 뷰
+                'class-video-mgmt': document.getElementById('view-class-video-mgmt'), 
             },
             // 숙제 현황 요소 (기존 유지)
             homeworkDashboardControls: document.getElementById('homework-dashboard-controls'),
@@ -187,7 +183,7 @@ const TeacherApp = {
             homeworkPagesInput: document.getElementById('teacher-homework-pages'),
             homeworkDueDateInput: document.getElementById('teacher-homework-due-date'),
 
-            // 학습 관리 요소 (기존 유지, ID 접두사 확인 필요)
+            // 학습 관리 요소 (기존 유지)
             lessonMgmtControls: document.getElementById('lesson-mgmt-controls'),
             subjectSelectForMgmt: document.getElementById('teacher-subject-select-mgmt'),
             lessonsManagementContent: document.getElementById('teacher-lessons-management-content'),
@@ -195,10 +191,8 @@ const TeacherApp = {
             lessonsList: document.getElementById('teacher-lessons-list'),
             saveOrderBtn: document.getElementById('teacher-save-lesson-order-btn'),
             showNewLessonModalBtn: document.getElementById('teacher-show-new-lesson-modal-btn'),
-            modal: document.getElementById('teacher-new-lesson-modal'), // 학습 세트 모달
+            modal: document.getElementById('teacher-new-lesson-modal'), 
             modalTitle: document.getElementById('teacher-lesson-modal-title'),
-            closeModalBtn: document.getElementById('teacher-close-modal-btn'),
-            cancelBtn: document.getElementById('teacher-cancel-btn'),
             lessonTitle: document.getElementById('teacher-lesson-title'),
             video1Url: document.getElementById('teacher-video1-url'),
             video2Url: document.getElementById('teacher-video2-url'),
@@ -212,7 +206,7 @@ const TeacherApp = {
             saveLessonBtn: document.getElementById('teacher-save-lesson-btn'),
             saveBtnText: document.getElementById('teacher-save-btn-text'),
             saveLoader: document.getElementById('teacher-save-loader'),
-            videoRevUrlsContainer: (type) => `teacher-video${type}-rev-urls-container`, // 함수 형태로 유지
+            videoRevUrlsContainer: (type) => `teacher-video${type}-rev-urls-container`, 
 
             // 반 설정 요소 (기존 유지)
             editClassBtn: document.getElementById('teacher-edit-class-btn'),
@@ -222,7 +216,7 @@ const TeacherApp = {
             cancelEditClassBtn: document.getElementById('teacher-cancel-edit-class-btn'),
             saveClassEditBtn: document.getElementById('teacher-save-class-edit-btn'),
             editClassSubjectsContainer: document.getElementById('teacher-edit-class-subjects-and-textbooks'),
-            // ✅ 반 유형 select 요소 추가
+            // 반 유형 select 요소 추가
             editClassTypeSelect: document.getElementById('teacher-edit-class-type'),
 
             // 기존 질문 영상 요소 (qna 접두사 사용)
@@ -230,13 +224,16 @@ const TeacherApp = {
             qnaVideoTitleInput: document.getElementById('qna-video-title'),
             qnaVideoUrlInput: document.getElementById('qna-video-url'),
             saveQnaVideoBtn: document.getElementById('save-qna-video-btn'),
+            // ✅ 추가: 질문 영상을 표시할 컨테이너
+            qnaVideoListContainer: document.getElementById('qna-video-list-teacher-container'), // (index.html에 추가되어야 함)
+            qnaVideosList: document.getElementById('qna-videos-list-teacher'), // (index.html에 추가되어야 함)
 
-            // ✅ 신규 수업 영상 관리 요소 (class 접두사 사용)
+            // 신규 수업 영상 관리 요소 (class 접두사 사용)
             classVideoDateInput: document.getElementById('class-video-date'),
             classVideoListContainer: document.getElementById('class-video-list-container'),
             addClassVideoFieldBtn: document.getElementById('add-class-video-field-btn'),
             saveClassVideoBtn: document.getElementById('save-class-video-btn'),
-            // ✅ 수업 영상 관리 메뉴 버튼 ID 추가
+            // 수업 영상 관리 메뉴 버튼 ID 추가
             gotoClassVideoMgmtBtn: document.querySelector('[data-view="class-video-mgmt"]'),
 
         };
@@ -262,8 +259,9 @@ const TeacherApp = {
                  }
              });
          }
-         // ✅ 기존 질문 영상 저장 버튼 이벤트 리스너 추가 (qnaVideoManager 미사용 시)
-         this.elements.saveQnaVideoBtn?.addEventListener('click', () => this.saveQnaVideo());
+         // 기존 질문 영상 저장 버튼 이벤트 리스너 추가 (qnaVideoManager 미사용 시)
+         this.elements.saveQnaVideoBtn?.addEventListener('click', () => this.saveQnaVideo().then(() => this.loadQnaVideosForTeacher())); // ✅ 저장 후 바로 조회
+         this.elements.qnaVideoDateInput?.addEventListener('change', () => this.loadQnaVideosForTeacher()); // ✅ 날짜 변경 시 조회
     },
 
     // 메인 메뉴(카드 그리드)를 보여주는 함수
@@ -276,7 +274,7 @@ const TeacherApp = {
             if (view) view.style.display = 'none';
         });
 
-         // ✅ 반 유형에 따라 '수업 영상 관리' 메뉴 표시/숨김
+         // 반 유형에 따라 '수업 영상 관리' 메뉴 표시/숨김
          if (this.elements.gotoClassVideoMgmtBtn) {
             const isLiveLecture = this.state.selectedClassData?.classType === 'live-lecture';
             this.elements.gotoClassVideoMgmtBtn.style.display = isLiveLecture ? 'flex' : 'none';
@@ -327,15 +325,17 @@ const TeacherApp = {
                  if(this.elements.subjectSelectForMgmt) {
                      this.elements.subjectSelectForMgmt.value = '';
                      this.elements.subjectSelectForMgmt.dispatchEvent(new Event('change'));
-                 }
+                }
                 break;
             case 'qna-video-mgmt':
-                 // 기존 질문 영상 로직 유지
-                 if(this.elements.qnaVideoDateInput) this.elements.qnaVideoDateInput.value = '';
+                 // ✅ 수정: 질문 영상 뷰 진입 시 오늘 날짜로 조회
+                 const today = new Date().toISOString().slice(0, 10);
+                 if(this.elements.qnaVideoDateInput) this.elements.qnaVideoDateInput.value = today;
+                 this.loadQnaVideosForTeacher(today); 
                  if(this.elements.qnaVideoTitleInput) this.elements.qnaVideoTitleInput.value = '';
                  if(this.elements.qnaVideoUrlInput) this.elements.qnaVideoUrlInput.value = '';
                 break;
-             // ✅ 신규 수업 영상 뷰 로직 추가
+             // 신규 수업 영상 뷰 로직 추가
              case 'class-video-mgmt':
                  this.classVideoManager.initView(); // 뷰 초기화 (날짜 설정 및 비디오 로드)
                  break;
@@ -408,7 +408,7 @@ const TeacherApp = {
         }
     },
 
-     // ✅ updateSubjectDropdowns 수정: 현재 활성화된 뷰에 따라 필요한 드롭다운만 업데이트
+     // updateSubjectDropdowns 수정: 현재 활성화된 뷰에 따라 필요한 드롭다운만 업데이트
     updateSubjectDropdowns() {
          let activeView = null;
          for (const viewName in this.elements.views) {
@@ -431,12 +431,13 @@ const TeacherApp = {
     },
 
 
+    // FIX: populateClassSelect에서 orderBy가 정의되도록 수정
     async populateClassSelect() {
         const select = this.elements.classSelect;
         if (!select) return;
         select.disabled = true;
         try {
-            const snapshot = await getDocs(query(collection(db, 'classes'), orderBy("name"))); // 이름순 정렬 추가
+            const snapshot = await getDocs(query(collection(db, 'classes'), orderBy("name"))); 
             select.innerHTML = '<option value="">-- 반을 선택하세요 --</option>';
             snapshot.forEach(doc => {
                 const option = document.createElement('option');
@@ -490,7 +491,7 @@ const TeacherApp = {
         select.disabled = this.state.subjects.length === 0;
     },
 
-     // ✅ 기존 질문 영상 저장 함수 추가 (qnaVideoManager 미사용 시)
+     // 기존 질문 영상 저장 함수
      async saveQnaVideo() {
          const videoDate = this.elements.qnaVideoDateInput?.value;
          const title = this.elements.qnaVideoTitleInput?.value.trim();
@@ -523,10 +524,54 @@ const TeacherApp = {
              showToast("영상 저장에 실패했습니다.");
          }
      },
+     
+     // ✅ 추가된 기능: 선생님 앱에서 질문 영상 목록 조회
+     async loadQnaVideosForTeacher(selectedDate = this.elements.qnaVideoDateInput?.value) {
+         const listEl = document.getElementById('qna-videos-list-teacher'); // index.html에 이 ID를 가진 요소가 있다고 가정
+         if (!listEl || !this.state.selectedClassId || !selectedDate) {
+             if (listEl) listEl.innerHTML = '<p class="text-sm text-slate-500">반이나 날짜를 선택해주세요.</p>';
+             return;
+         }
+
+         listEl.innerHTML = '<div class="loader-small mx-auto"></div>';
+
+         try {
+             const q = query(
+                 collection(db, 'classVideos'),
+                 where('classId', '==', this.state.selectedClassId),
+                 where('videoDate', '==', selectedDate),
+                 orderBy('createdAt', 'desc')
+             );
+             const snapshot = await getDocs(q);
+             listEl.innerHTML = '';
+
+             if (snapshot.empty) {
+                 listEl.innerHTML = '<p class="text-sm text-slate-500">해당 날짜에 등록된 질문 영상이 없습니다.</p>';
+                 return;
+             }
+
+             snapshot.docs.forEach(doc => {
+                 const video = doc.data();
+                 const div = document.createElement('div');
+                 div.className = 'p-3 border rounded-lg flex justify-between items-center bg-white';
+                 div.innerHTML = `
+                     <div class="flex-grow">
+                         <p class="font-medium text-slate-700">${video.title}</p>
+                         <a href="${video.youtubeUrl}" target="_blank" class="text-xs text-blue-500 hover:underline truncate w-64 block">${video.youtubeUrl}</a>
+                     </div>
+                     `;
+                 listEl.appendChild(div);
+             });
+
+         } catch (error) {
+             console.error("질문 영상 조회 실패:", error);
+             listEl.innerHTML = '<p class="text-red-500">영상 목록을 불러오는 데 실패했습니다.</p>';
+         }
+     },
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    TeacherApp.init(); // Firebase Auth 사용 안 하므로 바로 init 호출
+    TeacherApp.init(); 
 });
 
 export default TeacherApp;

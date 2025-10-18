@@ -6,6 +6,8 @@ import { db, storage } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 export const studentHomework = {
+    unsubscribe: null,
+
     init(app) {
         this.app = app;
 
@@ -53,7 +55,8 @@ export const studentHomework = {
             } else {
                 // 각 숙제에 대한 학생의 제출 정보를 병렬로 조회
                 const submissionPromises = recentHomeworks.map(hw => 
-                    getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.studentId))
+                    // ✅ 수정: 학생의 익명 UID를 제출물 ID로 사용 (권한 문제 해결)
+                    getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.authUid))
                 );
                 const submissionSnapshots = await Promise.all(submissionPromises);
 
@@ -74,7 +77,7 @@ export const studentHomework = {
         this.app.showScreen(this.app.elements.homeworkScreen);
     },
 
-    // 개별 숙제 항목 렌더링
+    // 개별 숙제 항목 렌더링 (기존 유지)
     renderHomeworkItem(hw, submissionData) {
         const item = document.createElement('div');
         const isSubmitted = !!submissionData;
@@ -133,7 +136,8 @@ export const studentHomework = {
             elements.filesInput.value = '';
 
             if (isEditing) {
-                const submissionDoc = await getDoc(doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.studentId));
+                // ✅ 수정: 학생의 익명 UID를 제출물 ID로 사용
+                const submissionDoc = await getDoc(doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.authUid));
                 if (submissionDoc.exists()) {
                     const existingUrls = submissionDoc.data().imageUrls || [];
                     state.initialImageUrls = existingUrls;
@@ -161,7 +165,7 @@ export const studentHomework = {
         elements.uploadModal.style.display = 'none';
     },
 
-    // 업로드할 파일 선택 처리
+    // 업로드할 파일 선택 처리 (기존 유지)
     handleFileSelection(event) {
         const newFiles = Array.from(event.target.files).map(file => ({ type: 'new', file }));
         this.app.state.filesToUpload.push(...newFiles);
@@ -177,7 +181,7 @@ export const studentHomework = {
         uploadBtnText.textContent = `${uploadedCount} ${totalText} 페이지 업로드`;
     },
 
-    // 선택된 파일 미리보기 렌더링
+    // 선택된 파일 미리보기 렌더링 (기존 유지)
     renderImagePreviews() {
         this.app.elements.previewContainer.innerHTML = '';
         this.app.state.filesToUpload.forEach((fileObject, index) => {
@@ -215,30 +219,42 @@ export const studentHomework = {
     // 파일 업로드 및 DB 저장 처리
     async handleUpload() {
         const { state } = this.app;
-        if (state.filesToUpload.length === 0) { 
+        
+        // ✅ 수정된 로직: 수정 모드이고 파일이 0개인 경우, 오류 메시지 출력 없이 바로 저장 로직으로 진입합니다.
+        if (state.filesToUpload.length === 0 && !state.isEditingHomework) { 
             showToast("업로드할 파일을 한 개 이상 선택해주세요."); 
             return; 
         }
+        
         this.setUploadButtonLoading(true);
 
+        // 기존 URL과 새로 업로드할 파일을 분리
         const existingUrls = state.filesToUpload.filter(f => f.type === 'existing').map(f => f.url);
         const newFiles = state.filesToUpload.filter(f => f.type === 'new').map(f => f.file);
 
         try {
-            const uploadPromises = newFiles.map((file, i) => {
-                const timestamp = Date.now();
-                const filePath = `homeworks/${state.currentHomeworkId}/${state.studentId}/${timestamp}_${i+1}_${file.name}`;
-                const fileRef = ref(storage, filePath);
-                return uploadBytes(fileRef, file).then(snapshot => getDownloadURL(snapshot.ref));
-            });
-            const newImageUrls = await Promise.all(uploadPromises);
-            const finalImageUrls = [...existingUrls, ...newImageUrls];
+            let finalImageUrls = existingUrls;
+            
+            // 새로 업로드할 파일이 있는 경우에만 Storage 업로드 진행
+            if (newFiles.length > 0) {
+                 const uploadPromises = newFiles.map((file, i) => {
+                    const timestamp = Date.now();
+                    // ✅ 수정: 학생의 익명 UID를 Storage 경로에 사용 (Storage 권한 해결)
+                    const filePath = `homeworks/${state.currentHomeworkId}/${state.authUid}/${timestamp}_${i+1}_${file.name}`;
+                    const fileRef = ref(storage, filePath);
+                    return uploadBytes(fileRef, file).then(snapshot => getDownloadURL(snapshot.ref));
+                });
+                const newImageUrls = await Promise.all(uploadPromises);
+                finalImageUrls = [...existingUrls, ...newImageUrls];
+            }
+            // NOTE: finalImageUrls는 파일이 0개일 경우 빈 배열([])이 됩니다.
 
-            const submissionRef = doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.studentId);
+            // ✅ 수정: 학생의 익명 UID를 제출물 문서 ID로 사용 (Firestore 권한 해결)
+            const submissionRef = doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.authUid);
             const dataToSave = {
                 studentName: state.studentName,
                 submittedAt: serverTimestamp(),
-                imageUrls: finalImageUrls
+                imageUrls: finalImageUrls // 파일이 0개여도 빈 배열이 저장되어 제출 기록은 유지됨
             };
             
             if (state.isEditingHomework) {
@@ -249,13 +265,14 @@ export const studentHomework = {
                 showToast("숙제를 성공적으로 제출했습니다.", false);
             }
 
-            // 수정 시 삭제된 이미지 파일 제거
+            // 수정 시 삭제된 이미지 파일 제거 (기존 유지)
             if (state.isEditingHomework) {
                 const urlsToDelete = state.initialImageUrls.filter(url => !finalImageUrls.includes(url));
                 if (urlsToDelete.length > 0) {
                     urlsToDelete.forEach(url => {
                         try {
                             const fileRef = ref(storage, url);
+                            // 파일을 삭제하는 것은 비동기적으로 처리하며 실패해도 전체 로직은 진행합니다.
                             deleteObject(fileRef).catch(err => {
                                 console.error("파일 삭제 실패:", url, err);
                             });
