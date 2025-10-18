@@ -10,9 +10,9 @@ export const classManager = {
 
         // 반 관리 관련 이벤트 리스너 설정
         this.app.elements.addClassBtn.addEventListener('click', () => this.addNewClass());
-        this.app.elements.closeEditClassModalBtn.addEventListener('click', () => this.closeEditClassModal());
-        this.app.elements.cancelEditClassBtn.addEventListener('click', () => this.closeEditClassModal());
-        this.app.elements.saveClassEditBtn.addEventListener('click', () => this.saveClassChanges());
+        this.app.elements.closeEditClassModalBtn?.addEventListener('click', () => this.closeEditClassModal()); // Optional chaining 추가
+        this.app.elements.cancelEditClassBtn?.addEventListener('click', () => this.closeEditClassModal()); // Optional chaining 추가
+        this.app.elements.saveClassEditBtn?.addEventListener('click', () => this.saveClassChanges()); // Optional chaining 추가
 
         this.listenForClasses();
     },
@@ -20,22 +20,24 @@ export const classManager = {
     async addNewClass() {
         const { newClassNameInput } = this.app.elements;
         const className = newClassNameInput.value.trim();
-        if (!className) { 
-            showToast("반 이름을 입력해주세요."); 
-            return; 
+        if (!className) {
+            showToast("반 이름을 입력해주세요.");
+            return;
         }
 
         try {
-            await addDoc(collection(db, 'classes'), { 
-                name: className, 
+            // ✅ 반 추가 시 classType 기본값으로 'self-directed' 추가
+            await addDoc(collection(db, 'classes'), {
+                name: className,
                 subjects: {}, // 빈 과목으로 반 생성
-                createdAt: serverTimestamp() 
+                classType: 'self-directed', // ✅ 기본값 추가
+                createdAt: serverTimestamp()
             });
-            showToast("새로운 반이 추가되었습니다. '수정' 버튼으로 과목과 학생을 설정하세요.", false);
+            showToast("새로운 반이 추가되었습니다. '수정' 버튼으로 과목, 학생, 반 특성을 설정하세요.", false);
             newClassNameInput.value = '';
-        } catch (error) { 
-            console.error("반 추가 실패:", error); 
-            showToast("반 추가에 실패했습니다."); 
+        } catch (error) {
+            console.error("반 추가 실패:", error);
+            showToast("반 추가에 실패했습니다.");
         }
     },
 
@@ -44,11 +46,12 @@ export const classManager = {
         onSnapshot(q, (snapshot) => {
             const classes = [];
             snapshot.forEach(doc => classes.push({ id: doc.id, ...doc.data() }));
-            classes.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+            // 이름순 정렬 추가
+            classes.sort((a, b) => a.name.localeCompare(b.name));
             this.app.state.classes = classes;
             this.renderClassList();
 
-            // ▼▼▼ [추가된 부분] 반 목록이 업데이트되었다는 신호를 앱 전체에 보냅니다. ▼▼▼
+            // 반 목록이 업데이트되었다는 신호를 앱 전체에 보냅니다.
             document.dispatchEvent(new CustomEvent('classesUpdated'));
         });
     },
@@ -71,10 +74,16 @@ export const classManager = {
                 .map(id => subjects.find(s => s.id === id)?.name)
                 .filter(Boolean)
                 .join(', ');
+
+            // ✅ 반 유형 표시 추가
+            const classTypeDisplay = cls.classType === 'live-lecture' ? '현강반' : '자기주도반';
+
             classDiv.className = "p-3 border rounded-lg";
             classDiv.innerHTML = `
                 <div class="flex items-center justify-between">
-                    <span class="font-medium text-slate-700">${cls.name}</span> 
+                    <div>
+                        <span class="font-medium text-slate-700">${cls.name}</span>
+                        <span class="text-xs text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded ml-2">${classTypeDisplay}</span> </div>
                     <div class="flex items-center gap-2">
                         <button data-id="${cls.id}" class="edit-class-btn text-blue-500 hover:text-blue-700 text-sm font-semibold">수정</button>
                         <button data-id="${cls.id}" class="delete-class-btn text-red-500 hover:text-red-700 text-sm font-semibold">삭제</button>
@@ -94,18 +103,25 @@ export const classManager = {
             const batch = writeBatch(db);
             const classRef = doc(db, 'classes', classId);
             batch.delete(classRef);
-            
+
             const studentsQuery = query(collection(db, 'students'), where('classId', '==', classId));
             const studentsSnapshot = await getDocs(studentsQuery);
             studentsSnapshot.forEach(studentDoc => {
                 batch.update(studentDoc.ref, { classId: null });
             });
 
+            // ✅ 추가: 해당 반의 수업 영상(classLectures)도 삭제
+            const lecturesQuery = query(collection(db, 'classLectures'), where('classId', '==', classId));
+            const lecturesSnapshot = await getDocs(lecturesQuery);
+            lecturesSnapshot.forEach(lectureDoc => {
+                 batch.delete(lectureDoc.ref);
+            });
+
             await batch.commit();
-            showToast("반이 삭제되고 소속 학생들은 미배정 처리되었습니다.", false);
-        } catch (error) { 
-            console.error("반 삭제 실패:", error); 
-            showToast("반 삭제에 실패했습니다."); 
+            showToast("반이 삭제되고 관련 데이터(학생 배정 해제, 수업 영상)가 정리되었습니다.", false);
+        } catch (error) {
+            console.error("반 삭제 실패:", error);
+            showToast("반 삭제에 실패했습니다.");
         }
     },
 
@@ -113,35 +129,46 @@ export const classManager = {
         const classData = this.app.state.classes.find(c => c.id === classId);
         if (!classData) return;
         this.app.state.editingClass = classData;
-        
+
         const editClassName = document.getElementById('admin-edit-class-name');
         const subjectsContainer = document.getElementById('admin-edit-class-subjects-and-textbooks');
         const modal = document.getElementById('admin-edit-class-modal');
         const studentsContainer = document.getElementById('admin-edit-class-students-container');
+        const classTypeSelect = document.getElementById('admin-edit-class-type'); // ✅ 반 유형 select 요소
+
+        if (!editClassName || !subjectsContainer || !modal || !studentsContainer || !classTypeSelect) {
+            console.error("필수 모달 요소 중 일부를 찾을 수 없습니다.");
+            return;
+        }
+
 
         editClassName.textContent = classData.name;
+        // ✅ 반 유형 설정
+        classTypeSelect.value = classData.classType || 'self-directed'; // 기본값 설정
+
         subjectsContainer.innerHTML = '과목 정보 불러오는 중...';
-        if (studentsContainer) studentsContainer.innerHTML = '학생 정보 불러오는 중...';
-        
+        studentsContainer.innerHTML = '학생 정보 불러오는 중...';
+
         document.body.classList.add('modal-open');
         modal.style.display = 'flex';
 
         this.renderSubjectsForEditing(classData, subjectsContainer);
-        if (studentsContainer) this.renderStudentsForEditing(classId, studentsContainer);
+        this.renderStudentsForEditing(classId, studentsContainer);
     },
 
     async renderSubjectsForEditing(classData, container) {
+        // 기존 함수 내용 유지 (변경 없음)
         const currentSubjects = classData.subjects || {};
-        const textbookPromises = this.app.state.subjects.map(subject => 
+        const textbookPromises = this.app.state.subjects.map(subject =>
             getDocs(collection(db, `subjects/${subject.id}/textbooks`))
         );
         const textbookSnapshots = await Promise.all(textbookPromises);
-        
+
         const allTextbooksBySubject = {};
         this.app.state.subjects.forEach((subject, index) => {
             allTextbooksBySubject[subject.id] = textbookSnapshots[index].docs.map(doc => ({ id: doc.id, ...doc.data() }));
         });
-        
+
         container.innerHTML = '';
         this.app.state.subjects.forEach(subject => {
             const isSubjectSelected = currentSubjects.hasOwnProperty(subject.id);
@@ -169,9 +196,10 @@ export const classManager = {
     },
 
     async renderStudentsForEditing(classId, container) {
+        // 기존 함수 내용 유지 (변경 없음)
         const allStudentsSnapshot = await getDocs(query(collection(db, 'students')));
         const allStudents = allStudentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
+
         const studentsInClass = allStudents.filter(s => s.classId === classId).sort((a,b) => a.name.localeCompare(b.name));
         const studentsNotInClass = allStudents.filter(s => !s.classId || s.classId !== classId).sort((a,b) => a.name.localeCompare(b.name));
 
@@ -209,13 +237,13 @@ export const classManager = {
                     studentDiv.querySelector('.remove-student-btn').addEventListener('click', async (e) => {
                         await updateDoc(doc(db, 'students', e.target.dataset.id), { classId: null });
                         showToast(`${student.name} 학생을 반에서 제외했습니다.`, false);
-                        this.renderStudentsForEditing(classId, container);
+                        this.renderStudentsForEditing(classId, container); // 목록 새로고침
                     });
                 });
             }
 
-            const filteredStudents = studentsNotInClass.filter(s => 
-                s.name.includes(searchTerm) || (s.phone && s.phone.includes(searchTerm))
+            const filteredStudents = studentsNotInClass.filter(s =>
+                s.name.toLowerCase().includes(searchTerm.toLowerCase()) || (s.phone && s.phone.includes(searchTerm)) // 검색 시 대소문자 구분 안 함
             );
 
             if (filteredStudents.length === 0) {
@@ -236,27 +264,37 @@ export const classManager = {
                     studentDiv.querySelector('.add-student-btn').addEventListener('click', async (e) => {
                         await updateDoc(doc(db, 'students', e.target.dataset.id), { classId: classId });
                         showToast(`${student.name} 학생을 반에 추가했습니다.`, false);
-                        this.renderStudentsForEditing(classId, container);
+                         this.renderStudentsForEditing(classId, container); // 목록 새로고침
                     });
                 });
             }
         };
-        
-        searchInput.addEventListener('input', (e) => renderStudentLists(e.target.value.trim()));
+
+        searchInput?.addEventListener('input', (e) => renderStudentLists(e.target.value.trim())); // Optional chaining 추가
         renderStudentLists();
     },
+
 
     closeEditClassModal() {
         this.app.state.editingClass = null;
         document.body.classList.remove('modal-open');
-        this.app.elements.editClassModal.style.display = 'none';
+        const modal = document.getElementById('admin-edit-class-modal'); // ✅ modal 변수 선언
+        if(modal) modal.style.display = 'none'; // ✅ Optional chaining 및 null 체크 추가
     },
 
     async saveClassChanges() {
         if (!this.app.state.editingClass) return;
         const classId = this.app.state.editingClass.id;
         const newSubjectsData = {};
-        
+        const classTypeSelect = document.getElementById('admin-edit-class-type'); // ✅ 반 유형 select 요소 가져오기
+
+        if(!classTypeSelect) {
+            console.error("반 유형 선택 요소를 찾을 수 없습니다.");
+            return;
+        }
+        const newClassType = classTypeSelect.value; // ✅ 선택된 반 유형 값 가져오기
+
+
         const subjectCheckboxes = document.querySelectorAll('#admin-edit-class-modal .subject-checkbox:checked');
         subjectCheckboxes.forEach(subjectCheckbox => {
             const subjectId = subjectCheckbox.dataset.subjectId;
@@ -264,10 +302,15 @@ export const classManager = {
             const selectedTextbookIds = Array.from(textbookCheckboxes).map(tb => tb.dataset.textbookId);
             newSubjectsData[subjectId] = { textbooks: selectedTextbookIds };
         });
-        
+
         try {
-            await updateDoc(doc(db, 'classes', classId), { subjects: newSubjectsData });
-            showToast("반의 과목/교재 정보가 성공적으로 수정되었습니다.", false);
+            // ✅ 업데이트 데이터에 classType 추가
+            await updateDoc(doc(db, 'classes', classId), {
+                subjects: newSubjectsData,
+                classType: newClassType // ✅ 저장할 데이터에 추가
+            });
+            showToast("반 정보(과목/교재/유형)가 성공적으로 수정되었습니다.", false);
+            this.closeEditClassModal(); // ✅ 수정 후 모달 닫기 추가
         } catch (error) {
             console.error("반 정보 수정 실패:", error);
             showToast("반 정보 수정에 실패했습니다.");
