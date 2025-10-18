@@ -47,11 +47,10 @@
     <div id="student-subject-selection-screen" class="student-screen items-center justify-center" style="display: none;">
         <div class="w-full max-w-sm mx-auto p-4">
             <header class="text-center mb-8"><h1 id="student-welcome-message" class="text-3xl font-bold text-slate-800"></h1><p class="text-slate-500 mt-2">학습할 과목을 선택하세요。</p></header>
-            <main class="space-y-4">
-                <div id="student-subjects-list" class="space-y-3"></div>
-                {/* */}
-                <button id="student-goto-qna-video-btn" class="w-full p-4 text-lg font-semibold text-slate-700 border-2 border-slate-200 rounded-lg hover:bg-slate-100 transition" style="display: none;">수업 질문 영상 보기</button>
-                <button id="student-goto-homework-btn" class="w-full p-4 text-lg font-semibold text-slate-700 border-2 border-slate-200 rounded-lg hover:bg-slate-100 transition">숙제 제출</button>
+            <main class="space-y-6">
+                <div id="student-subjects-list" class="space-y-6"></div>
+                <button id="student-goto-qna-video-btn" class="w-full p-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition" style="display: none;">수업 질문 영상 보기</button>
+                <button id="student-goto-homework-btn" class="w-full p-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">숙제 제출</button>
             </main>
         </div>
     </div>
@@ -60,14 +59,13 @@
         <div class="w-full max-w-sm mx-auto p-4">
             <button id="student-back-to-subjects-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 과목 선택으로 돌아가기</button>
             <header class="text-center mb-8"><h1 id="student-selected-subject-title" class="text-3xl font-bold text-slate-800"></h1><p class="text-slate-500 mt-2">진행할 학습을 선택하세요。</p></header>
-            <main id="student-lessons-list" class="space-y-3"></main>
+            <main id="student-lessons-list" class="space-y-6"></main>
             <div id="student-no-lesson-screen" class="text-center py-10" style="display: none;">
                 <p class="text-slate-500">현재 진행 가능한 학습이 없습니다.</p>
             </div>
         </div>
     </div>
-    
-    {/* */}
+
     <div id="student-qna-video-screen" class="student-screen items-start justify-center pt-10" style="display: none;">
         <div class="w-full max-w-2xl mx-auto p-4">
             <button id="student-back-to-subjects-from-qna-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 과목 선택으로 돌아가기</button>
@@ -86,13 +84,12 @@
             </main>
         </div>
     </div>
-    {/* */}
 
     <div id="student-homework-screen" class="student-screen items-center justify-center" style="display: none;">
         <div class="w-full max-w-md mx-auto p-4">
              <button id="student-back-to-subjects-from-homework-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 과목 선택으로 돌아가기</button>
             <header class="text-center mb-8"><h1 class="text-3xl font-bold text-slate-800">숙제 목록</h1><p class="text-slate-500 mt-2">제출할 숙제를 선택하세요。</p></header>
-            <main id="student-homework-list" class="space-y-3"></main>
+            <main id="student-homework-list" class="space-y-6"></main>
         </div>
     </div>
 
@@ -107,7 +104,7 @@
             </div>
         </div>
     </div>
-    
+
     <div id="student-quiz-screen" class="student-screen items-center justify-center" style="display: none;">
         <div class="w-full max-w-lg mx-auto p-4">
             <div class="content-card">
@@ -173,7 +170,7 @@
             </footer>
         </div>
     </div>
-    
+
     <script type="module" src="./studentApp.js"></script>
 </body>
 </html>
