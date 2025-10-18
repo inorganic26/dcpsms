@@ -140,8 +140,9 @@ export const classEditor = {
             });
             showToast("반 정보(과목/교재/유형)가 성공적으로 수정되었습니다.", false);
             this.closeEditClassModal();
-            // ✅ 변경된 데이터를 다시 불러오도록 app에 요청
-            await this.app.fetchClassData(classId);
+            // ✅ 변경된 데이터를 다시 불러오고 state 업데이트가 완료될 때까지 기다립니다.
+            await this.app.fetchClassData(classId); // await 추가
+             // ✅ 업데이트된 state를 기반으로 메뉴를 다시 표시합니다.
              this.app.showDashboardMenu(); // ✅ 메뉴 갱신 (수업 영상 버튼 표시 여부)
         } catch (error) {
             console.error("반 정보 수정 실패:", error);

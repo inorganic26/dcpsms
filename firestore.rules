@@ -1,127 +1,114 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // --- Helper Functions ---
+    // Helper Functions
     function isAdmin() {
       return request.auth != null && request.auth.token.role == 'admin';
     }
     function isTeacher() {
-      // ✅ 실제 교사 역할 확인 로직 필요 (예: request.auth.token.role == 'teacher')
-      // Firestore 'teachers' 컬렉션에 UID가 존재하는지 확인하는 방식으로 변경할 수도 있습니다.
-      // return request.auth != null && get(/databases/$(database)/documents/teachers/$(request.auth.uid)).exists;
-       return request.auth != null && request.auth.token.role == 'teacher'; // 기존 방식 유지 또는 위 주석 방식으로 변경
+      return request.auth != null && request.auth.token.role == 'teacher';
     }
     function isStudent(userId) {
-        return request.auth != null && request.auth.uid == userId;
+      return request.auth != null && request.auth.uid == userId;
     }
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    // ✅ Helper function to check if the requesting user is a teacher assigned to a specific class
-    // ❗❗❗ 중요: 이 함수는 실제 데이터 구조에 맞게 수정해야 합니다. ❗❗❗
-    // 예시: 교사 문서에 'assignedClasses'라는 map 필드가 있고, 여기에 classId가 key로 존재한다고 가정
-    function isTeacherOfClass(classId) {
-      return isTeacher() && get(/databases/$(database)/documents/teachers/$(request.auth.uid)).data.assignedClasses[classId] == true;
-      // 다른 예시: 반(class) 문서에 'teacherId' 필드가 있다고 가정
-      // return isTeacher() && get(/databases/$(database)/documents/classes/$(classId)).data.teacherId == request.auth.uid;
-    }
-
-    // ✅ Helper function to check if the requesting user is a student enrolled in a specific class
+    // Check if the user is a student of a class
     function isStudentOfClass(classId) {
-      // 학생 문서에 저장된 classId와 비교
-      return isAuthenticated() && get(/databases/$(database)/documents/students/$(request.auth.uid)).data.classId == classId;
+      return isAuthenticated() &&
+             get(/databases/$(database)/documents/students/$(request.auth.uid)).data.classId == classId;
     }
-
-    // --- ▼▼▼ [수정] 수업 질문 영상 컬렉션 규칙 -> classLectures 컬렉션 규칙으로 변경 ▼▼▼ ---
+    // classLectures
     match /classLectures/{lectureId} {
-      // 관리자, 해당 반 교사, 해당 반 학생만 읽기 허용
-      allow read: if isAdmin() || isTeacherOfClass(resource.data.classId) || isStudentOfClass(resource.data.classId);
-      // 관리자 또는 해당 반 교사만 쓰기 허용
-      allow create, update, delete: if isAdmin() || isTeacherOfClass(request.resource.data.classId);
+      allow read: if isAdmin() || isTeacher() || isStudentOfClass(resource.data.classId);
+      allow write: if isAdmin() || isTeacher();
     }
-    // --- ▲▲▲ [수정] 여기까지 ▲▲▲ ---
-
-     // --- ▼▼▼ [기존 규칙 유지] 수업 질문 영상 컬렉션 (필요시 유지 또는 삭제) ▼▼▼ ---
-     match /classVideos/{videoId} {
-       // 기존 규칙 유지 또는 필요에 따라 수정 (예: isTeacherOfClass 사용)
-       allow read, write: if isAuthenticated(); // 예시: allow read: if isStudentOfClass(resource.data.classId) || isTeacherOfClass(resource.data.classId) || isAdmin(); allow write: if isTeacherOfClass(request.resource.data.classId) || isAdmin();
-     }
-     // --- ▲▲▲ [기존 규칙 유지] 여기까지 ▲▲▲ ---
-
-    // --- Collection Rules ---
-    match /admins/{adminId} {
-        // 관리자 정보는 관리자만 접근 가능하도록 제한하는 것이 좋습니다.
-        allow read, write: if isAdmin(); // 수정됨
-    }
-
-    match /teachers/{teacherId} {
-        // 교사 정보는 관리자 또는 해당 교사 본인만 접근 가능하도록 제한
-        allow read: if isAuthenticated(); // 목록 조회 등은 인증된 사용자 허용
-        allow write: if isAdmin() || request.auth.uid == teacherId; // 수정은 관리자 또는 본인만
-    }
-
-    match /students/{studentId} {
-        // 학생 정보는 관리자, 교사, 해당 학생 본인만 접근 가능하도록 제한
-        allow read: if isAuthenticated(); // 목록 조회 등은 인증된 사용자 허용 (교사용)
-        allow get: if isAuthenticated(); // 특정 학생 정보 조회는 인증된 사용자 허용
-        allow write: if isAdmin() || isStudent(studentId); // 수정은 관리자 또는 본인만
-        // 교사가 학생 정보 수정해야 하는 경우(예: 반 배정) 별도 규칙 또는 Cloud Function 필요
-    }
-
+    // classes
     match /classes/{classId} {
-      // 반 정보 읽기는 인증된 사용자, 쓰기는 관리자 또는 해당 반 교사만 허용
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isTeacherOfClass(classId); // 수정됨 (isTeacherOfClass 규칙 필요)
+      allow write: if isAdmin() || isTeacher();
     }
-
+    // students
+    match /students/{studentId} {
+      allow read: if isAdmin() || isTeacher() || isStudent(studentId);
+      allow write: if isAdmin() || isStudent(studentId);
+    }
+    // teachers
+    match /teachers/{teacherId} {
+      allow read: if isAdmin() || isTeacher() || request.auth.uid == teacherId;
+      allow write: if isAdmin() || request.auth.uid == teacherId;
+    }
+    // subjects - 추가됨
     match /subjects/{subjectId} {
-      // 과목 정보 읽기는 인증된 사용자, 쓰기는 관리자만 허용
       allow read: if isAuthenticated();
-      allow write: if isAdmin(); // 수정됨
-
-      match /textbooks/{textbookId} {
-        // 교재 정보 읽기는 인증된 사용자, 쓰기는 관리자만 허용
-        allow read: if isAuthenticated();
-        allow write: if isAdmin(); // 수정됨
-      }
-
+      allow write: if isAdmin() || isTeacher();
+      
+      // lessons 하위 컬렉션 추가!
       match /lessons/{lessonId} {
-         // 학습 정보 읽기는 인증된 사용자, 쓰기는 관리자 또는 교사 허용 (교사가 학습 생성/수정 가능하게 하려면 isTeacher() 추가)
         allow read: if isAuthenticated();
-        allow write: if isAdmin() || isTeacher(); // 수정됨 (교사도 쓰기 허용)
-
-        match /submissions/{studentId} {
-          // 제출물 읽기는 관리자, 교사, 해당 학생 본인만 허용
-          allow read: if isAdmin() || isTeacher() || isStudent(studentId); // 수정됨
-          // 제출물 생성/수정은 해당 학생 본인만 허용
-          allow create, update: if isStudent(studentId); // 수정됨
-          // 제출물 삭제는 관리자 또는 교사 허용
-          allow delete: if isAdmin() || isTeacher(); // 수정됨
-        }
+        allow write: if isAdmin() || isTeacher();
+      }
+      
+      // textbooks 하위 컬렉션
+      match /textbooks/{textbookId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin() || isTeacher();
       }
     }
-
-    match /homeworks/{homeworkId} {
-      // 숙제 정보 읽기는 인증된 사용자, 생성/수정/삭제는 관리자 또는 교사 허용
+    // assignments
+    match /assignments/{assignmentId} {
       allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isTeacher(); // 수정됨 (delete 추가)
-
-      match /submissions/{studentId} {
-         // 숙제 제출물 읽기는 관리자, 교사, 해당 학생 본인만 허용
-        allow read: if isAdmin() || isTeacher() || isStudent(studentId); // 수정됨
-        // 숙제 제출물 생성/수정은 해당 학생 본인만 허용
-        allow create, update: if isStudent(studentId); // 수정됨
-        // 숙제 제출물 삭제는 관리자 또는 교사 허용
-        allow delete: if isAdmin() || isTeacher(); // 수정됨
-      }
+      allow write: if isAdmin() || isTeacher();
     }
-
-    match /testAnalysisResults/{docId} {
-        // AI 기능 제거됨, 필요시 규칙 수정 또는 컬렉션 삭제
-        allow read, write: if isAuthenticated(); // 예시: allow read, write: if isAdmin() || isTeacher();
+    // submissions
+    match /submissions/{submissionId} {
+      allow read: if isAdmin() || isTeacher() ||
+                     (isAuthenticated() &&
+                      resource.data.studentId == request.auth.uid);
+      allow write: if isAdmin() ||
+                      (isTeacher() &&
+                       resource.data.assignmentId != null);
+    }
+    // grading
+    match /grading/{gradeId} {
+      allow read: if isAdmin() || isTeacher() ||
+                     (isAuthenticated() &&
+                      resource.data.studentId == request.auth.uid);
+      allow write: if isAdmin() || isTeacher();
+    }
+    // notices
+    match /notices/{noticeId} {
+      allow read: if true;
+      allow write: if isAdmin() || isTeacher();
+    }
+    // comments
+    match /comments/{commentId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+    // messages
+    match /messages/{messageId} {
+      allow read, write: if isAuthenticated();
+    }
+    // attendance
+    match /attendance/{recordId} {
+      allow read: if isAdmin() || isTeacher() || isStudent(resource.data.studentId);
+      allow write: if isAdmin() || isTeacher();
+    }
+    // aiAnalysis
+    match /aiAnalysis/{analysisId} {
+      allow read: if isAdmin() || isTeacher();
+      allow write: if isAdmin() || isTeacher();
+    }
+    // analytics
+    match /analytics/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    // fallback
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
