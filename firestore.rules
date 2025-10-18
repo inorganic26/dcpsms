@@ -2,7 +2,7 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
+
     // --- Helper Functions ---
     function isAdmin() {
       return request.auth != null && request.auth.token.role == 'admin';
@@ -17,6 +17,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // --- ▼▼▼ [추가] 수업 질문 영상 컬렉션 규칙 ▼▼▼ ---
+    match /classVideos/{videoId} {
+      allow read, write: if isAuthenticated();
+    }
+    // --- ▲▲▲ [추가] 여기까지 ▲▲▲ ---
+
     // --- Collection Rules ---
     match /admins/{adminId} {
         allow read, write: if isAuthenticated();
@@ -25,7 +31,7 @@ service cloud.firestore {
     match /teachers/{teacherId} {
         allow read, write: if isAuthenticated();
     }
-    
+
     match /students/{studentId} {
         allow read, write: if isAuthenticated();
     }
@@ -33,17 +39,15 @@ service cloud.firestore {
     match /classes/{classId} {
       allow read, write: if isAuthenticated();
     }
-    
+
     match /subjects/{subjectId} {
       allow read, write: if isAuthenticated();
-      
       match /textbooks/{textbookId} {
         allow read, write: if isAuthenticated();
       }
-      
+
       match /lessons/{lessonId} {
         allow read, write: if isAuthenticated();
-        
         match /submissions/{studentId} {
           allow read: if isAuthenticated();
           allow create, update: if isAuthenticated();
@@ -51,18 +55,18 @@ service cloud.firestore {
         }
       }
     }
-    
+
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();
       allow write: if isAuthenticated();
-      
+
       match /submissions/{studentId} {
         allow read, write: if isAuthenticated();
         allow delete: if isAuthenticated();
       }
     }
-    
+
     match /testAnalysisResults/{docId} {
         allow read, write: if isAuthenticated();
     }

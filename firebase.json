@@ -2,8 +2,7 @@
   "firestore": {
     "database": "(default)",
     "location": "asia-northeast3",
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "rules": "firestore.rules"
   },
   "functions": [
     {
@@ -34,15 +33,15 @@
     ],
     "rewrites": [
       {
-        "source": "/admin/**",
+        "source": "/admin{,/**}",
         "destination": "/src/admin/index.html"
       },
       {
-        "source": "/teacher/**",
+        "source": "/teacher{,/**}",
         "destination": "/src/teacher/index.html"
       },
       {
-        "source": "/student/**",
+        "source": "/student{,/**}",
         "destination": "/src/student/index.html"
       },
       {

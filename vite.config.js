@@ -2,7 +2,6 @@
 
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
-import { copyFileSync, existsSync } from 'fs'
 
 export default defineConfig({
   build: {
@@ -14,33 +13,14 @@ export default defineConfig({
         student: resolve(__dirname, 'src/student/index.html'),
       },
       output: {
-        // 여기부터 추가된 부분입니다.
         entryFileNames: `assets/[name].js`,
         chunkFileNames: `assets/[name].js`,
         assetFileNames: `assets/[name].[ext]`
-        // 여기까지 추가된 부분입니다.
       }
     },
   },
 
   plugins: [
-    {
-      name: 'copy-redirects-plugin',
-      closeBundle() {
-        const source = resolve(__dirname, 'public/_redirects')
-        const target = resolve(__dirname, 'dist/_redirects')
-
-        if (existsSync(source)) {
-          try {
-            copyFileSync(source, target)
-            console.log('✅ Netlify redirects 파일이 dist 폴더로 복사되었습니다.')
-          } catch (err) {
-            console.warn('⚠️ _redirects 파일 복사 중 오류:', err)
-          }
-        } else {
-          console.warn('⚠️ public/_redirects 파일이 존재하지 않습니다.')
-        }
-      },
-    },
+    // Netlify 관련 플러그인이 제거되었습니다.
   ],
 })

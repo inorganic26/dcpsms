@@ -47,6 +47,9 @@ export const classManager = {
             classes.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
             this.app.state.classes = classes;
             this.renderClassList();
+
+            // ▼▼▼ [추가된 부분] 반 목록이 업데이트되었다는 신호를 앱 전체에 보냅니다. ▼▼▼
+            document.dispatchEvent(new CustomEvent('classesUpdated'));
         });
     },
 
@@ -120,10 +123,8 @@ export const classManager = {
         subjectsContainer.innerHTML = '과목 정보 불러오는 중...';
         if (studentsContainer) studentsContainer.innerHTML = '학생 정보 불러오는 중...';
         
-        // ---▼ 수정된 부분 ▼---
-        document.body.classList.add('modal-open'); // 배경 스크롤 막기
+        document.body.classList.add('modal-open');
         modal.style.display = 'flex';
-        // ---▲ 수정된 부분 ▲---
 
         this.renderSubjectsForEditing(classData, subjectsContainer);
         if (studentsContainer) this.renderStudentsForEditing(classId, studentsContainer);
@@ -247,10 +248,8 @@ export const classManager = {
 
     closeEditClassModal() {
         this.app.state.editingClass = null;
-        // ---▼ 수정된 부분 ▼---
-        document.body.classList.remove('modal-open'); // 배경 스크롤 허용
+        document.body.classList.remove('modal-open');
         this.app.elements.editClassModal.style.display = 'none';
-        // ---▲ 수정된 부분 ▲---
     },
 
     async saveClassChanges() {

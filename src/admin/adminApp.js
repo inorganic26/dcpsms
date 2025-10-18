@@ -1,6 +1,7 @@
 // src/admin/adminApp.js
 
-import { auth, onAuthStateChanged, signInAnonymously } from '../shared/firebase.js';
+import { auth, onAuthStateChanged, signInAnonymously, db } from '../shared/firebase.js';
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { showToast } from '../shared/utils.js';
 
 import { subjectManager } from './subjectManager.js';
@@ -18,7 +19,7 @@ const AdminApp = {
         subjects: [],
         classes: [],
         students: [],
-        teachers: [], // 교사 목록을 저장할 state 추가
+        teachers: [],
         lessons: [],
         editingClass: null,
         selectedSubjectIdForLesson: null,
@@ -88,6 +89,16 @@ const AdminApp = {
             gotoLessonMgmtBtn: document.getElementById('goto-lesson-mgmt-btn'),
             gotoStudentAssignmentBtn: document.getElementById('goto-student-assignment-btn'),
             
+            // ▼▼▼ [추가] 질문 영상 관리 UI 요소 ▼▼▼
+            gotoQnaVideoMgmtBtn: document.getElementById('goto-qna-video-mgmt-btn'),
+            qnaVideoMgmtView: document.getElementById('admin-qna-video-mgmt-view'),
+            qnaClassSelect: document.getElementById('admin-qna-class-select'),
+            qnaVideoDate: document.getElementById('admin-qna-video-date'),
+            qnaVideoTitle: document.getElementById('admin-qna-video-title'),
+            qnaVideoUrl: document.getElementById('admin-qna-video-url'),
+            saveQnaVideoBtn: document.getElementById('admin-save-qna-video-btn'),
+            // ▲▲▲ [추가] 여기까지 ▲▲▲
+            
             subjectMgmtView: document.getElementById('admin-subject-mgmt-view'),
             textbookMgmtView: document.getElementById('admin-textbook-mgmt-view'),
             classMgmtView: document.getElementById('admin-class-mgmt-view'),
@@ -120,7 +131,6 @@ const AdminApp = {
             addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
             teachersList: document.getElementById('admin-teachers-list'),
             
-            // ▼▼▼ [추가] 교사 수정 모달 UI 요소 ▼▼▼
             editTeacherModal: document.getElementById('admin-edit-teacher-modal'),
             closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
             cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
@@ -165,6 +175,11 @@ const AdminApp = {
         this.elements.gotoLessonMgmtBtn.addEventListener('click', () => this.showAdminSection('lesson-mgmt'));
         this.elements.gotoStudentAssignmentBtn.addEventListener('click', () => this.showAdminSection('student-assignment'));
         
+        // ▼▼▼ [추가] 질문 영상 관리 메뉴 이벤트 리스너 ▼▼▼
+        this.elements.gotoQnaVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('qna-video-mgmt'));
+        this.elements.saveQnaVideoBtn?.addEventListener('click', () => this.saveQnaVideo());
+        // ▲▲▲ [추가] 여기까지 ▲▲▲
+
         document.querySelectorAll('.back-to-admin-dashboard-btn').forEach(btn => {
             btn.addEventListener('click', () => this.showAdminSection('dashboard'));
         });
@@ -172,6 +187,11 @@ const AdminApp = {
         document.addEventListener('subjectsUpdated', () => {
             this.renderSubjectOptionsForTextbook();
             this.renderSubjectOptionsForLesson();
+        });
+
+        // [추가] 반 목록이 업데이트되면 질문 영상 관리의 반 선택 목록도 갱신
+        document.addEventListener('classesUpdated', () => {
+            this.populateClassSelectForQnaVideo();
         });
     },
 
@@ -191,12 +211,58 @@ const AdminApp = {
             'teacher-mgmt': this.elements.teacherMgmtView,
             'lesson-mgmt': this.elements.lessonMgmtView,
             'student-assignment': this.elements.studentAssignmentView,
+            'qna-video-mgmt': this.elements.qnaVideoMgmtView, // [추가]
         };
 
         if (viewMap[sectionName]) {
             viewMap[sectionName].style.display = 'block';
         }
+
+        // [추가] 질문 영상 관리 뷰를 열 때 반 목록 채우기
+        if (sectionName === 'qna-video-mgmt') {
+            this.populateClassSelectForQnaVideo();
+        }
     },
+    
+    // ▼▼▼ [추가] 새로운 함수들 ▼▼▼
+    populateClassSelectForQnaVideo() {
+        const select = this.elements.qnaClassSelect;
+        if (!select) return;
+
+        select.innerHTML = '<option value="">-- 반 선택 --</option>';
+        this.state.classes.forEach(c => {
+            select.innerHTML += `<option value="${c.id}">${c.name}</option>`;
+        });
+    },
+
+    async saveQnaVideo() {
+        const classId = this.elements.qnaClassSelect.value;
+        const videoDate = this.elements.qnaVideoDate.value;
+        const title = this.elements.qnaVideoTitle.value.trim();
+        const youtubeUrl = this.elements.qnaVideoUrl.value.trim();
+
+        if (!classId || !videoDate || !title || !youtubeUrl) {
+            showToast("반, 날짜, 제목, URL을 모두 입력해야 합니다.");
+            return;
+        }
+
+        try {
+            await addDoc(collection(db, 'classVideos'), {
+                classId: classId,
+                videoDate,
+                title,
+                youtubeUrl,
+                createdAt: serverTimestamp()
+            });
+            showToast("질문 영상이 성공적으로 저장되었습니다.", false);
+            this.elements.qnaVideoTitle.value = '';
+            this.elements.qnaVideoUrl.value = '';
+        } catch (error) {
+            console.error("질문 영상 저장 실패:", error);
+            showToast("영상 저장에 실패했습니다.");
+        }
+    },
+    // ▲▲▲ [추가] 여기까지 ▲▲▲
     
     renderSubjectOptionsForTextbook() {
         const select = this.elements.subjectSelectForTextbook;
