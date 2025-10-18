@@ -39,8 +39,7 @@
                     </div>
                 </div>
                 <button id="student-login-btn" class="btn-primary w-full mt-6 py-3">로그인</button>
-                <a href="../../" class="back-to-portal-btn mt-4 text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
-            </div>
+                </div>
         </div>
     </div>
 
@@ -72,10 +71,7 @@
                      <h3>숙제 제출</h3>
                  </div>
              </main>
-              <div class="mt-8 text-center">
-                 <a href="../../" class="back-to-portal-btn text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
-             </div>
-         </div>
+              </div>
      </div>
 
      <div id="student-lesson-selection-screen" class="student-screen items-center justify-center" style="display: none;">
@@ -94,7 +90,7 @@
             <button id="student-back-to-subjects-from-qna-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 메뉴로 돌아가기</button>
             <header class="text-center mb-8">
                 <h1 class="text-3xl font-bold text-slate-800">수업 질문 영상</h1>
-                <p class="text-slate-500 mt-2">날짜를 선택하여 질문 영상을 확인하세요.</p>
+                <p class="text-slate-500 mt-2">날짜를 선택하여 질문 영상을 확인하세요。</p>
             </header>
             <main>
                 <div class="mb-6">
@@ -102,7 +98,7 @@
                     <input type="date" id="qna-video-date-picker" class="form-input">
                 </div>
                 <div id="qna-video-list" class="space-y-6">
-                    <p class="text-center text-slate-400 py-8">날짜를 선택해 주세요.</p>
+                    <p class="text-center text-slate-400 py-8">날짜를 선택해 주세요。</p>
                 </div>
             </main>
         </div>
@@ -113,7 +109,7 @@
              <button id="student-back-to-subjects-from-class-video-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 메뉴로 돌아가기</button>
              <header class="text-center mb-8">
                  <h1 class="text-3xl font-bold text-slate-800">수업 영상 보기</h1>
-                 <p class="text-slate-500 mt-2">날짜를 선택하여 수업 영상을 확인하세요.</p>
+                 <p class="text-slate-500 mt-2">날짜를 선택하여 수업 영상을 확인하세요。</p>
              </header>
              <main>
                  <div class="mb-6">
@@ -121,7 +117,7 @@
                      <input type="date" id="class-video-date-picker" class="form-input">
                  </div>
                  <div id="class-video-list" class="space-y-6">
-                     <p class="text-center text-slate-400 py-8">날짜를 선택해 주세요.</p>
+                     <p class="text-center text-slate-400 py-8">날짜를 선택해 주세요。</p>
                  </div>
              </main>
          </div>
@@ -141,7 +137,9 @@
             <h1 id="student-video1-title" class="text-2xl font-bold text-slate-800 mb-4 text-center"></h1>
             
             <div class="w-full mb-6 shadow-2xl rounded-lg overflow-hidden aspect-video">
-                <iframe id="student-video1-iframe" class="w-full h-full" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                <iframe id="student-video1-iframe" class="w-full h-full" frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                    allowfullscreen></iframe>
             </div>
             
             <div class="w-full flex justify-center gap-4">
@@ -171,7 +169,10 @@
             <p id="student-result-score-text-success" class="mt-2 text-slate-600"></p>
             <div class="mt-8">
                 <h2 class="text-xl font-bold text-slate-800 mb-4">문제 풀이 영상</h2>
-                <div class="aspect-w-16 aspect-h-9 mb-6 shadow-2xl rounded-lg overflow-hidden"><iframe id="student-review-video2-iframe" class="w-full aspect-video" frameborder="0" allowfullscreen></iframe></div>
+                <div class="aspect-w-16 aspect-h-9 mb-6 shadow-2xl rounded-lg overflow-hidden">
+                    <iframe id="student-review-video2-iframe" class="w-full aspect-video" frameborder="0" allowfullscreen
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
+                </div>
                 <div class="flex gap-4 justify-center">
                     <button id="student-rewatch-video1-btn" class="btn-secondary">개념 영상 다시보기</button>
                     <button id="student-show-rev2-btn-success" class="btn-warning" style="display: none;">보충 풀이 보기</button>
@@ -184,7 +185,10 @@
             <p id="student-result-score-text-failure" class="mt-2 text-slate-600"></p>
              <div class="mt-8">
                 <h2 class="text-xl font-bold text-slate-800 mb-4">문제 풀이 영상</h2>
-                <div class="aspect-w-16 aspect-h-9 mb-6 shadow-2xl rounded-lg overflow-hidden"><iframe id="student-video2-iframe" class="w-full aspect-video" frameborder="0" allowfullscreen></iframe></div>
+                <div class="aspect-w-16 aspect-h-9 mb-6 shadow-2xl rounded-lg overflow-hidden">
+                    <iframe id="student-video2-iframe" class="w-full aspect-video" frameborder="0" allowfullscreen
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
+                </div>
                 <div class="flex gap-4 justify-center">
                     <button id="student-retry-quiz-btn" class="btn-primary">퀴즈 다시 풀기</button>
                     <button id="student-show-rev2-btn-failure" class="btn-warning" style="display: none;">보충 풀이 보기</button>

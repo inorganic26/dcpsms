@@ -18,22 +18,12 @@ export const studentLesson = {
 
     convertYoutubeUrlToEmbed(url) {
         if (!url || typeof url !== 'string') {
-            console.error("Invalid URL provided to convertYoutubeUrlToEmbed:", url); 
             return '';
         }
         
         // URL 정리 (앞뒤 공백 제거)
         url = url.trim();
         
-        // 이미 embed 형식이면 videoId만 추출해서 재구성
-        if (url.includes('/embed/')) {
-            const match = url.match(/embed\/([a-zA-Z0-9_-]{11})/);
-            if (match && match[1]) {
-                return `https://www.youtube.com/embed/${match[1]}`;
-            }
-        }
-        
-        // YouTube URL에서 videoId 추출
         let videoId = null;
         
         try {
@@ -57,12 +47,11 @@ export const studentLesson = {
                 }
             }
         } catch (e) {
-            console.error("URL parsing error:", e);
+            // URL 파싱 오류는 콘솔에 남기지 않음
         }
         
         // videoId 유효성 검사
         if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-            console.error("Invalid YouTube videoId:", videoId, "from URL:", url); 
             return '';
         }
 
@@ -74,11 +63,20 @@ export const studentLesson = {
         this.app.state.activeLesson = lesson;
         this.app.state.currentRevVideoIndex = 0;
 
-        const embedUrl = this.convertYoutubeUrlToEmbed(this.app.state.activeLesson.video1Url); 
-        console.log("Video 1 URL to embed:", embedUrl); 
+        const originalUrl = this.app.state.activeLesson.video1Url;
+        const embedUrl = this.convertYoutubeUrlToEmbed(originalUrl); 
+        
+        // --- ▼ 디버깅을 위한 로그 추가 ▼ ---
+        console.log("-----------------------------------------");
+        console.log("디버깅: 선택된 학습 영상 정보 확인");
+        console.log("1. Firestore에 저장된 원본 URL:", originalUrl);
+        console.log("2. 변환된 임베드 URL (iframe src):", embedUrl);
+        console.log("-----------------------------------------");
+        // --- ▲ 디버깅을 위한 로그 추가 ▲ ---
+
 
         if (!embedUrl) {
-            showToast("비디오 URL이 올바르지 않습니다.");
+            showToast("비디오 URL이 올바르지 않거나 Firestore에 저장된 값이 비어 있습니다.", true);
             return;
         }
 
@@ -135,7 +133,7 @@ export const studentLesson = {
             state.currentRevVideoIndex++;
 
             if (state.currentRevVideoIndex < revUrls.length) {
-                button.textContent = `보충 풀이 보기 (${state.currentRevVideoIndex + 1}/${revUrls.length})`;
+                button.textContent = `보충 풀이 보기 (1/${revUrls.length})`;
             } else {
                 button.style.display = 'none';
             }

@@ -249,7 +249,8 @@ const StudentApp = {
                 
                 const videoContainer = document.createElement('div');
                 videoContainer.className = 'mb-6';
-
+                
+                // QNA 영상 iframe: referrerpolicy 제거
                 videoContainer.innerHTML = `
                     <h3 class="text-xl font-bold text-slate-800 mb-2">${video.title}</h3>
                     <div class="aspect-w-16 aspect-h-9 shadow-lg rounded-lg overflow-hidden">
@@ -258,7 +259,6 @@ const StudentApp = {
                             src="${embedUrl}" 
                             frameborder="0" 
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                            referrerpolicy="strict-origin-when-cross-origin"
                             allowfullscreen>
                         </iframe>
                     </div>
@@ -275,7 +275,7 @@ const StudentApp = {
     async loadClassVideos(selectedDate) {
          if (!this.elements.classVideoList) return;
          if (!selectedDate || !this.state.classId) {
-             this.elements.classVideoList.innerHTML = '<p class="text-center text-slate-400 py-8">날짜를 선택해 주세요.</p>';
+             this.elements.classVideoList.innerHTML = '<p class="text-center text-slate-400 py-8">날짜를 선택해 주세요。</p>';
              return;
          }
 
@@ -308,6 +308,7 @@ const StudentApp = {
                  const videoContainer = document.createElement('div');
                  videoContainer.className = 'mb-6';
 
+                 // 수업 영상 iframe: referrerpolicy 제거
                  videoContainer.innerHTML = `
                      <h3 class="text-xl font-bold text-slate-800 mb-2">${video.title}</h3>
                      <div class="aspect-w-16 aspect-h-9 shadow-lg rounded-lg overflow-hidden">
@@ -316,7 +317,6 @@ const StudentApp = {
                              src="${embedUrl}" 
                              frameborder="0" 
                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                             referrerpolicy="strict-origin-when-cross-origin" 
                              allowfullscreen>
                          </iframe>
                      </div>
@@ -370,6 +370,11 @@ const StudentApp = {
             console.error("수강 과목 로딩 실패:", error);
              showToast("수강 과목 로딩에 실패했습니다.");
              this.showSubjectSelectionScreen();
+             
+             // Timeout 오류를 명시적으로 처리하여 앱이 멈추지 않도록 함
+             if (error.message && error.message.includes("Timeout") || error.code === 'unavailable' || error.code === 'internal') {
+                 showToast("데이터 로딩 중 타임아웃 오류가 발생했습니다. 네트워크 연결 상태를 확인하거나 잠시 후 다시 시도해주세요.", true);
+             }
         }
     },
 
@@ -409,12 +414,18 @@ const StudentApp = {
             
         } catch(error) {
             console.error("학습 목록 로딩 실패:", error);
+            
             if (error.code === 'permission-denied') {
-                 this.elements.lessonsList.innerHTML = `<p class="text-center text-red-600 py-8">❌ 학습 세트를 불러올 권한이 없습니다. 관리자에게 문의하세요.</p>`;
+                 this.elements.lessonsList.innerHTML = `<p class="text-center text-red-600 py-8">⚠ 학습 세트를 불러올 권한이 없습니다. 관리자에게 문의하세요.</p>`;
                  showToast("학습 세트 로딩 실패: 권한 없음.");
             } else {
                  this.elements.lessonsList.innerHTML = `<p class="text-center text-red-500 py-8">학습 목록 로딩 실패</p>`;
                  showToast("학습 목록을 불러오는 중 오류가 발생했습니다.");
+            }
+            
+            // Timeout 오류를 명시적으로 처리하여 앱이 멈추지 않도록 함
+            if (error.message && error.message.includes("Timeout") || error.code === 'unavailable' || error.code === 'internal') {
+                 showToast("데이터 로딩 중 타임아웃 오류가 발생했습니다. 네트워크 연결 상태를 확인하거나 잠시 후 다시 시도해주세요.", true);
             }
              if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
              return;

@@ -2,72 +2,89 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- 모든 컬렉션에 대한 읽기/쓰기 권한을 'if true'로 설정 ---
-
-    // teachers (교사 정보)
+    // Helper: 인증된 사용자(익명 로그인한 학생 포함)인지 확인하는 함수
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // --- 1. 학생/교사/관리자 정보 (로그인 시 필요) ---
     match /teachers/{teacherId} {
-      allow read, write: if true; 
+      allow read: if isAuthenticated();
+      allow write: if false; // 관리자 앱에서 Cloud Function을 통해 처리
     }
-    
-    // admins (관리자 정보)
     match /admins/{adminId} {
-      allow read, write: if true; 
+      allow read: if isAuthenticated();
+      allow write: if false;
     }
-    
-    // homeworks 컬렉션 및 제출물
-    match /homeworks/{homeworkId} {
-      allow read, write: if true; 
-
-      match /submissions/{studentId} {
-        allow read, write: if true;
-      }
-    }
-
-    // classLectures (현강반 수업 영상)
-    match /classLectures/{lectureId} {
-      allow read, write: if true; 
-    }
-    
-    // classes (반 정보)
-    match /classes/{classId} {
-      allow read, write: if true;
-    }
-    
-    // students (학생 정보)
     match /students/{studentId} {
-      // list 권한은 isAuthenticated를 유지하나, read/write는 true로 설정
-      allow read, write: if true; 
+      allow read: if isAuthenticated(); 
+      allow write: if false; // 관리자 앱에서만 쓰기/수정 허용
     }
-
-    // subjects (과목 정보) 및 하위 컬렉션
+    
+    // --- 2. 반 정보 (Classes) ---
+    match /classes/{classId} {
+      allow read: if isAuthenticated(); 
+      allow write: if false;
+    }
+    
+    // --- 3. 학습 콘텐츠 (Subjects, Lessons) ---
     match /subjects/{subjectId} {
-      allow read, write: if true; 
-
+      allow read: if isAuthenticated();
+      allow write: if false;
+      
+      // Lesson Subcollection: 학습 목록 로딩에 필수
       match /lessons/{lessonId} {
-        allow read, write: if true;
-
-        match /submissions/{studentId} {
-            allow read, write: if true;
+        allow read: if isAuthenticated();
+        allow write: if false; 
+        
+        // Lesson Submission: 학생 자신의 학습 기록 저장
+        match /submissions/{studentAuthUid} {
+          allow read: if isAuthenticated();
+          // 익명 UID와 문서 ID가 일치해야 본인의 기록을 저장/수정할 수 있음
+          allow write: if request.auth.uid == studentAuthUid;
         }
       }
 
       match /textbooks/{textbookId} {
-        allow read, write: if true; 
+        allow read: if isAuthenticated();
+        allow write: if false;
       }
     }
+    
+    // --- 4. 숙제 (Homeworks) ---
+    match /homeworks/{homeworkId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+      
+      // Homework Submission: 학생 자신의 제출 기록 저장
+      match /submissions/{studentAuthUid} {
+        allow read: if isAuthenticated();
+        // 익명 UID와 문서 ID가 일치해야 본인의 기록을 저장/수정할 수 있음
+        allow write: if request.auth.uid == studentAuthUid; 
+      }
+    }
+    
+    // --- 5. 영상/기타 (classVideos, classLectures) ---
+    match /classVideos/{videoId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+    match /classLectures/{lectureId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
 
-    // 기타 모든 컬렉션에 대해 명시적 허용
-    match /grading/{gradeId} { allow read, write: if true; }
-    match /notices/{noticeId} { allow read, write: if true; }
-    match /comments/{commentId} { allow read, write: if true; }
-    match /messages/{messageId} { allow read, write: if true; }
-    match /attendance/{recordId} { allow read, write: if true; }
-    match /aiAnalysis/{analysisId} { allow read, write: if true; }
-    match /analytics/{docId} { allow read, write: if true; }
-    match /classVideos/{videoId} { allow read, write: if true; }
-
-
-    // fallback (명시되지 않은 문서에 대한 기본 차단은 유지)
+    // --- 6. 기타 모든 컬렉션 (개별 match 블록 사용) ---
+    // 오류가 발생했던 84줄 부근의 코드를 명확히 분리합니다.
+    match /grading/{gradeId} { allow read: if isAuthenticated(); allow write: if false; }
+    match /notices/{noticeId} { allow read: if isAuthenticated(); allow write: if false; }
+    match /comments/{commentId} { allow read: if isAuthenticated(); allow write: if false; }
+    match /messages/{messageId} { allow read: if isAuthenticated(); allow write: if false; }
+    match /attendance/{recordId} { allow read: if isAuthenticated(); allow write: if false; }
+    match /aiAnalysis/{analysisId} { allow read: if isAuthenticated(); allow write: if false; }
+    match /analytics/{docId} { allow read: if isAuthenticated(); allow write: if false; }
+    
+    // 최종 Fallback: 명시되지 않은 모든 경로는 차단
     match /{document=**} {
       allow read, write: if false;
     }
