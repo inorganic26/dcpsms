@@ -3,15 +3,16 @@
 import { collection, doc, getDocs, getDoc, where, query, orderBy } from "firebase/firestore";
 // ▼▼▼ [수정] import 항목 변경 및 추가 ▼▼▼
 import { db, ensureAnonymousAuth } from '../shared/firebase.js';
+import { showToast } from '../shared/utils.js'; // showToast 가져오기
 
 // 분리된 기능 모듈들을 가져옵니다.
 import { studentAuth } from './studentAuth.js';
 import { studentLesson } from './studentLesson.js';
-import { studentHomework } from './studentHomework.js';
+import { studentHomework } from './studentHomework.js'; // studentHomework 가져오기 확인
 
 const StudentApp = {
     isInitialized: false,
-    elements: {},
+    elements: {}, // elements 객체 초기화
     state: {
         studentId: null, studentName: '', classId: null,
         activeSubjects: [], selectedSubject: null, activeLesson: null,
@@ -20,20 +21,22 @@ const StudentApp = {
         currentHomeworkId: null, filesToUpload: [], isEditingHomework: false,
         initialImageUrls: [],
         currentRevVideoIndex: 0,
+        currentHomeworkPages: 0, // 선택된 숙제의 페이지 수를 저장하기 위해 추가
     },
 
     init() {
         if (this.isInitialized) return;
         this.isInitialized = true;
-        this.cacheElements();
+        this.cacheElements(); // cacheElements 먼저 호출
 
+        // 모듈 초기화
         studentAuth.init(this);
         studentLesson.init(this);
-        studentHomework.init(this);
+        studentHomework.init(this); // 이것이 초기화되었는지 확인
 
         this.addEventListeners();
 
-        studentAuth.showLoginScreen();
+        studentAuth.showLoginScreen(); // 로그인으로 시작
     },
 
     cacheElements() {
@@ -45,23 +48,23 @@ const StudentApp = {
             passwordInput: document.getElementById('student-password'),
             loginBtn: document.getElementById('student-login-btn'),
 
+            // 새 레이아웃을 위해 업데이트됨
             subjectSelectionScreen: document.getElementById('student-subject-selection-screen'),
             welcomeMessage: document.getElementById('student-welcome-message'),
-            subjectsList: document.getElementById('student-subjects-list'),
-            gotoHomeworkBtn: document.getElementById('student-goto-homework-btn'),
+            subjectsList: document.getElementById('student-subjects-list'), // 학습 카드 내부
+            startLessonCard: document.getElementById('student-start-lesson-card'), // 카드 자체
+            gotoQnaVideoCard: document.getElementById('student-goto-qna-video-card'), // QnA 카드
+            gotoHomeworkCard: document.getElementById('student-goto-homework-card'), // 숙제 카드
 
-            // ▼▼▼ 질문 영상 관련 UI 요소 ▼▼▼
-            gotoQnaVideoBtn: document.getElementById('student-goto-qna-video-btn'),
             qnaVideoScreen: document.getElementById('student-qna-video-screen'),
             backToSubjectsFromQnaBtn: document.getElementById('student-back-to-subjects-from-qna-btn'),
             qnaDatePicker: document.getElementById('qna-video-date-picker'),
             qnaVideoList: document.getElementById('qna-video-list'),
-            // ▲▲▲ 여기까지 ▲▲▲
 
             lessonSelectionScreen: document.getElementById('student-lesson-selection-screen'),
             selectedSubjectTitle: document.getElementById('student-selected-subject-title'),
             lessonsList: document.getElementById('student-lessons-list'),
-            noLessonScreen: document.getElementById('student-no-lesson-screen'),
+            noLessonScreen: document.getElementById('student-no-lesson-screen'), // This element might be removed if error/empty is handled in lessonsList
             backToSubjectsBtn: document.getElementById('student-back-to-subjects-btn'),
 
             homeworkScreen: document.getElementById('student-homework-screen'),
@@ -108,15 +111,18 @@ const StudentApp = {
     },
 
     addEventListeners() {
+        // 기존 리스너
         this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToLessonsBtnSuccess?.addEventListener('click', () => this.showLessonSelectionScreen());
         this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
-
-        // ▼▼▼ 질문 영상 관련 이벤트 리스너 ▼▼▼
-        this.elements.gotoQnaVideoBtn?.addEventListener('click', () => this.showQnaVideoScreen());
         this.elements.backToSubjectsFromQnaBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.qnaDatePicker?.addEventListener('change', (e) => this.loadQnaVideos(e.target.value));
-        // ▲▲▲ 여기까지 ▲▲▲
+        this.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
+
+
+        // 새 대시보드 카드 리스너
+        this.elements.gotoQnaVideoCard?.addEventListener('click', () => this.showQnaVideoScreen());
+        this.elements.gotoHomeworkCard?.addEventListener('click', () => studentHomework.showHomeworkScreen());
     },
 
     showScreen(screenElement) {
@@ -126,7 +132,7 @@ const StudentApp = {
             this.elements.subjectSelectionScreen, this.elements.lessonSelectionScreen,
             this.elements.video1Screen, this.elements.quizScreen,
             this.elements.resultScreen, this.elements.homeworkScreen,
-            this.elements.qnaVideoScreen // [추가]
+            this.elements.qnaVideoScreen
         ];
         screens.forEach(s => { if(s) s.style.display = 'none' });
         if(screenElement) screenElement.style.display = 'flex';
@@ -139,58 +145,55 @@ const StudentApp = {
             this.elements.reviewVideo2Iframe
         ].forEach(iframe => {
             if (iframe && iframe.src) {
-                const tempSrc = iframe.src;
-                iframe.src = "";
-                iframe.src = tempSrc;
+                iframe.src = ""; // src 비워서 중지
             }
         });
-        // 질문 영상 iframe도 중지
-        const qnaIframes = this.elements.qnaVideoList.querySelectorAll('iframe');
-        qnaIframes.forEach(iframe => {
-             if (iframe && iframe.src) {
-                const tempSrc = iframe.src;
-                iframe.src = "";
-                iframe.src = tempSrc;
-            }
-        });
+        const qnaList = this.elements.qnaVideoList;
+        if (qnaList) {
+             const qnaIframes = qnaList.querySelectorAll('iframe');
+             qnaIframes.forEach(iframe => {
+                 if (iframe && iframe.src) {
+                    iframe.src = ""; // 비디오 중지
+                }
+            });
+        }
     },
 
     showSubjectSelectionScreen() {
+        if (!this.elements.welcomeMessage || !this.elements.subjectsList) return;
+
         this.elements.welcomeMessage.textContent = `${this.state.studentName} 학생, 환영합니다!`;
         this.elements.subjectsList.innerHTML = '';
+
         if (this.state.activeSubjects.length === 0) {
-            this.elements.subjectsList.innerHTML = '<p class="text-center text-slate-500 py-8">수강 가능한 과목이 없습니다. 관리자에게 문의하세요.</p>';
+             this.elements.subjectsList.innerHTML = '<p class="text-center text-sm text-slate-400 py-4">수강 가능한 과목이 없습니다. 관리자에게 문의하세요.</p>';
         } else {
             this.state.activeSubjects.forEach(subject => this.renderSubjectChoice(subject));
         }
 
-        // [수정] classId가 있을 때만 버튼 표시
-        if (this.state.classId) {
-            this.elements.gotoHomeworkBtn.style.display = 'block';
-            this.elements.gotoQnaVideoBtn.style.display = 'block';
-        } else {
-            this.elements.gotoHomeworkBtn.style.display = 'none';
-            this.elements.gotoQnaVideoBtn.style.display = 'none';
-        }
+        const displayStyle = this.state.classId ? 'flex' : 'none';
+        if (this.elements.gotoHomeworkCard) this.elements.gotoHomeworkCard.style.display = displayStyle;
+        if (this.elements.gotoQnaVideoCard) this.elements.gotoQnaVideoCard.style.display = displayStyle;
 
         this.showScreen(this.elements.subjectSelectionScreen);
     },
 
     showLessonSelectionScreen() {
+         if (!this.elements.selectedSubjectTitle || !this.state.selectedSubject) return;
         this.elements.selectedSubjectTitle.textContent = this.state.selectedSubject.name;
-        this.listenForAvailableLessons();
+        this.listenForAvailableLessons(); // 이 함수가 학습 목록을 로드함
         this.showScreen(this.elements.lessonSelectionScreen);
     },
 
-    // ▼▼▼ [추가] 새로운 함수들 ▼▼▼
     showQnaVideoScreen() {
-        // 오늘 날짜로 기본 설정
+        if (!this.elements.qnaDatePicker || !this.elements.qnaVideoScreen) return;
         this.elements.qnaDatePicker.value = new Date().toISOString().slice(0, 10);
         this.loadQnaVideos(this.elements.qnaDatePicker.value);
         this.showScreen(this.elements.qnaVideoScreen);
     },
 
     async loadQnaVideos(selectedDate) {
+         if (!this.elements.qnaVideoList) return;
         if (!selectedDate || !this.state.classId) {
             this.elements.qnaVideoList.innerHTML = '<p class="text-center text-slate-400 py-8">날짜를 선택해 주세요.</p>';
             return;
@@ -199,12 +202,11 @@ const StudentApp = {
         this.elements.qnaVideoList.innerHTML = '<div class="loader mx-auto"></div>'; // 로딩 표시
 
         try {
-            // Firestore에서 해당 반, 해당 날짜의 비디오 쿼리
             const q = query(
-                collection(db, 'classVideos'), // 'classVideos' 컬렉션 사용 (teacherApp.js 참고)
+                collection(db, 'classVideos'),
                 where('classId', '==', this.state.classId),
                 where('videoDate', '==', selectedDate),
-                orderBy('createdAt', 'desc') // 최신 영상부터 보여주기 (선택 사항)
+                orderBy('createdAt', 'desc')
             );
             const snapshot = await getDocs(q);
 
@@ -213,14 +215,13 @@ const StudentApp = {
                 return;
             }
 
-            this.elements.qnaVideoList.innerHTML = ''; // 기존 목록 비우기
+            this.elements.qnaVideoList.innerHTML = ''; // 목록 비우기
             snapshot.docs.forEach(doc => {
                 const video = doc.data();
                 const videoContainer = document.createElement('div');
-                // 유튜브 URL을 임베드 URL로 변환 (studentLesson 모듈 함수 재사용)
+                videoContainer.className = 'mb-6';
                 const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.youtubeUrl);
 
-                // 비디오 제목과 iframe을 포함하는 HTML 생성
                 videoContainer.innerHTML = `
                     <h3 class="text-xl font-bold text-slate-800 mb-2">${video.title}</h3>
                     <div class="aspect-w-16 aspect-h-9 shadow-lg rounded-lg overflow-hidden">
@@ -235,56 +236,97 @@ const StudentApp = {
             this.elements.qnaVideoList.innerHTML = '<p class="text-center text-red-500 py-8">영상을 불러오는 데 실패했습니다.</p>';
         }
     },
-    // ▲▲▲ [추가] 여기까지 ▲▲▲
 
     async loadAvailableSubjects() {
         this.showScreen(this.elements.loadingScreen);
+        this.state.activeSubjects = [];
         if (!this.state.classId) {
-            this.state.activeSubjects = [];
+            this.showSubjectSelectionScreen();
             return;
         }
         try {
             const classDoc = await getDoc(doc(db, 'classes', this.state.classId));
             if (!classDoc.exists() || !classDoc.data().subjects) {
-                this.state.activeSubjects = [];
+                 this.showSubjectSelectionScreen();
                 return;
             }
             const subjectIds = Object.keys(classDoc.data().subjects);
+            if (subjectIds.length === 0) {
+                 this.showSubjectSelectionScreen();
+                 return;
+            }
             const subjectDocs = await Promise.all(subjectIds.map(id => getDoc(doc(db, 'subjects', id))));
-            this.state.activeSubjects = subjectDocs.filter(d => d.exists()).map(d => ({ id: d.id, ...d.data() }));
+            this.state.activeSubjects = subjectDocs
+                .filter(d => d.exists())
+                .map(d => ({ id: d.id, ...d.data() }));
+
+             this.showSubjectSelectionScreen();
+
         } catch (error) {
             console.error("수강 과목 로딩 실패:", error);
-            this.state.activeSubjects = [];
+             showToast("수강 과목 로딩에 실패했습니다.");
+             this.showSubjectSelectionScreen();
         }
     },
 
+    // ▼▼▼ 수정된 함수 (오류/데이터 없음 처리 강화) ▼▼▼
     async listenForAvailableLessons() {
-        this.elements.lessonsList.innerHTML = '';
-        this.elements.noLessonScreen.style.display = 'none';
-
-        const q = query(collection(db, 'subjects', this.state.selectedSubject.id, 'lessons'), where("isActive", "==", true));
-        const lessonsSnapshot = await getDocs(q);
-
-        const activeLessons = lessonsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        if (activeLessons.length === 0) {
-            this.elements.noLessonScreen.style.display = 'block';
+        // 요소 존재 및 선택된 과목 ID 확인
+        if (!this.elements.lessonsList || !this.state.selectedSubject?.id) {
+            console.error("학습 목록을 표시할 요소가 없거나 과목이 선택되지 않았습니다.");
+            if (this.elements.lessonsList) {
+                this.elements.lessonsList.innerHTML = '<p class="text-center text-red-500 py-8">과목 정보를 불러올 수 없습니다.</p>';
+            }
+            // `noLessonScreen` 요소가 있다면 숨김 처리
+            if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
             return;
         }
 
-        activeLessons.sort((a, b) => {
-            const orderA = a.order ?? Infinity;
-            const orderB = b.order ?? Infinity;
-            if (orderA !== orderB) return orderA - orderB;
-            return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0);
-        });
+        this.elements.lessonsList.innerHTML = '<div class="loader mx-auto"></div>'; // 로딩 표시
+        // `noLessonScreen` 요소가 있다면 숨김 처리
+        if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
 
-        activeLessons.forEach(lesson => this.renderLessonChoice(lesson));
+
+        try {
+            const q = query(
+                collection(db, 'subjects', this.state.selectedSubject.id, 'lessons'),
+                where("isActive", "==", true),
+                orderBy("order", "asc"),
+                orderBy("createdAt", "desc")
+            );
+            const lessonsSnapshot = await getDocs(q);
+
+            this.elements.lessonsList.innerHTML = ''; // 로더/이전 목록 제거
+
+            const activeLessons = lessonsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            if (lessonsSnapshot.empty) { // 스냅샷이 비었는지 직접 확인
+                 // 학습 목록 영역에 "학습 없음" 메시지 표시
+                this.elements.lessonsList.innerHTML = '<p class="text-center text-slate-500 py-8">현재 진행 가능한 학습이 없습니다.</p>';
+                // `noLessonScreen` 요소가 있다면 숨김 처리 (대신 lessonsList 사용)
+                if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
+                return;
+            }
+
+            activeLessons.forEach(lesson => this.renderLessonChoice(lesson));
+
+        } catch(error) {
+            console.error("학습 목록 로딩 실패:", error);
+            // 목록 영역에 오류 메시지 표시
+            this.elements.lessonsList.innerHTML = `<p class="text-center text-red-500 py-8">학습 목록 로딩 실패</p>`; // 오류 메시지를 구체적으로 표시하지 않음 (이전과 동일)
+             // `noLessonScreen` 요소가 있다면 숨김 처리
+             if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
+             showToast("학습 목록을 불러오는 중 오류가 발생했습니다."); // 토스트 메시지 표시
+        }
     },
+    // ▲▲▲ 수정된 함수 끝 ▲▲▲
+
 
     renderSubjectChoice(subject) {
+        if (!this.elements.subjectsList) return;
+
         const button = document.createElement('button');
-        // 파란색 버튼 스타일 적용
-        button.className = "w-full p-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition";
+        button.className = "w-full p-3 text-md font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition";
         button.textContent = subject.name;
         button.addEventListener('click', () => {
             this.state.selectedSubject = subject;
@@ -294,8 +336,9 @@ const StudentApp = {
     },
 
     renderLessonChoice(lesson) {
+        if (!this.elements.lessonsList) return;
+
         const button = document.createElement('button');
-        // 파란색 버튼 스타일 적용
         button.className = "w-full p-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition";
         button.textContent = lesson.title;
         button.addEventListener('click', () => studentLesson.startSelectedLesson(lesson));

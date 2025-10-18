@@ -44,18 +44,37 @@
         </div>
     </div>
 
-    <div id="student-subject-selection-screen" class="student-screen items-center justify-center" style="display: none;">
-        <div class="w-full max-w-sm mx-auto p-4">
-            <header class="text-center mb-8"><h1 id="student-welcome-message" class="text-3xl font-bold text-slate-800"></h1><p class="text-slate-500 mt-2">학습할 과목을 선택하세요。</p></header>
-            <main class="space-y-6">
-                <div id="student-subjects-list" class="space-y-6"></div>
-                <button id="student-goto-qna-video-btn" class="w-full p-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition" style="display: none;">수업 질문 영상 보기</button>
-                <button id="student-goto-homework-btn" class="w-full p-4 text-lg font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">숙제 제출</button>
-            </main>
-        </div>
-    </div>
+     <div id="student-subject-selection-screen" class="student-screen items-center justify-center p-4" style="display: none;">
+         <div class="w-full max-w-4xl mx-auto">
+             <header class="text-center mb-10">
+                 <h1 id="student-welcome-message" class="text-3xl font-bold text-slate-800"></h1>
+                 <p class="text-slate-500 mt-2">무엇을 할까요?</p>
+             </header>
+             <main class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                 <div id="student-start-lesson-card" class="dashboard-card !items-stretch !text-left !p-0"> <div class="p-6 text-center"> <svg class="w-10 h-10 mb-3 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+                        <h3>과목별 학습 시작</h3>
+                     </div>
+                     <div id="student-subjects-list" class="mt-2 space-y-3 p-4 border-t max-h-60 overflow-y-auto custom-scrollbar">
+                        <p class="text-center text-sm text-slate-400 py-4">과목 로딩 중...</p>
+                     </div>
+                 </div>
 
-    <div id="student-lesson-selection-screen" class="student-screen items-center justify-center" style="display: none;">
+                 <div id="student-goto-qna-video-card" class="dashboard-card" style="display: none;">
+                     <svg class="w-10 h-10 mb-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                     <h3>수업 질문 영상 보기</h3>
+                 </div>
+
+                 <div id="student-goto-homework-card" class="dashboard-card" style="display: none;">
+                     <svg class="w-10 h-10 mb-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                     <h3>숙제 제출</h3>
+                 </div>
+             </main>
+              <div class="mt-8 text-center">
+                 <a href="../../" class="back-to-portal-btn text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
+             </div>
+         </div>
+     </div>
+     <div id="student-lesson-selection-screen" class="student-screen items-center justify-center" style="display: none;">
         <div class="w-full max-w-sm mx-auto p-4">
             <button id="student-back-to-subjects-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 과목 선택으로 돌아가기</button>
             <header class="text-center mb-8"><h1 id="student-selected-subject-title" class="text-3xl font-bold text-slate-800"></h1><p class="text-slate-500 mt-2">진행할 학습을 선택하세요。</p></header>

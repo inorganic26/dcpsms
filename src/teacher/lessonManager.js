@@ -32,13 +32,27 @@ const teacherLessonManagerConfig = {
     }
 };
 
+// lessonManager 객체 정의 (실제 인스턴스를 저장할 공간 포함)
 export const lessonManager = {
+    managerInstance: null, // 실제 관리자 인스턴스를 저장할 속성 추가
+
     init(teacherApp) {
         // 공통 매니저를 생성하기 전에 app 컨텍스트를 설정
         teacherLessonManagerConfig.app = teacherApp;
-        
-        // 설정 객체를 전달하여 공통 lessonManager 인스턴스를 생성하고 초기화
-        const managerInstance = createLessonManager(teacherLessonManagerConfig);
-        managerInstance.init();
+
+        // 설정 객체를 전달하여 공통 lessonManager 인스턴스를 생성
+        this.managerInstance = createLessonManager(teacherLessonManagerConfig);
+
+        // 생성된 인스턴스를 초기화
+        this.managerInstance.init();
+    },
+
+    // 실제 인스턴스의 함수를 호출하는 래퍼 함수 추가
+    handleLessonFilterChange() {
+        if (this.managerInstance) {
+            this.managerInstance.handleLessonFilterChange();
+        } else {
+            console.error("Lesson manager instance not initialized yet.");
+        }
     }
 };

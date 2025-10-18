@@ -38,7 +38,6 @@ const TeacherApp = {
             this.handleLogin(name, password);
         });
 
-        // 엔터 키로 로그인 시도
         this.elements.passwordInput?.addEventListener('keyup', (e) => {
             if (e.key === 'Enter') {
                 const name = this.elements.nameInput.value;
@@ -56,9 +55,8 @@ const TeacherApp = {
             showToast("이름과 비밀번호를 모두 입력해주세요.");
             return;
         }
-
+        // ... (rest of handleLogin remains the same)
         let userDoc = null;
-
         try {
             const teacherQuery = query(collection(db, 'teachers'), where("name", "==", name), where("password", "==", password));
             const teacherSnapshot = await getDocs(teacherQuery);
@@ -93,19 +91,21 @@ const TeacherApp = {
         this.initializeDashboard();
 
         if (userData.isInitialPassword) {
-            const userRef = doc(db, 'teachers', userId);
-            getDoc(userRef).then(docSnap => {
-                if (docSnap.exists()) {
-                    this.promptPasswordChange(userId);
-                }
-            });
+             const userRef = doc(db, 'teachers', userId); // Assuming 'teachers' collection
+             getDoc(userRef).then(docSnap => {
+                 if (docSnap.exists()) {
+                     this.promptPasswordChange(userId);
+                 }
+             });
         }
     },
+
 
     initializeDashboard() {
         if (this.isInitialized) return;
         this.isInitialized = true;
 
+        // Initialize modules first
         this.lessonDashboard = lessonDashboard;
         this.homeworkDashboard = homeworkDashboard;
         this.lessonManager = lessonManager;
@@ -118,18 +118,21 @@ const TeacherApp = {
         this.classEditor.init(this);
         // this.qnaVideoManager.init(this);
 
+        // Then add event listeners etc.
         this.addEventListeners();
         this.populateClassSelect();
         this.listenForSubjects();
+        this.showDashboardMenu(); // Show the menu initially
     },
 
-    async promptPasswordChange(teacherId) {
+     async promptPasswordChange(teacherId) {
+        // ... (promptPasswordChange remains the same)
         const newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
         if (newPassword && newPassword.length >= 6) {
             try {
                 const teacherRef = doc(db, 'teachers', teacherId);
                 await updateDoc(teacherRef, {
-                    password: newPassword,
+                    password: newPassword, // Note: Store hashed passwords in production!
                     isInitialPassword: false
                 });
                 showToast("비밀번호가 성공적으로 변경되었습니다.", false);
@@ -144,6 +147,7 @@ const TeacherApp = {
         }
     },
 
+
     cacheElements() {
         this.elements = {
             loginContainer: document.getElementById('teacher-login-container'),
@@ -153,14 +157,15 @@ const TeacherApp = {
             loginBtn: document.getElementById('teacher-login-btn'),
             classSelect: document.getElementById('teacher-class-select'),
             mainContent: document.getElementById('teacher-main-content'),
-            navButtonsContainer: document.getElementById('teacher-navigation-buttons'),
-            views: {
+            navButtonsContainer: document.getElementById('teacher-navigation-buttons'), // Grid container for cards
+            views: { // Container divs for each section/page
                 'lesson-dashboard': document.getElementById('view-lesson-dashboard'),
                 'homework-dashboard': document.getElementById('view-homework-dashboard'),
                 'qna-video-mgmt': document.getElementById('view-qna-video-mgmt'),
                 'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
                 'class-mgmt': document.getElementById('view-class-mgmt'),
             },
+            // Specific elements within each view...
             lessonDashboardControls: document.getElementById('lesson-dashboard-controls'),
             subjectSelectLesson: document.getElementById('teacher-subject-select-lesson'),
             lessonSelectContainer: document.getElementById('lesson-select-container'),
@@ -221,64 +226,115 @@ const TeacherApp = {
             qnaVideoTitleInput: document.getElementById('qna-video-title'),
             qnaVideoUrlInput: document.getElementById('qna-video-url'),
             saveQnaVideoBtn: document.getElementById('save-qna-video-btn'),
-
-            // ✅ 문법 수정: 등호(=) → 콜론(:)
             videoRevUrlsContainer: (type) => `teacher-video${type}-rev-urls-container`,
         };
     },
 
-    addEventListeners() {
+     addEventListeners() {
         if (this.elements.classSelect) {
             this.elements.classSelect.addEventListener('change', (e) => this.handleClassSelection(e));
         }
-        const navButtons = this.elements.navButtonsContainer?.querySelectorAll('.teacher-nav-btn');
-        navButtons?.forEach(btn => {
-            btn.addEventListener('click', () => this.handleViewChange(btn.dataset.view));
-        });
+        // 카드 네비게이션을 위한 이벤트 위임
+        if (this.elements.navButtonsContainer) {
+            this.elements.navButtonsContainer.addEventListener('click', (e) => {
+                 const card = e.target.closest('.teacher-nav-btn'); // 클릭된 카드 찾기
+                 if (card && card.dataset.view) {
+                     this.handleViewChange(card.dataset.view);
+                 }
+            });
+        }
+         // 새로 추가된 "메뉴로" 버튼들에 대한 이벤트 리스너 추가
+         // document.querySelectorAll('.back-to-teacher-menu').forEach(btn => { // This might be too early if views are initially hidden
+         // Instead, use event delegation on the main content area
+         if (this.elements.mainContent) {
+             this.elements.mainContent.addEventListener('click', (e) => {
+                 if (e.target.classList.contains('back-to-teacher-menu')) {
+                     this.showDashboardMenu();
+                 }
+             });
+         }
     },
 
-    handleViewChange(viewName) {
-        const navButtons = this.elements.navButtonsContainer?.querySelectorAll('.teacher-nav-btn');
-        navButtons?.forEach(btn => {
-            const isSelected = btn.dataset.view === viewName;
-            btn.classList.toggle('bg-blue-700', isSelected);
-            btn.classList.toggle('hover:bg-blue-700', isSelected);
-            btn.classList.toggle('bg-blue-500', !isSelected);
-            btn.classList.toggle('hover:bg-blue-600', !isSelected);
+    // 메인 메뉴(카드 그리드)를 보여주는 새 함수
+    showDashboardMenu() {
+        if (this.elements.navButtonsContainer) {
+            this.elements.navButtonsContainer.style.display = 'grid'; // 카드 그리드 표시
+        }
+        // 모든 특정 뷰 div 숨기기
+        Object.values(this.elements.views).forEach(view => {
+            if (view) view.style.display = 'none';
         });
+        // 필요한 경우 특정 뷰 선택 상태 초기화 (선택 사항)
+        // this.state.selectedSubjectId = null; 등등
+    },
 
+
+    handleViewChange(viewName) {
+        // 카드 네비게이션 그리드 숨기기
+        if (this.elements.navButtonsContainer) {
+            this.elements.navButtonsContainer.style.display = 'none';
+        }
+
+        // 먼저 모든 특정 뷰 숨기기
         Object.values(this.elements.views).forEach(view => {
             if (view) view.style.display = 'none';
         });
 
+        // 선택된 뷰 표시
         const viewToShow = this.elements.views[viewName];
-        if (viewToShow) viewToShow.style.display = 'block';
+        if (viewToShow) {
+            viewToShow.style.display = 'block'; // 뷰 컨테이너에는 'block' 사용
+        } else {
+             // 뷰가 존재하지 않으면 메뉴를 다시 표시
+             this.showDashboardMenu();
+             return;
+        }
 
+
+        // 각 뷰가 표시될 때의 특정 로직
         switch (viewName) {
             case 'lesson-dashboard':
-                this.elements.lessonDashboardControls?.style.display = 'block';
-                this.elements.lessonSelectContainer?.style.display = 'none';
-                this.elements.lessonDashboardContent?.style.display = 'none';
+                // 컨트롤은 뷰 내부에 있으므로 여기서 별도로 표시를 관리할 필요 없음
                 this.populateSubjectSelectForLessonDashboard();
+                // 이 뷰로 이동할 때 학습 선택 초기화
+                if (this.elements.lessonSelect) {
+                     this.elements.lessonSelect.value = ''; // 드롭다운 리셋
+                     this.elements.lessonSelect.dispatchEvent(new Event('change')); // 콘텐츠 숨기기 위해 change 이벤트 트리거
+                }
+
                 break;
             case 'homework-dashboard':
-                this.elements.homeworkDashboardControls?.style.display = 'block';
-                this.elements.homeworkManagementButtons?.style.display = 'none';
-                this.elements.homeworkContent?.style.display = 'none';
                 this.homeworkDashboard.populateHomeworkSelect();
+                 // 이 뷰로 이동할 때 숙제 선택 초기화
+                if(this.elements.homeworkSelect) {
+                     this.elements.homeworkSelect.value = '';
+                     this.elements.homeworkSelect.dispatchEvent(new Event('change'));
+                }
                 break;
             case 'lesson-mgmt':
-                this.elements.lessonMgmtControls?.style.display = 'block';
-                this.elements.lessonsManagementContent?.style.display = 'none';
-                this.elements.lessonPrompt?.style.display = 'block';
-                this.populateSubjectSelectForMgmt();
+                 this.populateSubjectSelectForMgmt();
+                 // 관리용 과목 선택 초기화
+                 if(this.elements.subjectSelectForMgmt) {
+                     this.elements.subjectSelectForMgmt.value = '';
+                     this.elements.subjectSelectForMgmt.dispatchEvent(new Event('change'));
+                 }
                 break;
             case 'qna-video-mgmt':
+                // 필요시 QnA 폼 초기화
+                 if(this.elements.qnaVideoDateInput) this.elements.qnaVideoDateInput.value = '';
+                 if(this.elements.qnaVideoTitleInput) this.elements.qnaVideoTitleInput.value = '';
+                 if(this.elements.qnaVideoUrlInput) this.elements.qnaVideoUrlInput.value = '';
                 break;
             case 'class-mgmt':
+                // 현재 이 단순한 뷰에는 특정 초기화 필요 없음
                 break;
+            default:
+                 // 유효한 viewName이 아닐 경우 발생 (좋은 습관)
+                 this.showDashboardMenu();
+                 break;
         }
     },
+
 
     async handleClassSelection(event) {
         const selectedOption = event.target.options[event.target.selectedIndex];
@@ -288,25 +344,32 @@ const TeacherApp = {
 
         this.state.selectedClassId = newClassId;
         this.state.selectedClassName = selectedOption.text;
+        // 반 변경 시 선택 초기화
+        this.state.selectedSubjectId = null;
+        this.state.selectedLessonId = null;
+        this.state.selectedHomeworkId = null;
+        this.state.selectedSubjectIdForMgmt = null;
+
 
         if (!this.state.selectedClassId) {
-            this.elements.mainContent.style.display = 'none';
+            if(this.elements.mainContent) this.elements.mainContent.style.display = 'none';
+            // 반이 선택되지 않은 경우 네비게이션 버튼 컨테이너도 숨김
+            if (this.elements.navButtonsContainer) this.elements.navButtonsContainer.style.display = 'none';
             Object.values(this.elements.views).forEach(view => {
                 if (view) view.style.display = 'none';
-            });
-            const navButtons = this.elements.navButtonsContainer?.querySelectorAll('.teacher-nav-btn');
-            navButtons?.forEach(btn => {
-                btn.classList.remove('bg-blue-700', 'hover:bg-blue-700');
-                btn.classList.add('bg-blue-500', 'hover:bg-blue-600');
             });
             return;
         }
 
-        this.elements.mainContent.style.display = 'block';
+        if(this.elements.mainContent) this.elements.mainContent.style.display = 'block';
         await this.fetchClassData(this.state.selectedClassId);
-        this.handleViewChange('lesson-dashboard');
+        // 반 선택 후 항상 메인 메뉴 표시
+        this.showDashboardMenu();
     },
 
+    // ... fetchClassData, listenForSubjects, updateSubjectDropdowns, populateClassSelect ...
+    // ... populateSubjectSelectForLessonDashboard, populateSubjectSelectForMgmt ...
+    // (이 함수들은 이전 응답과 거의 동일하게 유지)
     async fetchClassData(classId) {
         this.state.studentsInClass.clear();
         try {
@@ -339,8 +402,13 @@ const TeacherApp = {
     },
 
     updateSubjectDropdowns() {
-        const activeNavButton = this.elements.navButtonsContainer?.querySelector('.bg-blue-700');
-        const activeView = activeNavButton ? activeNavButton.dataset.view : null;
+         let activeView = null;
+         for (const viewName in this.elements.views) {
+             if (this.elements.views[viewName] && this.elements.views[viewName].style.display === 'block') {
+                 activeView = viewName;
+                 break;
+             }
+         }
 
         if (activeView === 'lesson-dashboard') {
             this.populateSubjectSelectForLessonDashboard();
@@ -348,7 +416,7 @@ const TeacherApp = {
             this.populateSubjectSelectForMgmt();
         }
 
-        if (this.elements.assignHomeworkModal.style.display === 'flex') {
+        if (this.elements.assignHomeworkModal && this.elements.assignHomeworkModal.style.display === 'flex') {
             this.homeworkDashboard.populateSubjectsForHomeworkModal?.();
         }
     },
@@ -375,15 +443,19 @@ const TeacherApp = {
         }
     },
 
-    populateSubjectSelectForLessonDashboard() {
+     populateSubjectSelectForLessonDashboard() {
         const select = this.elements.subjectSelectLesson;
-        if (!select) return;
+        const lessonSelect = this.elements.lessonSelect;
+        if (!select || !lessonSelect) return;
+
+        const currentSubjectId = select.value;
 
         select.innerHTML = '<option value="">-- 과목 선택 --</option>';
-        this.elements.lessonSelect.innerHTML = '<option value="">-- 학습 선택 --</option>';
-        this.elements.lessonSelect.disabled = true;
-        this.elements.lessonSelectContainer.style.display = 'none';
-        this.elements.lessonDashboardContent.style.display = 'none';
+        lessonSelect.innerHTML = '<option value="">-- 학습 선택 --</option>';
+        lessonSelect.disabled = true;
+        if(this.elements.lessonSelectContainer) this.elements.lessonSelectContainer.style.display = 'none';
+        if(this.elements.lessonDashboardContent) this.elements.lessonDashboardContent.style.display = 'none';
+
 
         if (!this.state.selectedClassData || !this.state.selectedClassData.subjects) {
             select.disabled = true;
@@ -405,6 +477,17 @@ const TeacherApp = {
                 select.appendChild(option);
             }
         });
+
+        if (subjectIdsInClass.includes(currentSubjectId)) {
+            select.value = currentSubjectId;
+             if(this.elements.lessonSelectContainer) this.elements.lessonSelectContainer.style.display = 'block';
+             // 과목이 이미 선택된 경우 학습 목록도 다시 채움
+             lessonDashboard.populateLessonSelect(currentSubjectId); // 모듈의 함수 호출
+        } else {
+             this.state.selectedSubjectId = null;
+             this.state.selectedLessonId = null;
+        }
+
         select.disabled = false;
     },
 
@@ -412,9 +495,12 @@ const TeacherApp = {
         const select = this.elements.subjectSelectForMgmt;
         if (!select) return;
 
+        const currentSubjectId = select.value;
+
         select.innerHTML = '<option value="">-- 과목 선택 --</option>';
-        this.elements.lessonsManagementContent.style.display = 'none';
-        this.elements.lessonPrompt.style.display = 'block';
+        if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'none';
+        if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block';
+
 
         this.state.subjects.forEach(sub => {
             const option = document.createElement('option');
@@ -422,8 +508,22 @@ const TeacherApp = {
             option.textContent = sub.name;
             select.appendChild(option);
         });
+
+        if (this.state.subjects.some(s => s.id === currentSubjectId)) {
+             select.value = currentSubjectId;
+              if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'block';
+              if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'none';
+              // 과목이 이미 선택된 경우 학습 목록도 다시 채움
+              lessonManager.handleLessonFilterChange(); // 모듈의 함수 호출
+        } else {
+            this.state.selectedSubjectIdForMgmt = null;
+            if (this.elements.lessonsList) this.elements.lessonsList.innerHTML = ''; // 학습 목록 비우기
+        }
+
+
         select.disabled = this.state.subjects.length === 0;
     },
+
 };
 
 document.addEventListener('DOMContentLoaded', () => {
