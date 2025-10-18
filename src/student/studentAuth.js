@@ -1,6 +1,7 @@
 // src/student/studentAuth.js
 
-import { collection, getDocs, where, query, getDoc, doc } from "firebase/firestore"; // ✅ getDoc, doc 추가
+// ✅ 여기에 orderBy 추가
+import { collection, getDocs, where, query, getDoc, doc, orderBy } from "firebase/firestore";
 import { db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
@@ -20,7 +21,7 @@ export const studentAuth = {
         if (!classSelect) return;
         classSelect.innerHTML = '<option value="">-- 반 선택 --</option>';
         try {
-             // 이름순으로 정렬하여 가져오기
+             // 이름순으로 정렬하여 가져오기 (이제 orderBy 사용 가능)
             const snapshot = await getDocs(query(collection(db, 'classes'), orderBy("name")));
             snapshot.forEach(doc => {
                 const option = document.createElement('option');
@@ -43,7 +44,7 @@ export const studentAuth = {
         if (!classId) return;
 
         try {
-             // 이름순으로 정렬하여 가져오기
+             // 이름순으로 정렬하여 가져오기 (이제 orderBy 사용 가능)
             const q = query(collection(db, 'students'), where("classId", "==", classId), orderBy("name"));
             const snapshot = await getDocs(q);
             snapshot.forEach(doc => {
