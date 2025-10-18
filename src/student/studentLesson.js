@@ -21,42 +21,55 @@ export const studentLesson = {
             return '';
         }
         
-        // URL 정리 (앞뒤 공백 제거)
         url = url.trim();
-        
         let videoId = null;
-        
-        try {
-            // youtube.com/watch?v=VIDEO_ID 형식
-            if (url.includes('youtube.com/watch')) {
-                const urlObj = new URL(url);
-                videoId = urlObj.searchParams.get('v');
-            } 
-            // youtu.be/VIDEO_ID 형식
-            else if (url.includes('youtu.be/')) {
-                const parts = url.split('youtu.be/')[1];
-                if (parts) {
-                    videoId = parts.split(/[?&#]/)[0];
-                }
-            }
-            // youtube.com/embed/VIDEO_ID 형식
-            else if (url.includes('youtube.com/embed/')) {
-                const parts = url.split('youtube.com/embed/')[1];
-                if (parts) {
-                    videoId = parts.split(/[?&#]/)[0];
-                }
-            }
-        } catch (e) {
-            // URL 파싱 오류는 콘솔에 남기지 않음
+        let startTime = 0;
+        let tempUrl = url;
+
+        // 1. URL 객체 생성 전, 프로토콜이 없으면 임시로 추가하여 잘못된 형식(예: www.youtube.com/...)을 처리
+        if (!tempUrl.startsWith('http://') && !tempUrl.startsWith('https://')) {
+            tempUrl = 'https://' + tempUrl;
         }
-        
-        // videoId 유효성 검사
-        if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+
+        // 2. 다양한 형식에서 비디오 ID 추출 (가장 확실한 방법)
+        // v=VIDEO_ID, youtu.be/VIDEO_ID, embed/VIDEO_ID, shorts/VIDEO_ID 모두 처리
+        const regex = /(?:youtu\.be\/|v=|embed\/|shorts\/)([a-zA-Z0-9_-]{11})(?:[?&]|$)/;
+        const match = tempUrl.match(regex);
+
+        if (match) {
+            videoId = match[1];
+        }
+
+        // 3. 유효성 검사
+        if (!videoId || videoId.length !== 11) {
             return '';
         }
 
-        // 안전한 embed URL 반환
-        return `https://www.youtube.com/embed/${videoId}`;
+        // 4. 시작 시간 (t=) 파라미터 처리 (URL 객체를 사용)
+        try {
+            const urlObj = new URL(tempUrl);
+            const tParam = urlObj.searchParams.get('t');
+            
+            if (tParam) {
+                // t 파라미터 값에서 숫자만 추출하여 초로 사용 (t=100s 또는 t=100 형태 처리)
+                const secondsMatch = tParam.match(/^(\d+)/); 
+                if(secondsMatch) {
+                    startTime = parseInt(secondsMatch[1], 10);
+                }
+                // 참고: t=1m30s와 같은 복잡한 시간 형식은 변환하지 않고 단순 초 단위 숫자만 지원합니다.
+            }
+        } catch (e) {
+            // URL 파싱 오류 (프로토콜 누락 등) 무시. videoId만 사용하여 embed URL 생성.
+             console.error("URL 파싱 오류, 시작 시간 추출 실패:", e); // 디버깅 로그 유지
+        }
+
+        // 5. 최종 embed URL 반환 (https: 명시)
+        let embedUrl = `https://www.youtube.com/embed/${videoId}`;
+        if (startTime > 0) {
+            embedUrl += `?start=${startTime}`;
+        }
+        
+        return embedUrl;
     },
 
     startSelectedLesson(lesson) {

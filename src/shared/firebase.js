@@ -1,7 +1,7 @@
 // src/shared/firebase.js
 
 import { initializeApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+// initializeAppCheck, ReCaptchaV3Provider import 제거됨
 import { getAuth, onAuthStateChanged, signInAnonymously, getIdTokenResult } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
@@ -18,10 +18,13 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+// App Check 호출 제거됨:
+/*
 initializeAppCheck(app, {
   provider: new ReCaptchaV3Provider('6LdZeOYrAAAAAIK_L5u1NB-XZWyxl08UQ1jGgW3j'),
   isTokenAutoRefreshEnabled: true
 });
+*/
 
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -66,5 +69,4 @@ const ensureAuthWithRole = (requiredRole, callback) => {
   });
 };
 
-// ▼▼▼ [수정] export 목록에 app을 추가합니다. ▼▼▼
 export { app, auth, db, storage, ensureAnonymousAuth, ensureAuthWithRole, onAuthStateChanged, signInAnonymously };

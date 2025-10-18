@@ -22,16 +22,29 @@ export const studentAuth = {
         classSelect.innerHTML = '<option value="">-- 반 선택 --</option>';
         try {
              // 이름순으로 정렬하여 가져오기 (이제 orderBy 사용 가능)
-            const snapshot = await getDocs(query(collection(db, 'classes'), orderBy("name")));
-            snapshot.forEach(doc => {
-                const option = document.createElement('option');
-                option.value = doc.id;
-                option.textContent = doc.data().name;
-                classSelect.appendChild(option);
-            });
+            const q = query(collection(db, 'classes'), orderBy("name"));
+            const snapshot = await getDocs(q);
+
+            // ▼▼▼ [추가된 디버깅 코드] ▼▼▼
+            console.log("Firestore Debug: classes 쿼리 실행됨");
+            if (snapshot.empty) {
+                console.warn("Firestore Debug: classes 컬렉션에 문서가 없습니다.");
+                this.app.elements.classSelect.innerHTML = '<option value="">-- 등록된 반 없음 --</option>';
+            } else {
+                console.log(`Firestore Debug: 총 ${snapshot.size}개의 반 문서가 발견되었습니다.`);
+                snapshot.forEach(doc => {
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = doc.data().name;
+                    classSelect.appendChild(option);
+                });
+            }
+            // ▲▲▲ [추가된 디버깅 코드] ▲▲▲
+
         } catch (error) {
             console.error("Error fetching classes:", error);
-            showToast("반 목록을 불러오는 데 실패했습니다.");
+            showToast("반 목록을 불러오는 데 실패했습니다. 네트워크 상태를 확인해주세요.", true);
+            classSelect.innerHTML = '<option value="">-- 목록 로드 실패 --</option>';
         }
     },
 
