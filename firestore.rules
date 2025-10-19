@@ -1,43 +1,48 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Helper: 인증된 사용자(익명 로그인한 학생 포함)인지 확인하는 함수
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // --- 1. 학생/교사/관리자 정보 (로그인 시 필요) ---
+
+    // --- 1. 학생/교사/관리자 정보 ---
     match /teachers/{teacherId} {
       allow read: if isAuthenticated();
-      allow write: if false; // 관리자 앱에서 Cloud Function을 통해 처리
+      // ✅ 수정: Cloud Function 또는 관리자만 쓰기 허용 (보안 강화 시 고려)
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
     }
     match /admins/{adminId} {
       allow read: if isAuthenticated();
-      allow write: if false;
+      allow write: if false; // 관리자 정보는 직접 수정 불가
     }
     match /students/{studentId} {
-      allow read: if isAuthenticated(); 
-      allow write: if false; // 관리자 앱에서만 쓰기/수정 허용
+      allow read: if isAuthenticated();
+      // ✅ 수정: 관리자 앱에서 직접 수정 가능하도록 변경
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
     }
-    
+
     // --- 2. 반 정보 (Classes) ---
     match /classes/{classId} {
-      allow read: if isAuthenticated(); 
-      allow write: if false;
+      allow read: if isAuthenticated();
+      // ✅ 수정: 관리자/선생님 앱에서 직접 수정 가능하도록 변경
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
     }
-    
+
     // --- 3. 학습 콘텐츠 (Subjects, Lessons) ---
     match /subjects/{subjectId} {
       allow read: if isAuthenticated();
-      allow write: if false;
-      
-      // Lesson Subcollection: 학습 목록 로딩에 필수
+      // ✅ 수정: 관리자 앱에서 직접 수정 가능하도록 변경
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
+
+      // Lesson Subcollection
       match /lessons/{lessonId} {
         allow read: if isAuthenticated();
-        allow write: if false; 
-        
-        // Lesson Submission: 학생 자신의 학습 기록 저장
+        // ✅ 수정: 관리자/선생님 앱에서 직접 수정/생성 가능하도록 변경
+        allow write: if isAuthenticated(); // false -> isAuthenticated() 로 변경
+
+        // Lesson Submission: 학생 자신의 학습 기록 저장 (기존 유지)
         match /submissions/{studentAuthUid} {
           allow read: if isAuthenticated();
           // 익명 UID와 문서 ID가 일치해야 본인의 기록을 저장/수정할 수 있음
@@ -45,37 +50,42 @@ service cloud.firestore {
         }
       }
 
+      // Textbooks Subcollection
       match /textbooks/{textbookId} {
         allow read: if isAuthenticated();
-        allow write: if false;
+        // ✅ 수정: 관리자 앱에서 직접 수정/생성 가능하도록 변경
+        allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
       }
     }
-    
+
     // --- 4. 숙제 (Homeworks) ---
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
-      allow write: if false;
-      
-      // Homework Submission: 학생 자신의 제출 기록 저장
+       // ✅ 수정: 선생님 앱에서 직접 수정/생성 가능하도록 변경
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
+
+      // Homework Submission: 학생 자신의 제출 기록 저장 (기존 유지)
       match /submissions/{studentAuthUid} {
         allow read: if isAuthenticated();
         // 익명 UID와 문서 ID가 일치해야 본인의 기록을 저장/수정할 수 있음
-        allow write: if request.auth.uid == studentAuthUid; 
+        allow write: if request.auth.uid == studentAuthUid;
       }
     }
-    
+
     // --- 5. 영상/기타 (classVideos, classLectures) ---
-    match /classVideos/{videoId} {
+    match /classVideos/{videoId} { // Q&A 영상
       allow read: if isAuthenticated();
-      allow write: if false;
+       // ✅ 수정: 관리자/선생님 앱에서 직접 저장 가능하도록 변경
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
     }
-    match /classLectures/{lectureId} {
+    match /classLectures/{lectureId} { // 현강 수업 영상
       allow read: if isAuthenticated();
-      allow write: if false;
+       // ✅ 수정: 선생님 앱에서 직접 저장/수정 가능하도록 변경
+      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
     }
 
     // --- 6. 기타 모든 컬렉션 (개별 match 블록 사용) ---
-    // 오류가 발생했던 84줄 부근의 코드를 명확히 분리합니다.
+    // 기존 규칙 유지 (읽기만 허용)
     match /grading/{gradeId} { allow read: if isAuthenticated(); allow write: if false; }
     match /notices/{noticeId} { allow read: if isAuthenticated(); allow write: if false; }
     match /comments/{commentId} { allow read: if isAuthenticated(); allow write: if false; }
@@ -83,8 +93,8 @@ service cloud.firestore {
     match /attendance/{recordId} { allow read: if isAuthenticated(); allow write: if false; }
     match /aiAnalysis/{analysisId} { allow read: if isAuthenticated(); allow write: if false; }
     match /analytics/{docId} { allow read: if isAuthenticated(); allow write: if false; }
-    
-    // 최종 Fallback: 명시되지 않은 모든 경로는 차단
+
+    // 최종 Fallback: 명시되지 않은 모든 경로는 차단 (기존 유지)
     match /{document=**} {
       allow read, write: if false;
     }

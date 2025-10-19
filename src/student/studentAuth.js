@@ -1,7 +1,7 @@
 // src/student/studentAuth.js
 
-// ✅ 여기에 orderBy 추가
-import { collection, getDocs, where, query, getDoc, doc, orderBy } from "firebase/firestore";
+// ✅ orderBy import 제거
+import { collection, getDocs, where, query, getDoc, doc } from "firebase/firestore";
 import { db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
@@ -21,8 +21,8 @@ export const studentAuth = {
         if (!classSelect) return;
         classSelect.innerHTML = '<option value="">-- 반 선택 --</option>';
         try {
-             // 이름순으로 정렬하여 가져오기 (이제 orderBy 사용 가능)
-            const q = query(collection(db, 'classes'), orderBy("name"));
+             // ✅ orderBy("name") 제거
+            const q = query(collection(db, 'classes'));
             const snapshot = await getDocs(q);
 
             // ▼▼▼ [추가된 디버깅 코드] ▼▼▼
@@ -32,10 +32,14 @@ export const studentAuth = {
                 this.app.elements.classSelect.innerHTML = '<option value="">-- 등록된 반 없음 --</option>';
             } else {
                 console.log(`Firestore Debug: 총 ${snapshot.size}개의 반 문서가 발견되었습니다.`);
-                snapshot.forEach(doc => {
+                // 이름순으로 정렬 (클라이언트 측)
+                const classes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                classes.sort((a, b) => a.name.localeCompare(b.name));
+
+                classes.forEach(cls => {
                     const option = document.createElement('option');
-                    option.value = doc.id;
-                    option.textContent = doc.data().name;
+                    option.value = cls.id;
+                    option.textContent = cls.name;
                     classSelect.appendChild(option);
                 });
             }
@@ -57,16 +61,21 @@ export const studentAuth = {
         if (!classId) return;
 
         try {
-             // 이름순으로 정렬하여 가져오기 (이제 orderBy 사용 가능)
-            const q = query(collection(db, 'students'), where("classId", "==", classId), orderBy("name"));
+             // ✅ orderBy("name") 제거
+            const q = query(collection(db, 'students'), where("classId", "==", classId));
             const snapshot = await getDocs(q);
-            snapshot.forEach(doc => {
+
+            // 이름순으로 정렬 (클라이언트 측)
+            const students = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            students.sort((a, b) => a.name.localeCompare(b.name));
+
+            students.forEach(std => {
                 const option = document.createElement('option');
-                option.value = doc.data().name; // value도 이름으로 설정
-                option.textContent = doc.data().name;
+                option.value = std.name; // value도 이름으로 설정
+                option.textContent = std.name;
                 nameSelect.appendChild(option);
             });
-            nameSelect.disabled = snapshot.empty; // 학생 없으면 비활성화 유지
+            nameSelect.disabled = students.length === 0; // 학생 없으면 비활성화 유지
         } catch (error) {
             console.error("Error fetching students:", error);
             showToast("학생 목록을 불러오는 데 실패했습니다.");

@@ -56,7 +56,7 @@ export function createLessonManager(config) {
 
             if (contentEl) contentEl.style.display = canShow ? 'block' : 'none';
             if (promptEl) promptEl.style.display = canShow ? 'none' : 'block';
-            
+
             if (canShow) this.listenForLessons();
             else if(listEl) listEl.innerHTML = '';
         },
@@ -68,6 +68,7 @@ export function createLessonManager(config) {
             const q = query(collection(db, 'subjects', selectedSubjectIdForMgmt, 'lessons'));
             onSnapshot(q, (snapshot) => {
                 let lessons = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Firestore 쿼리에서 orderBy를 제거했으므로 클라이언트 측에서 정렬
                 lessons.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
                 app.state.lessons = lessons;
                 this.renderLessonList();
@@ -176,38 +177,76 @@ export function createLessonManager(config) {
         },
 
         async saveLesson() {
+            // 앱 상태에서 필요한 정보 가져오기
             const { selectedSubjectIdForMgmt, editingLesson, generatedQuiz, lessons } = app.state;
+            // HTML 입력 요소에서 값 가져오기
             const title = document.getElementById(elements.lessonTitle).value.trim();
             const video1Url = document.getElementById(elements.video1Url).value.trim();
             const video2Url = document.getElementById(elements.video2Url).value.trim();
 
+            // 보충 영상 URL 배열 만들기 (빈 값은 제외)
             const video1RevUrls = Array.from(document.querySelectorAll(`#${elements.videoRevUrlsContainer(1)} .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
             const video2RevUrls = Array.from(document.querySelectorAll(`#${elements.videoRevUrlsContainer(2)} .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
 
+            // 필수 값 확인
             if (!title || !video1Url || !video2Url || !generatedQuiz) {
                 showToast("제목, 기본 영상 1, 문제 풀이 영상 2, 퀴즈 정보는 필수입니다.");
-                return;
+                return; // 필수 값이 없으면 함수 종료
             }
 
-            this.setSaveButtonLoading(true);
-            const lessonData = { title, video1Url, video2Url, video1RevUrls, video2RevUrls, questionBank: generatedQuiz };
+            this.setSaveButtonLoading(true); // 저장 버튼 로딩 상태 시작
+
+            // Firestore에 저장할 데이터 객체 생성
+            const lessonData = {
+                 title,
+                 video1Url,
+                 video2Url,
+                 video1RevUrls,
+                 video2RevUrls,
+                 questionBank: generatedQuiz
+            };
+
+            // --- 👇 로그 추가 시작 👇 ---
+            console.log("[Shared] 🔥 lessonData being saved:", JSON.stringify(lessonData, null, 2)); // 데이터 내용 확인 (JSON 문자열로 변환하여 undefined 확인 용이)
+            // --- 👆 로그 추가 끝 👆 ---
 
             try {
+                // 수정 모드일 경우
                 if (editingLesson) {
+                    // --- 👇 로그 추가 시작 👇 ---
+                    console.log("[Shared] 🛠️ Updating lesson. Path:", 'subjects', selectedSubjectIdForMgmt, 'lessons', editingLesson?.id); // 경로 확인
+                    // --- 👆 로그 추가 끝 👆 ---
+                    if (!selectedSubjectIdForMgmt || !editingLesson.id) {
+                        throw new Error("과목 ID 또는 수정할 학습 ID가 없습니다.");
+                    }
                     await updateDoc(doc(db, 'subjects', selectedSubjectIdForMgmt, 'lessons', editingLesson.id), lessonData);
                     showToast("학습 세트가 성공적으로 수정되었습니다.", false);
-                } else {
-                    Object.assign(lessonData, { order: lessons.length, isActive: false, createdAt: serverTimestamp() });
+                }
+                // 생성 모드일 경우
+                else {
+                    // --- 👇 로그 추가 시작 👇 ---
+                     console.log("[Shared] ✨ Creating new lesson. Path:", 'subjects', selectedSubjectIdForMgmt, 'lessons'); // 경로 확인
+                    // --- 👆 로그 추가 끝 👆 ---
+                    if (!selectedSubjectIdForMgmt) {
+                        throw new Error("과목 ID가 없습니다.");
+                    }
+                    Object.assign(lessonData, {
+                        order: lessons.length,
+                        isActive: false,
+                        createdAt: serverTimestamp()
+                    });
                     await addDoc(collection(db, 'subjects', selectedSubjectIdForMgmt, 'lessons'), lessonData);
                     showToast("학습 세트가 성공적으로 생성되었습니다.", false);
                 }
                 this.hideModal();
             } catch(error) {
+                console.error("[Shared] Firestore 저장 오류:", error); // 오류 로그에도 태그 추가
                 showToast("저장 실패: " + error.message);
             } finally {
                 this.setSaveButtonLoading(false);
             }
         },
+
 
         openLessonModalForCreate() {
             app.state.editingLesson = null;
@@ -229,7 +268,7 @@ export function createLessonManager(config) {
             app.state.editingLesson = lessonData;
             document.getElementById(elements.modalTitle).textContent = "학습 세트 수정";
             document.getElementById(elements.lessonTitle).value = lessonData.title;
-            document.getElementById(elements.video1Url).value = lessonData.video1Url;
+            document.getElementById(elements.video1Url).value = lessonData.video1Url; // video1Url 필드가 없을 수 있음
             document.getElementById(elements.video2Url).value = lessonData.video2Url;
 
             const v1Container = document.getElementById(elements.videoRevUrlsContainer(1));
@@ -240,8 +279,9 @@ export function createLessonManager(config) {
             lessonData.video1RevUrls?.forEach(url => this.addRevUrlInput(1, url));
             lessonData.video2RevUrls?.forEach(url => this.addRevUrlInput(2, url));
 
-            document.getElementById(elements.quizJsonInput).value = JSON.stringify(lessonData.questionBank, null, 2);
-            this.handleJsonPreview();
+            // questionBank가 없을 경우 빈 객체로 처리하여 오류 방지
+            document.getElementById(elements.quizJsonInput).value = JSON.stringify(lessonData.questionBank || {}, null, 2);
+            this.handleJsonPreview(); // 미리보기 실행
             document.getElementById(elements.modal).style.display = 'flex';
         },
 
@@ -261,13 +301,15 @@ export function createLessonManager(config) {
             }
             try {
                 const parsedJson = JSON.parse(jsonText);
+                // JSON 구조가 배열 형태인지, 또는 { questionBank: [] } 형태인지 확인
                 const questionBank = Array.isArray(parsedJson) ? parsedJson : parsedJson.questionBank;
-                if (!Array.isArray(questionBank)) throw new Error("'questionBank' 배열을 찾을 수 없습니다.");
+                if (!Array.isArray(questionBank)) throw new Error("JSON 데이터에서 'questionBank' 배열을 찾을 수 없습니다.");
 
                 app.state.generatedQuiz = questionBank;
                 const count = app.state.generatedQuiz.length;
                 document.getElementById(elements.questionsPreviewTitle).textContent = `생성된 퀴즈 (${count}문항)`;
-                document.getElementById(elements.questionsPreviewList).innerHTML = app.state.generatedQuiz.map((q, i) => `<p><b>${i+1}. ${q.question}</b></p>`).join('');
+                // 각 질문 객체에 'question' 속성이 있는지 확인하고 표시
+                document.getElementById(elements.questionsPreviewList).innerHTML = app.state.generatedQuiz.map((q, i) => `<p><b>${i+1}. ${q.question || '질문 없음'}</b></p>`).join('');
                 previewContainer.classList.remove('hidden');
                 showToast(`퀴즈 ${count}개를 성공적으로 불러왔습니다.`, false);
             } catch (error) {
@@ -277,14 +319,15 @@ export function createLessonManager(config) {
             }
         },
 
+
         setSaveButtonLoading(isLoading) {
             const saveBtnText = document.getElementById(elements.saveBtnText);
             const saveLoader = document.getElementById(elements.saveLoader);
             const saveLessonBtn = document.getElementById(elements.saveLessonBtn);
-            
-            saveBtnText.classList.toggle('hidden', isLoading);
-            saveLoader.classList.toggle('hidden', !isLoading);
-            saveLessonBtn.disabled = isLoading;
+
+            if(saveBtnText) saveBtnText.classList.toggle('hidden', isLoading);
+            if(saveLoader) saveLoader.classList.toggle('hidden', !isLoading);
+            if(saveLessonBtn) saveLessonBtn.disabled = isLoading;
         }
     };
 
