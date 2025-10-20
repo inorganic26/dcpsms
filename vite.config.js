@@ -1,37 +1,27 @@
+// vite.config.js
+
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
-export default defineConfig(({ mode }) => {
-  let rootDir = './';
-  let outDir = 'dist';
-  let inputFile = 'index.html';
-
-  if (mode === 'portal') {
-    rootDir = 'src';
-    outDir = 'dist-portal';
-    inputFile = 'index.html';
-  } else if (mode === 'student') {
-    rootDir = 'src/student';
-    outDir = 'dist-student';
-    inputFile = 'index.html';
-  } else if (mode === 'teacher') {
-    rootDir = 'src/teacher';
-    outDir = 'dist-teacher';
-    inputFile = 'index.html';
-  } else if (mode === 'admin') {
-    rootDir = 'src/admin';
-    outDir = 'dist-portal/admin'; // ✅ 관리자용은 포털 하위 폴더에
-    inputFile = 'index.html';
-  }
-
-  return {
-    root: rootDir,
-    build: {
-      outDir: resolve(__dirname, outDir),
-      rollupOptions: {
-        input: resolve(__dirname, `${rootDir}/${inputFile}`),
+export default defineConfig({
+  build: {
+    // Rollup 옵션을 사용하여 여러 진입점(Entry Point) 설정
+    rollupOptions: {
+      input: {
+        // 포털 페이지
+        main: resolve(__dirname, 'index.html'),
+        
+        // 관리자 앱
+        admin: resolve(__dirname, 'src/admin/index.html'),
+        
+        // 선생님 앱
+        teacher: resolve(__dirname, 'src/teacher/index.html'),
+        
+        // 학생 앱
+        student: resolve(__dirname, 'src/student/index.html'),
       },
-      emptyOutDir: true,
     },
-  };
+    // 빌드 결과물을 dist 폴더에 생성
+    outDir: 'dist', 
+  },
 });
