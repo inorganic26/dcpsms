@@ -1,53 +1,28 @@
 {
-  "firestore": {
-    "database": "(default)",
-    "location": "asia-northeast3",
-    "rules": "firestore.rules"
-  },
-  "functions": [
+  "hosting": [
     {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "runtime": "nodejs20",
-      "memory": "256MiB",
-      "timeoutSeconds": 300,
-      "region": "asia-northeast3"
+      "target": "portal",
+      "site": "svcm-v2",
+      "public": "dist-portal",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "/admin/**", "destination": "/admin/index.html" },
+        { "source": "**", "destination": "/index.html" }
+      ]
+    },
+    {
+      "target": "student",
+      "site": "dcprime-s",
+      "public": "dist-student",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
+      "target": "teacher",
+      "site": "t-dcprime",
+      "public": "dist-teacher",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
     }
-  ],
-  "storage": {
-    "rules": "storage.rules"
-  },
-  "hosting": {
-    "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/admin{,/**}",
-        "destination": "/src/admin/index.html"
-      },
-      {
-        "source": "/teacher{,/**}",
-        "destination": "/src/teacher/index.html"
-      },
-      {
-        "source": "/student{,/**}",
-        "destination": "/src/student/index.html"
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  }
+  ]
 }
