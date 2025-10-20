@@ -5,10 +5,17 @@
   "targets": {
     "svcm-v2": {
       "hosting": {
-        "svcm": ["svcm-v2"],
-        "student": ["dcprime-s"],
-        "teacher": ["t-dcprime"]
+        "student": [
+          "dcprime-s"
+        ],
+        "teacher": [
+          "t-dcprime"
+        ],
+        "portal": [
+          "svcm-v2"
+        ]
       }
     }
-  }
+  },
+  "etags": {}
 }

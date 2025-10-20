@@ -6,13 +6,19 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+
     "build:portal": "vite build --mode portal",
     "build:student": "vite build --mode student",
     "build:teacher": "vite build --mode teacher",
     "build:admin": "vite build --mode admin",
+
     "preview": "vite preview",
     "serve": "vite preview",
-    "deploy": "firebase deploy --only hosting"
+
+    "deploy": "firebase deploy --only hosting",
+    "deploy:portal": "npm run build:portal && firebase deploy --only hosting:svcm-v2",
+    "deploy:student": "npm run build:student && firebase deploy --only hosting:dcprime-s",
+    "deploy:teacher": "npm run build:teacher && firebase deploy --only hosting:t-dcprime"
   },
   "dependencies": {
     "autoprefixer": "^10.4.21",

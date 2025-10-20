@@ -1,28 +1,49 @@
 {
   "hosting": [
     {
-      "target": "portal",
-      "site": "svcm-v2",
+      "site": "svcm-v2", // 👈 사이트 ID 유지
       "public": "dist-portal",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "rewrites": [
-        { "source": "/admin/**", "destination": "/admin/index.html" },
-        { "source": "**", "destination": "/index.html" }
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
       ]
     },
     {
-      "target": "student",
-      "site": "dcprime-s",
+      "site": "dcprime-s", // 👈 사이트 ID 유지
       "public": "dist-student",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
     },
     {
-      "target": "teacher",
-      "site": "t-dcprime",
+      "site": "t-dcprime", // 👈 사이트 ID 유지
       "public": "dist-teacher",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
     }
   ]
 }
