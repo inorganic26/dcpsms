@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "svcm-v2"
+  },
+  "targets": {
+    "svcm-v2": {
+      "hosting": {
+        "svcm": ["svcm-v2"],
+        "student": ["dcprime-s"],
+        "teacher": ["t-dcprime"]
+      }
+    }
   }
 }
