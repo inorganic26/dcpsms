@@ -1,7 +1,7 @@
 {
   "hosting": [
     {
-      "site": "svcm-v2", // 👈 사이트 ID 유지
+      "site": "svcm-v2",
       "public": "dist-portal",
       "ignore": [
         "firebase.json",
@@ -16,7 +16,7 @@
       ]
     },
     {
-      "site": "dcprime-s", // 👈 사이트 ID 유지
+      "site": "dcprime-s",
       "public": "dist-student",
       "ignore": [
         "firebase.json",
@@ -26,12 +26,12 @@
       "rewrites": [
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/src/student/index.html"
         }
       ]
     },
     {
-      "site": "t-dcprime", // 👈 사이트 ID 유지
+      "site": "t-dcprime",
       "public": "dist-teacher",
       "ignore": [
         "firebase.json",
@@ -41,7 +41,7 @@
       "rewrites": [
         {
           "source": "**",
-          "destination": "/index.html"
+          "destination": "/src/teacher/index.html"
         }
       ]
     }

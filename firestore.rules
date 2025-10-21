@@ -2,101 +2,74 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: 인증된 사용자(익명 로그인한 학생 포함)인지 확인하는 함수
+    // --- 헬퍼 함수 (교사/관리자용) ---
+    // 교사/관리자는 Firebase Auth(이메일 등)로 로그인한다고 가정합니다.
     function isAuthenticated() {
       return request.auth != null;
     }
+    function getUserRole(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+    function isAdmin() {
+      return isAuthenticated() && getUserRole(request.auth.uid) == 'admin';
+    }
+    function isTeacher() {
+      return isAuthenticated() && getUserRole(request.auth.uid) == 'teacher';
+    }
 
-    // --- 1. 학생/교사/관리자 정보 ---
+    // --- 학생 로그인 및 사용을 위한 공개 규칙 ---
+
+    // [🚨 보안 경고] 
+    // 학생 로그인 시 반 목록을 불러와야 하므로 누구나(if true) 읽을 수 있게 허용합니다.
+    match /classes/{classId} {
+      allow read: if true;
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // [🚨🚨🚨 매우 심각한 보안 경고]
+    // 학생 로그인 시 (이름, 비번)을 비교해야 하므로 누구나(if true) 읽을 수 있게 허용합니다.
+    // 이 규칙은 'password' 필드를 포함한 모든 학생 정보를 외부에 노출시킵니다.
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // [🚨 보안 경고]
+    // 학생이 로그인 후 수업, 과목, 교과서 정보를 읽어야 하므로 누구나(if true) 읽기 허용합니다.
+    match /subjects/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isTeacher();
+    }
+    match /textbooks/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isTeacher();
+    }
+    match /lessons/{docId} {
+      allow read: if true;
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    // [🚨🚨 매우 심각한 보안 경고]
+    // 학생이 숙제를 읽고, 제출(쓰기)해야 하므로 누구나(if true) 읽고 쓰기를 허용합니다.
+    // 이 규칙은 누구나 숙제 정보를 스팸처럼 마구 생성할 수 있게 허용합니다.
+    match /homeworks/{homeworkId} {
+      allow read: if true;
+      allow write: if true; // 'create'와 'update'를 위해 'write'를 엽니다.
+    }
+
+    // --- 교사/관리자 전용 보안 규칙 ---
+
+    // 'users' (교사/관리자 역할 정보)는 인증된 사용자만 접근
+    match /users/{userId} {
+      allow read, write: if isAdmin() || (isTeacher() && request.auth.uid == userId);
+    }
+    
+    // 'teachers' (교사 정보)는 인증된 사용자만 접근
     match /teachers/{teacherId} {
       allow read: if isAuthenticated();
-      // ✅ 수정: Cloud Function 또는 관리자만 쓰기 허용 (보안 강화 시 고려)
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
-    }
-    match /admins/{adminId} {
-      allow read: if isAuthenticated();
-      allow write: if false; // 관리자 정보는 직접 수정 불가
-    }
-    match /students/{studentId} {
-      allow read: if isAuthenticated();
-      // ✅ 수정: 관리자 앱에서 직접 수정 가능하도록 변경
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
+      allow write: if isAdmin() || (isTeacher() && request.auth.uid == teacherId);
     }
 
-    // --- 2. 반 정보 (Classes) ---
-    match /classes/{classId} {
-      allow read: if isAuthenticated();
-      // ✅ 수정: 관리자/선생님 앱에서 직접 수정 가능하도록 변경
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
-    }
-
-    // --- 3. 학습 콘텐츠 (Subjects, Lessons) ---
-    match /subjects/{subjectId} {
-      allow read: if isAuthenticated();
-      // ✅ 수정: 관리자 앱에서 직접 수정 가능하도록 변경
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자 허용
-
-      // Lesson Subcollection
-      match /lessons/{lessonId} {
-        allow read: if isAuthenticated();
-        // ✅ 수정: 관리자/선생님 앱에서 직접 수정/생성 가능하도록 변경
-        allow write: if isAuthenticated(); // false -> isAuthenticated() 로 변경
-
-        // Lesson Submission: 학생 자신의 학습 기록 저장 (기존 유지)
-        match /submissions/{studentAuthUid} {
-          allow read: if isAuthenticated();
-          // 익명 UID와 문서 ID가 일치해야 본인의 기록을 저장/수정할 수 있음
-          allow write: if request.auth.uid == studentAuthUid;
-        }
-      }
-
-      // Textbooks Subcollection
-      match /textbooks/{textbookId} {
-        allow read: if isAuthenticated();
-        // ✅ 수정: 관리자 앱에서 직접 수정/생성 가능하도록 변경
-        allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
-      }
-    }
-
-    // --- 4. 숙제 (Homeworks) ---
-    match /homeworks/{homeworkId} {
-      allow read: if isAuthenticated();
-       // ✅ 수정: 선생님 앱에서 직접 수정/생성 가능하도록 변경
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
-
-      // Homework Submission: 학생 자신의 제출 기록 저장 (기존 유지)
-      match /submissions/{studentAuthUid} {
-        allow read: if isAuthenticated();
-        // 익명 UID와 문서 ID가 일치해야 본인의 기록을 저장/수정할 수 있음
-        allow write: if request.auth.uid == studentAuthUid;
-      }
-    }
-
-    // --- 5. 영상/기타 (classVideos, classLectures) ---
-    match /classVideos/{videoId} { // Q&A 영상
-      allow read: if isAuthenticated();
-       // ✅ 수정: 관리자/선생님 앱에서 직접 저장 가능하도록 변경
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
-    }
-    match /classLectures/{lectureId} { // 현강 수업 영상
-      allow read: if isAuthenticated();
-       // ✅ 수정: 선생님 앱에서 직접 저장/수정 가능하도록 변경
-      allow write: if isAuthenticated(); // 예: 일단 인증된 사용자는 허용
-    }
-
-    // --- 6. 기타 모든 컬렉션 (개별 match 블록 사용) ---
-    // 기존 규칙 유지 (읽기만 허용)
-    match /grading/{gradeId} { allow read: if isAuthenticated(); allow write: if false; }
-    match /notices/{noticeId} { allow read: if isAuthenticated(); allow write: if false; }
-    match /comments/{commentId} { allow read: if isAuthenticated(); allow write: if false; }
-    match /messages/{messageId} { allow read: if isAuthenticated(); allow write: if false; }
-    match /attendance/{recordId} { allow read: if isAuthenticated(); allow write: if false; }
-    match /aiAnalysis/{analysisId} { allow read: if isAuthenticated(); allow write: if false; }
-    match /analytics/{docId} { allow read: if isAuthenticated(); allow write: if false; }
-
-    // 최종 Fallback: 명시되지 않은 모든 경로는 차단 (기존 유지)
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    // (이 외의 모든 컬렉션은 기본적으로 접근 거부)
   }
 }

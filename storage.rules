@@ -1,25 +1,22 @@
 rules_version = '2';
-
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // 모든 파일에 대해 기본적으로 읽기/쓰기 차단
-    match /{allPaths=**} {
-      allow read, write: if false;
-    }
-
-    // 1. 학생 숙제 제출 폴더 (homeworks):
-    // ✅ 수정: 모든 인증된 사용자에게 읽기/쓰기 허용 (숙제 업로드 및 다운로드를 위함)
+    // [🚨🚨🚨 매우 심각한 보안 경고]
+    // 학생이 숙제 파일(이미지 등)을 업로드해야 하므로 누구나(if true) 읽고 쓸 수 있게 허용합니다.
+    // 이 규칙은 누구나 이 경로에 파일을 무제한 업로드할 수 있게 허용합니다. (비용 폭탄 위험)
     match /homeworks/{homeworkId}/{studentId}/{fileName} {
       allow read, write: if true;
     }
 
-    // ▼▼▼ [수정] AI 시험지 분석 폴더 규칙을 삭제합니다.
-    
-    // 3. AI 숙제 채점 이미지 폴더 (homework-grading):
-    // 선생님 업로드 및 Cloud Functions 접근을 위해 인증된 사용자에게 허용
+    // (교사/관리자가 사용하는 AI 채점 폴더는 인증된 사용자만 허용)
     match /homework-grading/{homeworkId}/{fileName} {
       allow read, write: if request.auth != null;
+    }
+
+    // (이 외의 모든 경로는 기본적으로 접근 거부)
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
