@@ -1,14 +1,19 @@
 // src/main.js
 
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { auth, ensureAuth } from './shared/firebase.js';
+// Firebase 인증 관련 기능이 포털 페이지 자체에서 필요하다면
+// 아래 import 문들의 주석을 해제하고 사용하세요.
+// import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+// import { auth, ensureAnonymousAuth } from './shared/firebase.js';
+
+// 전역 스타일시트는 계속 import 합니다.
 import './shared/style.css';
 
-// 초기 로드 시 앱 모듈을 import 하지 않습니다.
-// import AdminApp from './admin/adminApp.js';
-// import TeacherApp from './teacher/teacherApp.js';
-// import StudentApp from './student/studentApp.js';
+// --- AppNavigator 관련 코드 제거 ---
+// 각 앱(admin, teacher, student)은 이제 각자의 HTML 파일과
+// 진입점 JavaScript 파일(예: adminApp.js)을 통해 독립적으로 로드되고 실행됩니다.
+// main.js는 더 이상 앱 간의 화면 전환을 관리하지 않습니다.
 
+/* // 기존 AppNavigator 코드 시작 (이제 사용되지 않음)
 const AppNavigator = {
     views: {},
     initializedApps: {
@@ -74,24 +79,45 @@ const AppNavigator = {
             }
         }
     },
-    
+
     // getAppModule을 동적 import를 사용하도록 수정
     getAppModule(appName) {
         switch(appName) {
-            case 'admin': 
+            case 'admin':
                 return import('./admin/adminApp.js');
-            case 'teacher': 
+            case 'teacher':
                 return import('./teacher/teacherApp.js');
-            case 'student': 
+            case 'student':
                 return import('./student/studentApp.js');
-            default: 
+            default:
                 return null;
         }
     }
 };
+*/ // 기존 AppNavigator 코드 끝
 
+/* // 기존 DOMContentLoaded 이벤트 리스너 시작 (이제 사용되지 않음)
 document.addEventListener('DOMContentLoaded', () => {
-    ensureAuth(() => {
-        AppNavigator.init();
+    // ensureAuth 대신 필요한 인증 함수 사용 (예: ensureAnonymousAuth)
+    // ensureAuth(() => {
+    //     AppNavigator.init(); // AppNavigator 초기화 제거
+    // });
+
+    // 만약 포털 자체에서 Firebase 인증이 필요하다면 여기에 로직 추가
+    // 예: ensureAnonymousAuth(() => { console.log("Portal Authenticated"); });
+});
+*/ // 기존 DOMContentLoaded 이벤트 리스너 끝
+
+// 포털 페이지 자체에서 특별히 실행해야 할 JavaScript 코드가 있다면 여기에 추가합니다.
+// 예를 들어, 익명 인증이 필요하다면 아래와 같이 사용할 수 있습니다.
+/*
+import { ensureAnonymousAuth } from './shared/firebase.js';
+document.addEventListener('DOMContentLoaded', () => {
+    ensureAnonymousAuth(() => {
+        console.log("포털 페이지 익명 인증 완료");
+        // 포털 페이지 로드 후 필요한 추가 작업 수행
     });
 });
+*/
+
+console.log("Portal main.js loaded. Navigation handled by browser."); // 로드 확인용 로그

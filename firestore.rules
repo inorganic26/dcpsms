@@ -2,74 +2,113 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- 헬퍼 함수 (교사/관리자용) ---
-    // 교사/관리자는 Firebase Auth(이메일 등)로 로그인한다고 가정합니다.
+    // --- 헬퍼 함수 ---
     function isAuthenticated() {
+      // 익명 로그인 포함 모든 인증된 사용자 허용
       return request.auth != null;
     }
+    // getUserRole, isAdmin, isTeacher 함수는 현재 rules에서는 직접 사용되지 않음
+    // 필요 시 주석 해제하여 사용
+    /*
     function getUserRole(uid) {
+      // users 컬렉션 경로가 정확한지 확인 필요
       return get(/databases/$(database)/documents/users/$(uid)).data.role;
     }
     function isAdmin() {
-      return isAuthenticated() && getUserRole(request.auth.uid) == 'admin';
+      // return isAuthenticated() && getUserRole(request.auth.uid) == 'admin';
+      // 익명 관리자 앱에서는 role 체크가 어려울 수 있으므로 isAuthenticated()로 대체 고려
+      return isAuthenticated(); // 임시로 admin을 isAuthenticate()로 간주 (보안상 주의)
     }
     function isTeacher() {
-      return isAuthenticated() && getUserRole(request.auth.uid) == 'teacher';
+      // return isAuthenticated() && getUserRole(request.auth.uid) == 'teacher';
+       return isAuthenticated(); // 임시로 teacher를 isAuthenticate()로 간주 (보안상 주의)
+    }
+    */
+    // 임시 isAdmin, isTeacher (인증만 되면 허용 - 실제 배포 시 역할 확인 로직 강화 필요)
+    function isAdminOrTeacher() {
+        return isAuthenticated();
     }
 
-    // --- 학생 로그인 및 사용을 위한 공개 규칙 ---
 
-    // [🚨 보안 경고] 
-    // 학생 로그인 시 반 목록을 불러와야 하므로 누구나(if true) 읽을 수 있게 허용합니다.
+    // --- 컬렉션 규칙 ---
+
+    // Classes: 학생/교사/관리자 읽기 가능, 관리자/교사 쓰기 가능
     match /classes/{classId} {
-      allow read: if true;
-      allow write: if isAdmin() || isTeacher();
+      allow read: if isAuthenticated(); // 학생도 읽어야 하므로 if true 또는 isAuthenticated()
+      allow write: if isAdminOrTeacher(); // 관리자 또는 교사만 쓰기
     }
 
-    // [🚨🚨🚨 매우 심각한 보안 경고]
-    // 학생 로그인 시 (이름, 비번)을 비교해야 하므로 누구나(if true) 읽을 수 있게 허용합니다.
-    // 이 규칙은 'password' 필드를 포함한 모든 학생 정보를 외부에 노출시킵니다.
+    // Students: 관리자/교사만 읽고 쓰기 가능 (학생 본인 정보 접근 규칙은 추후 추가)
+    // 주의: 학생 로그인 시 이름/비번 비교 위해 읽기 권한 필요 시 if isAuthenticated()로 변경 필요
     match /students/{studentId} {
-      allow read: if true;
-      allow write: if isAdmin() || isTeacher();
+      allow read, write: if isAdminOrTeacher();
     }
 
-    // [🚨 보안 경고]
-    // 학생이 로그인 후 수업, 과목, 교과서 정보를 읽어야 하므로 누구나(if true) 읽기 허용합니다.
-    match /subjects/{docId} {
-      allow read: if true;
-      allow write: if isAdmin() || isTeacher();
-    }
-    match /textbooks/{docId} {
-      allow read: if true;
-      allow write: if isAdmin() || isTeacher();
-    }
-    match /lessons/{docId} {
-      allow read: if true;
-      allow write: if isAdmin() || isTeacher();
+    // Subjects & Textbooks & Lessons: 인증된 사용자(학생 포함) 읽기, 관리자/교사 쓰기
+    match /subjects/{subjectId} {
+      allow read: if isAuthenticated(); // ✨ 수정: if true 대신 인증된 사용자만 읽기 허용
+      allow write: if isAdminOrTeacher();
+
+      match /textbooks/{textbookId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdminOrTeacher();
+      }
+
+      match /lessons/{lessonId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdminOrTeacher();
+
+        // Lesson Submissions: 학생 본인 쓰기, 교사/관리자 읽기
+        match /submissions/{submissionId} {
+          allow read: if isAdminOrTeacher();
+          // 학생 본인 또는 관리자/교사만 생성/수정 가능 (submissionId가 학생 auth.uid와 같다고 가정)
+          allow write: if isAuthenticated() && (request.auth.uid == submissionId || isAdminOrTeacher());
+          allow delete: if isAdminOrTeacher(); // 삭제는 관리자/교사만
+        }
+      }
     }
 
-    // [🚨🚨 매우 심각한 보안 경고]
-    // 학생이 숙제를 읽고, 제출(쓰기)해야 하므로 누구나(if true) 읽고 쓰기를 허용합니다.
-    // 이 규칙은 누구나 숙제 정보를 스팸처럼 마구 생성할 수 있게 허용합니다.
+    // Homeworks: 학생/교사/관리자 읽기, 학생/교사/관리자 쓰기 (보안상 위험 - 추후 개선 필요)
+    // 학생 제출을 위해 write 허용, 교사/관리자 생성을 위해 write 허용
     match /homeworks/{homeworkId} {
-      allow read: if true;
-      allow write: if true; // 'create'와 'update'를 위해 'write'를 엽니다.
+      allow read: if isAuthenticated(); // 최소 인증된 사용자만
+      allow write: if isAuthenticated(); // 학생 제출 + 교사/관리자 생성 위해
+
+      // Homework Submissions: 학생 본인 쓰기, 교사/관리자 읽기/쓰기(삭제 등)
+      match /submissions/{submissionId} {
+         allow read: if isAuthenticated(); // 교사/관리자 + 학생 본인 읽기
+         allow write: if isAuthenticated() && (request.auth.uid == submissionId || isAdminOrTeacher()); // 학생 본인 또는 관리자/교사 쓰기
+         allow delete: if isAdminOrTeacher(); // 삭제는 관리자/교사만
+      }
     }
 
-    // --- 교사/관리자 전용 보안 규칙 ---
-
-    // 'users' (교사/관리자 역할 정보)는 인증된 사용자만 접근
-    match /users/{userId} {
-      allow read, write: if isAdmin() || (isTeacher() && request.auth.uid == userId);
-    }
-    
-    // 'teachers' (교사 정보)는 인증된 사용자만 접근
+    // Teachers: 관리자만 읽고 쓰기 (교사 본인 정보 수정 규칙은 필요시 추가)
     match /teachers/{teacherId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || (isTeacher() && request.auth.uid == teacherId);
+      // allow read: if isAuthenticated(); // 모든 인증 사용자가 읽게 하려면
+      allow read, write: if isAdminOrTeacher(); // 관리자/교사만 읽고 쓰기 (교사 본인 포함)
     }
 
-    // (이 외의 모든 컬렉션은 기본적으로 접근 거부)
+    // Class Videos (QnA): 학생/교사/관리자 읽기, 교사/관리자 쓰기
+    match /classVideos/{videoId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdminOrTeacher();
+    }
+
+    // Class Lectures (수업 영상): 학생/교사/관리자 읽기, 교사/관리자 쓰기
+    match /classLectures/{lectureId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdminOrTeacher();
+    }
+
+    // // Users 컬렉션 (역할 정보): 관리자만 접근 또는 본인만 읽기 (필요시 주석 해제)
+    // match /users/{userId} {
+    //   allow read: if isAdmin() || request.auth.uid == userId;
+    //   allow write: if isAdmin();
+    // }
+
+    // 기본적으로 다른 모든 경로는 접근 거부 (맨 아래 유지)
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

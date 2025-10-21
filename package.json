@@ -12,8 +12,9 @@
     "build:admin": "vite build --mode admin",
     "preview": "vite preview",
     "serve": "vite preview",
+    "merge-dist": "node scripts/merge-dist.js",
     "build:all": "npm run build:portal && npm run build:student && npm run build:teacher",
-    "deploy": "npm run build:all && firebase deploy --only hosting:svcm-v2"
+    "deploy": "npm run build:all && npm run merge-dist && firebase deploy --only hosting:svcm-v2"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.15",
@@ -32,6 +33,7 @@
     "@tailwindcss/postcss": "^4.1.15",
     "@vitejs/plugin-vue": "^5.2.4",
     "eslint": "^8.57.0",
+    "fs-extra": "^11.3.2",
     "ncp": "^2.0.0",
     "rimraf": "^6.0.1",
     "sass": "^1.72.0",

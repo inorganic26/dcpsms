@@ -7,7 +7,6 @@
     <link rel="icon" href="/vite.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <!-- 절대경로로 통일 -->
     <link rel="stylesheet" href="/src/shared/style.css">
 </head>
 <body class="bg-slate-50">
@@ -23,7 +22,6 @@
                 <input type="password" id="admin-secret-password" class="form-input mb-4" placeholder="관리자 비밀번호를 입력하세요">
                 <button id="admin-secret-login-btn" class="btn-primary w-full py-3">접속하기</button>
             </div>
-            <!-- 포털로 이동 경로 정리 -->
             <a href="/" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
         </div>
     </div>
@@ -31,7 +29,6 @@
     <div id="admin-main-dashboard" style="display: none;">
         <div class="container mx-auto max-w-6xl p-4 sm:p-6 md:p-8">
             <div id="admin-dashboard-view">
-                <!-- 포털로 이동 경로 정리 -->
                 <a href="/" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
                 <header class="text-center mb-10">
                     <h1 class="text-3xl font-bold text-slate-800">관리자 대시보드</h1>
@@ -245,7 +242,7 @@
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
                     <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">수업 질문 영상 관리</h2>
-                    <div class="space-y-4 max-w-lg mx-auto">
+                    <div class="space-y-4 max-w-lg mx-auto p-4 border rounded-lg bg-slate-50 mb-8">
                         <div>
                             <label for="admin-qna-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
                             <select id="admin-qna-class-select" class="form-select"></select>
@@ -266,7 +263,13 @@
                             <button id="admin-save-qna-video-btn" class="btn-primary">영상 저장하기</button>
                         </div>
                     </div>
-                </div>
+                    <div class="mt-8 border-t pt-6">
+                        <h3 class="text-xl font-semibold text-slate-700 mb-4">선택한 날짜의 영상 목록</h3>
+                        <div id="admin-qna-videos-list" class="space-y-3">
+                            <p class="text-sm text-slate-500">반과 날짜를 선택하면 해당 날짜에 등록된 영상 목록이 표시됩니다.</p>
+                        </div>
+                    </div>
+                    </div>
             </div>
             <div id="admin-class-video-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
@@ -294,7 +297,158 @@
         </div>
     </div>
 
-    <!-- 절대경로로 통일 -->
+    <div id="admin-edit-teacher-modal" class="modal-backdrop" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">교사 정보 수정</h2>
+                <button id="admin-close-edit-teacher-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
+            <main class="p-6 space-y-4">
+                <div>
+                    <label for="admin-edit-teacher-name" class="block text-sm font-medium text-slate-700 mb-1">교사 이름</label>
+                    <input type="text" id="admin-edit-teacher-name" class="form-input">
+                </div>
+                <div>
+                    <label for="admin-edit-teacher-email" class="block text-sm font-medium text-slate-700 mb-1">이메일 (로그인 ID)</label>
+                    <input type="email" id="admin-edit-teacher-email" class="form-input" placeholder="비워두면 이메일 로그인 불가">
+                </div>
+                <div>
+                    <label for="admin-edit-teacher-phone" class="block text-sm font-medium text-slate-700 mb-1">전화번호</label>
+                    <input type="tel" id="admin-edit-teacher-phone" class="form-input">
+                </div>
+            </main>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="admin-cancel-edit-teacher-btn" class="btn-secondary">취소</button>
+                <button id="admin-save-teacher-edit-btn" class="btn-primary">변경사항 저장</button>
+            </footer>
+        </div>
+    </div>
+
+    <div id="admin-edit-student-modal" class="modal-backdrop" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">학생 정보 수정</h2>
+                <button id="admin-close-edit-student-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
+            <main class="p-6 space-y-4">
+                <div>
+                    <label for="admin-edit-student-name" class="block text-sm font-medium text-slate-700 mb-1">학생 이름</label>
+                    <input type="text" id="admin-edit-student-name" class="form-input">
+                </div>
+                <div>
+                    <label for="admin-edit-student-phone" class="block text-sm font-medium text-slate-700 mb-1">학생 전화번호</label>
+                    <input type="tel" id="admin-edit-student-phone" class="form-input" placeholder="비밀번호는 뒷 4자리로 재설정됨">
+                </div>
+                <div>
+                    <label for="admin-edit-parent-phone" class="block text-sm font-medium text-slate-700 mb-1">부모님 전화번호 (선택)</label>
+                    <input type="tel" id="admin-edit-parent-phone" class="form-input" placeholder="숫자만 입력">
+                </div>
+            </main>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="admin-cancel-edit-student-btn" class="btn-secondary">취소</button>
+                <button id="admin-save-student-edit-btn" class="btn-primary">변경사항 저장</button>
+            </footer>
+        </div>
+    </div>
+
+    <div id="admin-edit-class-modal" class="modal-backdrop" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-slate-800">반 설정 수정</h2>
+                <button id="admin-close-edit-class-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
+            <main class="p-6 flex-grow overflow-y-auto custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                <div>
+                    <p class="mb-1 text-sm font-medium text-slate-600">반 이름</p>
+                    <p id="admin-edit-class-name" class="text-lg font-bold text-slate-800 mb-6"></p>
+
+                    <h3 class="font-semibold text-slate-700 mb-2 border-t pt-6">반 특성 설정</h3>
+                    <div class="mb-6">
+                        <label for="admin-edit-class-type" class="block text-sm font-medium text-slate-700 mb-1">반 유형 선택</label>
+                        <select id="admin-edit-class-type" class="form-select max-w-xs">
+                            <option value="self-directed">자기주도반</option>
+                            <option value="live-lecture">현강반</option>
+                        </select>
+                    </div>
+
+                    <h3 class="font-semibold text-slate-700 mb-2 border-t pt-6">과목 및 교재 설정</h3>
+                    <div id="admin-edit-class-subjects-and-textbooks" class="space-y-4"></div>
+                </div>
+
+                <div>
+                    <h3 class="font-semibold text-slate-700 mb-2">학생 배정 관리</h3>
+                    <div id="admin-edit-class-students-container" class="space-y-4"></div>
+                </div>
+            </main>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="admin-cancel-edit-class-btn" class="btn-secondary">닫기</button>
+                <button id="admin-save-class-edit-btn" class="btn-primary">변경사항 저장</button>
+            </footer>
+        </div>
+    </div>
+
+    <div id="admin-new-lesson-modal" class="modal-backdrop" style="display: none;">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 id="admin-lesson-modal-title" class="text-2xl font-bold text-slate-800">새 학습 세트 만들기</h2>
+                <button id="admin-close-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
+            <main class="p-6 flex-grow overflow-y-auto custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-bold text-lg mb-4 text-slate-700">학습 정보</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="admin-lesson-title" class="block text-sm font-medium text-slate-600 mb-1">학습 제목</label>
+                            <input type="text" id="admin-lesson-title" class="form-input">
+                        </div>
+                        <div>
+                            <label for="admin-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label>
+                            <input type="url" id="admin-video1-url" class="form-input" placeholder="https://youtube.com/watch?v=...">
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-sm font-medium text-slate-600">영상 1 수정/보충 영상 (선택)</label>
+                                <button id="admin-add-video1-rev-btn" class="btn-secondary btn-sm">+</button>
+                            </div>
+                            <div id="admin-video1-rev-urls-container" class="space-y-2"></div>
+                        </div>
+                        <div>
+                            <label for="admin-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label>
+                            <input type="url" id="admin-video2-url" class="form-input" placeholder="https://youtube.com/watch?v=...">
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-sm font-medium text-slate-600">영상 2 수정/보충 영상 (선택)</label>
+                                <button id="admin-add-video2-rev-btn" class="btn-secondary btn-sm">+</button>
+                            </div>
+                            <div id="admin-video2-rev-urls-container" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h3 class="font-bold text-lg mb-4 text-slate-700">퀴즈 정보 (JSON)</h3>
+                    <div>
+                        <label for="admin-quiz-json-input" class="block text-sm font-medium text-slate-600 mb-1">문제은행 JSON 붙여넣기</label>
+                        <textarea id="admin-quiz-json-input" rows="8" class="form-input font-mono text-sm"></textarea>
+                    </div>
+                    <button id="admin-preview-quiz-btn" class="btn-secondary w-full mt-2">미리보기</button>
+                    <div id="admin-questions-preview-container" class="mt-4 p-4 border rounded-md bg-slate-50 hidden max-h-48 overflow-y-auto custom-scrollbar">
+                        <h4 id="admin-questions-preview-title" class="font-bold mb-2 text-slate-700">생성된 퀴즈</h4>
+                        <div id="admin-questions-preview-list" class="text-sm space-y-1 text-slate-600"></div>
+                    </div>
+                </div>
+            </main>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="admin-cancel-btn" class="btn-secondary">취소</button>
+                <button id="admin-save-lesson-btn" class="btn-primary flex items-center justify-center min-w-[120px]">
+                    <span id="admin-save-btn-text">저장하기</span>
+                    <div id="admin-save-loader" class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin hidden"></div>
+                </button>
+            </footer>
+        </div>
+    </div>
+
+
     <script type="module" src="/src/admin/adminApp.js"></script>
 </body>
 </html>
