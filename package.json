@@ -12,13 +12,8 @@
     "build:admin": "vite build --mode admin",
     "preview": "vite preview",
     "serve": "vite preview",
-    "merge-dist": "rimraf dist && mkdir dist && ncp dist-portal dist && ncp dist-teacher dist/teacher && ncp dist-student dist/student",
     "build:all": "npm run build:portal && npm run build:student && npm run build:teacher",
-    "deploy:unified": "npm run build:all && npm run merge-dist && firebase deploy --only hosting:svcm-v2",
-    "deploy": "firebase deploy --only hosting",
-    "deploy:portal": "npm run build:portal && firebase deploy --only hosting:svcm-v2",
-    "deploy:student": "npm run build:student && firebase deploy --only hosting:dcprime-s",
-    "deploy:teacher": "npm run build:teacher && firebase deploy --only hosting:t-dcprime"
+    "deploy": "npm run build:all && firebase deploy --only hosting:svcm-v2"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.15",

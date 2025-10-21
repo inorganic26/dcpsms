@@ -1,104 +1,105 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* src/shared/style.css — Tailwind v4 전역 CSS */
+@import "tailwindcss";
 
-/* --- 전체적인 디자인 시스템 업데이트 --- */
+/* Base */
 body {
-    font-family: 'Inter', sans-serif;
-    @apply bg-slate-100 text-slate-700 antialiased;
+  font-family: 'Inter', sans-serif;
+  @apply bg-slate-100 text-slate-700 antialiased;
 }
 
-/* body 스크롤 막기 (핵심 수정 1) */
-body.modal-open {
-  overflow: hidden;
-}
+/* 스크롤 잠금 */
+body.modal-open { overflow: hidden; }
 
-/* 새로운 카드 스타일 */
+/* 카드 */
 .content-card {
-    @apply bg-white p-6 md:p-8 rounded-xl shadow-md border border-slate-200;
+  @apply bg-white p-6 md:p-8 rounded-xl shadow-md border border-slate-200;
 }
 
-/* 버튼 스타일 */
+/* 버튼(공통 정의) */
 .btn {
-    @apply inline-block font-semibold py-2.5 px-6 rounded-lg transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transform hover:-translate-y-0.5;
+  @apply inline-block font-semibold py-2.5 px-6 rounded-lg transition-all duration-300 ease-in-out
+         focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50
+         disabled:cursor-not-allowed transform hover:-translate-y-0.5;
 }
+
+/* 버튼 변형 */
 .btn-primary {
-    @apply btn bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg focus:ring-blue-500;
+  @apply inline-block font-semibold py-2.5 px-6 rounded-lg transition-all duration-300 ease-in-out
+         focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50
+         disabled:cursor-not-allowed transform hover:-translate-y-0.5
+         bg-gradient-to-r from-blue-500 to-blue-600 text-white hover:shadow-lg focus:ring-blue-500;
 }
 .btn-secondary {
-    @apply btn bg-slate-200 text-slate-800 hover:bg-slate-300 focus:ring-slate-400;
+  @apply inline-block font-semibold py-2.5 px-6 rounded-lg transition-all duration-300 ease-in-out
+         focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50
+         disabled:cursor-not-allowed transform hover:-translate-y-0.5
+         bg-slate-200 text-slate-800 hover:bg-slate-300 focus:ring-slate-400;
 }
 .btn-danger {
-    @apply btn bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg focus:ring-red-500;
+  @apply inline-block font-semibold py-2.5 px-6 rounded-lg transition-all duration-300 ease-in-out
+         focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50
+         disabled:cursor-not-allowed transform hover:-translate-y-0.5
+         bg-gradient-to-r from-red-500 to-red-600 text-white hover:shadow-lg focus:ring-red-500;
 }
 .btn-warning {
-    @apply btn bg-gradient-to-r from-yellow-500 to-yellow-600 text-white hover:shadow-lg focus:ring-yellow-500;
+  @apply inline-block font-semibold py-2.5 px-6 rounded-lg transition-all duration-300 ease-in-out
+         focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm disabled:opacity-50
+         disabled:cursor-not-allowed transform hover:-translate-y-0.5
+         bg-gradient-to-r from-yellow-500 to-yellow-600 text-white hover:shadow-lg focus:ring-yellow-500;
 }
-.btn-sm {
-    @apply py-1.5 px-4 text-sm;
-}
+.btn-sm { @apply py-1.5 px-4 text-sm; }
 
-/* 입력 필드 스타일 */
+/* 입력 */
 .form-input, .form-select {
-    @apply w-full p-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-shadow;
+  @apply w-full p-2.5 border border-slate-300 rounded-lg bg-white
+         focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition-shadow;
 }
 
-/* 포털 카드 호버 효과 */
-.portal-card {
-    @apply transition-all duration-300 ease-in-out;
-}
-.portal-card:hover {
-    @apply transform -translate-y-2 shadow-xl;
-}
+/* 카드/대시보드 */
+.portal-card { @apply transition-all duration-300 ease-in-out; }
+.portal-card:hover { @apply transform -translate-y-2 shadow-xl; }
 
-/* 관리자 메뉴 아이템 스타일 (이전 스타일 - .dashboard-card 로 대체됨) */
 .admin-menu-item {
-    @apply cursor-pointer p-6 text-center transition-all duration-300 ease-in-out hover:shadow-lg hover:bg-slate-50 rounded-xl;
+  @apply cursor-pointer p-6 text-center transition-all duration-300 ease-in-out
+         hover:shadow-lg hover:bg-slate-50 rounded-xl;
 }
 
-/* 대시보드 카드 스타일 (패딩 및 최소 높이 조정됨) */
+/* 대시보드 카드: 공통 유틸 직접 전개 (다른 클래스 참조 안함) */
 .dashboard-card {
-    @apply content-card cursor-pointer p-5 text-center transition-all duration-300 ease-in-out hover:shadow-lg hover:bg-slate-50 flex flex-col items-center justify-center min-h-[120px]; /* 패딩 p-5, 최소 높이 120px */
+  @apply bg-white p-6 md:p-8 rounded-xl shadow-md border border-slate-200
+         cursor-pointer text-center transition-all duration-300 ease-in-out
+         hover:shadow-lg hover:bg-slate-50 flex flex-col items-center justify-center min-h-[120px];
 }
-.dashboard-card h3 {
-     @apply text-lg font-bold text-slate-800 mt-2;
-}
-/* 아이콘 스타일 (크기 조정됨) */
-.dashboard-card svg {
-    @apply w-8 h-8 mb-2 text-slate-500; /* 너비/높이 8, 하단 마진 2 */
-}
+.dashboard-card h3 { @apply text-lg font-bold text-slate-800 mt-2; }
+.dashboard-card svg { @apply w-8 h-8 mb-2 text-slate-500; }
 
-
-/* --- ▼▼▼ 모바일 화면 문제 해결을 위한 핵심 수정 ▼▼▼ --- */
+/* 모달 (슬래시 알파 사용) */
 .modal-backdrop {
-    /* 작은 화면에서는 상단 정렬(items-start), sm 사이즈 이상에서는 중앙 정렬(sm:items-center) */
-    @apply fixed inset-0 bg-black bg-opacity-60 flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto;
+  @apply fixed inset-0 bg-black/60 flex items-start sm:items-center justify-center
+         z-50 p-4 overflow-y-auto;
 }
+.modal-backdrop > div { @apply flex flex-col max-h-full my-auto; }
 
-/* 모달의 내부 컨테이너에 flex-col과 max-h를 적용합니다. */
-.modal-backdrop > div {
-    @apply flex flex-col max-h-full my-auto;
-}
-/* --- ▲▲▲ 핵심 수정 끝 ▲▲▲ --- */
-
-
+/* 로더 */
 .loader { border: 4px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
-.loader-small { border: 2px solid rgba(0, 0, 0, 0.1); border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; } /* 추가된 작은 로더 스타일 */
+.loader-small { border: 2px solid rgba(0, 0, 0, 0.1); border-top: 2px solid #3b82f6; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+/* 스크롤바 */
 .custom-scrollbar::-webkit-scrollbar { width: 8px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
 .custom-scrollbar::-webkit-scrollbar-thumb { @apply bg-slate-400 rounded-full; }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover { @apply bg-slate-500; }
 
+/* 선택 버튼 */
 .option-btn { @apply transition-all duration-200 ease-in-out; }
 .option-btn.correct { @apply bg-green-500 text-white border-green-600; }
 .option-btn.incorrect { @apply bg-red-500 text-white border-red-600; }
 .disabled { pointer-events: none; opacity: 0.8; }
 
-/* Tailwind Aspect Ratio Plugin Utilities (수동 추가, 필요시 Tailwind 플러그인 설치 권장) */
+/* Aspect ratio 유틸(간단 버전) */
 .aspect-w-16 { position: relative; padding-bottom: calc(9 / 16 * 100%); }
-.aspect-h-9 { /* Combined with aspect-w-16 */ }
+.aspect-h-9 {}
 .aspect-w-16 > *, .aspect-h-9 > * { position: absolute; height: 100%; width: 100%; top: 0; right: 0; bottom: 0; left: 0; }
-.aspect-video { position: relative; padding-bottom: 56.25%; /* 16:9 Aspect Ratio */ }
+.aspect-video { position: relative; padding-bottom: 56.25%; }
 .aspect-video > iframe, .aspect-video > video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }

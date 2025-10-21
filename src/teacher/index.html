@@ -7,7 +7,8 @@
     <link rel="icon" href="/vite.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="../shared/style.css">
+    <!-- 절대경로로 통일 -->
+    <link rel="stylesheet" href="/src/shared/style.css">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -31,13 +32,15 @@
                 </div>
             </div>
             <button id="teacher-login-btn" class="btn-primary w-full mt-6 py-3">로그인</button>
-            <a href="../../" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
+            <!-- 루트로 이동 -->
+            <a href="/" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
         </div>
     </div>
 
     <div id="teacher-dashboard-container" style="display: none;">
         <div class="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
-            <a href="../../" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
+            <!-- 루트로 이동 -->
+            <a href="/" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
 
             <div class="content-card">
                 <header class="border-b border-slate-200 pb-6 mb-6">
@@ -49,27 +52,31 @@
 
                 <div id="teacher-main-content" style="display: none;">
                     <div id="teacher-navigation-buttons" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                         <div data-view="homework-dashboard" class="teacher-nav-btn dashboard-card">
-                             <svg class="w-8 h-8 mb-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                             <h3>숙제 현황</h3>
-                         </div>
-                          <div data-view="qna-video-mgmt" class="teacher-nav-btn dashboard-card"> <svg class="w-8 h-8 mb-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                             <h3>질문 영상</h3>
-                         </div>
-                         <div data-view="lesson-mgmt" class="teacher-nav-btn dashboard-card"> <svg class="w-8 h-8 mb-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                             <h3>학습 관리</h3>
-                         </div>
-                         <div data-view="class-mgmt" class="teacher-nav-btn dashboard-card"> <svg class="w-8 h-8 mb-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                             <h3>반 설정</h3>
-                         </div>
-                         <div data-view="class-video-mgmt" class="teacher-nav-btn dashboard-card" style="display: none;"> <svg class="w-8 h-8 mb-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m9.75 0V9M9 7.5l3-3m0 0 3 3M12 4.5v12.75"></path></svg>
-                             <h3>수업 영상 관리</h3>
-                         </div>
-                         </div>
+                        <div data-view="homework-dashboard" class="teacher-nav-btn dashboard-card">
+                            <svg class="w-8 h-8 mb-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                            <h3>숙제 현황</h3>
+                        </div>
+                        <div data-view="qna-video-mgmt" class="teacher-nav-btn dashboard-card">
+                            <svg class="w-8 h-8 mb-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                            <h3>질문 영상</h3>
+                        </div>
+                        <div data-view="lesson-mgmt" class="teacher-nav-btn dashboard-card">
+                            <svg class="w-8 h-8 mb-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            <h3>학습 관리</h3>
+                        </div>
+                        <div data-view="class-mgmt" class="teacher-nav-btn dashboard-card">
+                            <svg class="w-8 h-8 mb-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                            <h3>반 설정</h3>
+                        </div>
+                        <div data-view="class-video-mgmt" class="teacher-nav-btn dashboard-card" style="display: none;">
+                            <svg class="w-8 h-8 mb-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m9.75 0V9M9 7.5l3-3m0 0 3 3M12 4.5v12.75"></path></svg>
+                            <h3>수업 영상 관리</h3>
+                        </div>
+                    </div>
 
                     <main>
                         <div id="view-homework-dashboard" class="teacher-view" style="display: none;">
-                             <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
+                            <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
                             <div id="homework-dashboard-controls" class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                                 <div class="w-full sm:w-auto">
                                     <label for="teacher-homework-select" class="block text-sm font-medium text-slate-700 mb-1">숙제 선택</label>
@@ -88,7 +95,7 @@
                         </div>
 
                         <div id="view-qna-video-mgmt" class="teacher-view" style="display: none;">
-                             <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
+                            <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
                             <h2 class="text-2xl font-bold text-slate-800 mb-4">수업 질문 영상 관리</h2>
                             <div class="space-y-4 max-w-lg mx-auto p-4 border rounded-lg bg-slate-50 mb-8">
                                 <div>
@@ -117,7 +124,7 @@
 
                         <div id="view-lesson-mgmt" class="teacher-view" style="display: none;">
                             <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
-                           <div class="border-b pb-4 mb-6">
+                            <div class="border-b pb-4 mb-6">
                                 <h1 class="text-2xl font-bold text-slate-800">학습 세트 관리</h1>
                                 <div id="lesson-mgmt-controls" class="w-full md:w-1/2 mt-4">
                                     <label for="teacher-subject-select-mgmt" class="block text-sm font-medium text-slate-700 mb-2">과목 선택</label>
@@ -153,9 +160,9 @@
                                     <p class="text-sm text-slate-500">날짜를 선택하면 해당 날짜의 영상 목록이 표시됩니다.</p>
                                 </div>
                                 <div class="flex justify-between items-center mt-4 border-t pt-4">
-                                     <button id="add-class-video-field-btn" class="btn-secondary btn-sm">+ 영상 필드 추가</button>
-                                     <button id="save-class-video-btn" class="btn-primary">저장하기</button>
-                                 </div>
+                                    <button id="add-class-video-field-btn" class="btn-secondary btn-sm">+ 영상 필드 추가</button>
+                                    <button id="save-class-video-btn" class="btn-primary">저장하기</button>
+                                </div>
                             </div>
                         </div>
 
@@ -180,7 +187,7 @@
                     <label for="teacher-homework-textbook-select" class="block text-sm font-medium text-slate-600 mb-1">교재</label>
                     <select id="teacher-homework-textbook-select" class="form-select" disabled></select>
                 </div>
-                 <div>
+                <div>
                     <label for="teacher-homework-pages" class="block text-sm font-medium text-slate-600 mb-1">총 페이지 수</label>
                     <input type="number" id="teacher-homework-pages" class="form-input" placeholder="숫자만 입력 (예: 120)">
                 </div>
@@ -195,23 +202,51 @@
             </footer>
         </div>
     </div>
+
     <div id="teacher-new-lesson-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <header class="p-6 border-b flex justify-between items-center"><h2 id="teacher-lesson-modal-title" class="text-2xl font-bold text-slate-800">새 학습 세트 만들기</h2><button id="teacher-close-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button></header>
+            <header class="p-6 border-b flex justify-between items-center">
+                <h2 id="teacher-lesson-modal-title" class="text-2xl font-bold text-slate-800">새 학습 세트 만들기</h2>
+                <button id="teacher-close-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+            </header>
             <main class="p-6 flex-grow overflow-y-auto custom-scrollbar grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <h3 class="font-bold text-lg mb-4 text-slate-700">학습 정보</h3>
                     <div class="space-y-4">
-                        <div><label for="teacher-lesson-title" class="block text-sm font-medium text-slate-600 mb-1">학습 제목</label><input type="text" id="teacher-lesson-title" class="form-input"></div>
-                        <div><label for="teacher-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label><input type="url" id="teacher-video1-url" class="form-input" placeholder="https://youtube.com/watch?v=..."></div>
-                        <div><div class="flex items-center justify-between mb-1"><label class="block text-sm font-medium text-slate-600">영상 1 수정/보충 영상 (선택)</label><button id="teacher-add-video1-rev-btn" class="btn-secondary btn-sm">+</button></div><div id="teacher-video1-rev-urls-container" class="space-y-2"></div></div>
-                        <div><label for="teacher-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label><input type="url" id="teacher-video2-url" class="form-input" placeholder="https://youtube.com/watch?v=..."></div>
-                        <div><div class="flex items-center justify-between mb-1"><label class="block text-sm font-medium text-slate-600">영상 2 수정/보충 영상 (선택)</label><button id="teacher-add-video2-rev-btn" class="btn-secondary btn-sm">+</button></div><div id="teacher-video2-rev-urls-container" class="space-y-2"></div></div>
+                        <div>
+                            <label for="teacher-lesson-title" class="block text-sm font-medium text-slate-600 mb-1">학습 제목</label>
+                            <input type="text" id="teacher-lesson-title" class="form-input">
+                        </div>
+                        <div>
+                            <label for="teacher-video1-url" class="block text-sm font-medium text-slate-600 mb-1">영상 1 URL (기본 영상)</label>
+                            <input type="url" id="teacher-video1-url" class="form-input" placeholder="https://youtube.com/watch?v=...">
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-sm font-medium text-slate-600">영상 1 수정/보충 영상 (선택)</label>
+                                <button id="teacher-add-video1-rev-btn" class="btn-secondary btn-sm">+</button>
+                            </div>
+                            <div id="teacher-video1-rev-urls-container" class="space-y-2"></div>
+                        </div>
+                        <div>
+                            <label for="teacher-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label>
+                            <input type="url" id="teacher-video2-url" class="form-input" placeholder="https://youtube.com/watch?v=...">
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-sm font-medium text-slate-600">영상 2 수정/보충 영상 (선택)</label>
+                                <button id="teacher-add-video2-rev-btn" class="btn-secondary btn-sm">+</button>
+                            </div>
+                            <div id="teacher-video2-rev-urls-container" class="space-y-2"></div>
+                        </div>
                     </div>
                 </div>
                 <div>
                     <h3 class="font-bold text-lg mb-4 text-slate-700">퀴즈 정보 (JSON)</h3>
-                    <div><label for="teacher-quiz-json-input" class="block text-sm font-medium text-slate-600 mb-1">문제은행 JSON 붙여넣기</label><textarea id="teacher-quiz-json-input" rows="8" class="form-input font-mono text-sm"></textarea></div>
+                    <div>
+                        <label for="teacher-quiz-json-input" class="block text-sm font-medium text-slate-600 mb-1">문제은행 JSON 붙여넣기</label>
+                        <textarea id="teacher-quiz-json-input" rows="8" class="form-input font-mono text-sm"></textarea>
+                    </div>
                     <button id="teacher-preview-quiz-btn" class="btn-secondary w-full mt-2">미리보기</button>
                     <div id="teacher-questions-preview-container" class="mt-4 p-4 border rounded-md bg-slate-50 hidden max-h-48 overflow-y-auto custom-scrollbar">
                         <h4 id="teacher-questions-preview-title" class="font-bold mb-2 text-slate-700">생성된 퀴즈</h4>
@@ -219,9 +254,16 @@
                     </div>
                 </div>
             </main>
-            <footer class="p-6 border-t flex justify-end gap-3"><button id="teacher-cancel-btn" class="btn-secondary">취소</button><button id="teacher-save-lesson-btn" class="btn-primary flex items-center justify-center min-w-[120px]"><span id="teacher-save-btn-text">저장하기</span><div id="teacher-save-loader" class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin hidden"></div></button></footer>
+            <footer class="p-6 border-t flex justify-end gap-3">
+                <button id="teacher-cancel-btn" class="btn-secondary">취소</button>
+                <button id="teacher-save-lesson-btn" class="btn-primary flex items-center justify-center min-w-[120px]">
+                    <span id="teacher-save-btn-text">저장하기</span>
+                    <div id="teacher-save-loader" class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin hidden"></div>
+                </button>
+            </footer>
         </div>
     </div>
+
     <div id="teacher-edit-class-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
             <header class="p-6 border-b flex justify-between items-center">
@@ -251,6 +293,7 @@
         </div>
     </div>
 
-    <script type="module" src="./teacherApp.js"></script>
-    </body>
+    <!-- 절대경로로 통일 -->
+    <script type="module" src="/src/teacher/teacherApp.js"></script>
+</body>
 </html>

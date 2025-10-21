@@ -2,47 +2,13 @@
   "hosting": [
     {
       "site": "svcm-v2",
-      "public": "dist-portal",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
-        }
-      ]
-    },
-    {
-      "site": "dcprime-s",
-      "public": "dist-student",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/src/student/index.html"
-        }
-      ]
-    },
-    {
-      "site": "t-dcprime",
-      "public": "dist-teacher",
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/src/teacher/index.html"
-        }
+        { "source": "/admin{,/**}",   "destination": "/admin/index.html" },
+        { "source": "/teacher{,/**}", "destination": "/teacher/index.html" },
+        { "source": "/student{,/**}", "destination": "/student/index.html" },
+        { "source": "**",             "destination": "/index.html" }
       ]
     }
   ]
