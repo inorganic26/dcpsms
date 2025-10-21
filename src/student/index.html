@@ -6,7 +6,6 @@
     <title>학생 학습 앱</title>
     <link rel="icon" href="/vite.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- 절대경로로 통일 -->
     <link rel="stylesheet" href="/src/shared/style.css">
 </head>
 <body class="bg-slate-50">
@@ -143,7 +142,7 @@
 
             <div class="w-full mb-6 shadow-2xl rounded-lg overflow-hidden aspect-video">
                 <iframe id="student-video1-iframe" class="w-full h-full" frameborder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; web-share"
                     allowfullscreen></iframe>
             </div>
 
@@ -174,10 +173,13 @@
             <p id="student-result-score-text-success" class="mt-2 text-slate-600"></p>
             <div class="mt-8">
                 <h2 class="text-xl font-bold text-slate-800 mb-4">문제 풀이 영상</h2>
-                <div class="aspect-w-16 aspect-h-9 mb-6 shadow-2xl rounded-lg overflow-hidden">
-                    <iframe id="student-review-video2-iframe" class="w-full aspect-video" frameborder="0" allowfullscreen
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
-                </div>
+                <div class="mb-6 shadow-2xl rounded-lg overflow-hidden relative pb-[56.25%] h-0">
+  <iframe id="student-review-video2-iframe"
+          class="absolute top-0 left-0 w-full h-full"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen></iframe>
+</div>
                 <div class="flex gap-4 justify-center">
                     <button id="student-rewatch-video1-btn" class="btn-secondary">개념 영상 다시보기</button>
                     <button id="student-show-rev2-btn-success" class="btn-warning" style="display: none;">보충 풀이 보기</button>
@@ -190,10 +192,13 @@
             <p id="student-result-score-text-failure" class="mt-2 text-slate-600"></p>
             <div class="mt-8">
                 <h2 class="text-xl font-bold text-slate-800 mb-4">문제 풀이 영상</h2>
-                <div class="aspect-w-16 aspect-h-9 mb-6 shadow-2xl rounded-lg overflow-hidden">
-                    <iframe id="student-video2-iframe" class="w-full aspect-video" frameborder="0" allowfullscreen
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
-                </div>
+                <div class="mb-6 shadow-2xl rounded-lg overflow-hidden relative pb-[56.25%] h-0">
+  <iframe id="student-video2-iframe"
+          class="absolute top-0 left-0 w-full h-full"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen></iframe>
+</div>
                 <div class="flex gap-4 justify-center">
                     <button id="student-retry-quiz-btn" class="btn-primary">퀴즈 다시 풀기</button>
                     <button id="student-show-rev2-btn-failure" class="btn-warning" style="display: none;">보충 풀이 보기</button>
@@ -226,7 +231,6 @@
         </div>
     </div>
 
-    <!-- 절대경로로 통일 -->
     <script type="module" src="/src/student/studentApp.js"></script>
 </body>
 </html>
