@@ -211,6 +211,13 @@
                             <label for="admin-target-class-select" class="block text-sm font-medium text-slate-700 mb-1">배정할 반 선택</label>
                             <select id="admin-target-class-select" class="form-select mb-6"><option value="">-- 배정할 반 --</option></select>
                         </div>
+
+                        <!-- ✅ 오른쪽 학생 목록 컨테이너 (신규 추가) -->
+                        <div id="admin-target-student-list"
+                             class="space-y-2 p-2 border rounded-lg min-h-[300px] overflow-y-auto custom-scrollbar bg-white mb-6">
+                            <p class="text-sm text-slate-400">오른쪽 상단에서 배정할 반을 선택하세요.</p>
+                        </div>
+
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">배정 실행</label>
                             <button id="admin-assign-students-btn" class="btn-primary w-full py-3">선택한 학생 배정하기</button>
