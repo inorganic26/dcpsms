@@ -7,7 +7,6 @@
     <link rel="icon" href="/vite.svg" type="image/svg+xml">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <!-- 절대경로로 통일 -->
     <link rel="stylesheet" href="/src/shared/style.css">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -32,14 +31,12 @@
                 </div>
             </div>
             <button id="teacher-login-btn" class="btn-primary w-full mt-6 py-3">로그인</button>
-            <!-- 루트로 이동 -->
             <a href="/" class="back-to-portal-btn mt-4 block text-center text-sm text-slate-500 hover:underline no-underline">포털로 돌아가기</a>
         </div>
     </div>
 
     <div id="teacher-dashboard-container" style="display: none;">
         <div class="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
-            <!-- 루트로 이동 -->
             <a href="/" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
 
             <div class="content-card">
@@ -74,6 +71,12 @@
                         </div>
                     </div>
 
+                    <div id="teacher-student-list-section" class="content-card mt-8" style="display: none;">
+                         <h3 class="text-xl font-bold text-slate-800 mb-4">반 학생 명단</h3>
+                         <div id="teacher-student-list-container" class="space-y-2">
+                             <p class="text-sm text-slate-400">학생 목록을 불러오는 중...</p>
+                         </div>
+                    </div>
                     <main>
                         <div id="view-homework-dashboard" class="teacher-view" style="display: none;">
                             <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
@@ -293,7 +296,6 @@
         </div>
     </div>
 
-    <!-- 절대경로로 통일 -->
     <script type="module" src="/src/teacher/teacherApp.js"></script>
 </body>
 </html>
