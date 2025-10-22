@@ -6,7 +6,7 @@ import { showToast } from '../shared/utils.js';
 
 // Import modules
 import { studentAuth } from './studentAuth.js';
-import { studentLesson } from './studentLesson.js'; // convertYoutubeUrlToEmbed 사용을 위해 import 유지
+import { studentLesson } from './studentLesson.js'; // convertYoutubeUrlToEmbed 사용
 import { studentHomework } from './studentHomework.js';
 
 const StudentApp = {
@@ -22,6 +22,10 @@ const StudentApp = {
         initialImageUrls: [], // 숙제 수정 시 기존 URL
         currentRevVideoIndex: 0, // 보충 영상 인덱스
         currentHomeworkPages: 0, // 현재 숙제의 총 페이지 수
+        // ======[ 영상 관련 상태 추가 ]======
+        qnaVideosByDate: {}, // { 'YYYY-MM-DD': [videoData, ...], ... }
+        classVideosByDate: {}, // { 'YYYY-MM-DD': [videoData, ...], ... }
+        // ===================================
     },
 
     init() {
@@ -39,41 +43,28 @@ const StudentApp = {
 
     cacheElements() {
         this.elements = {
+            // ... (기존 요소 캐싱 유지) ...
             loadingScreen: document.getElementById('student-loading-screen'),
             loginScreen: document.getElementById('student-login-screen'),
             classSelect: document.getElementById('student-class-select'),
             nameSelect: document.getElementById('student-name-select'),
             passwordInput: document.getElementById('student-password'),
             loginBtn: document.getElementById('student-login-btn'),
-
             subjectSelectionScreen: document.getElementById('student-subject-selection-screen'),
             welcomeMessage: document.getElementById('student-welcome-message'),
             subjectsList: document.getElementById('student-subjects-list'),
-            startLessonCard: document.getElementById('student-start-lesson-card'), // 자기주도반 과목 카드
-            gotoQnaVideoCard: document.getElementById('student-goto-qna-video-card'), // 질문 영상 카드
-            gotoHomeworkCard: document.getElementById('student-goto-homework-card'), // 숙제 카드
-            gotoClassVideoCard: document.getElementById('student-goto-class-video-card'), // 현강반 영상 카드
-
-            qnaVideoScreen: document.getElementById('student-qna-video-screen'),
-            backToSubjectsFromQnaBtn: document.getElementById('student-back-to-subjects-from-qna-btn'),
-            qnaDatePicker: document.getElementById('qna-video-date-picker'),
-            qnaVideoList: document.getElementById('qna-video-list'), // 질문 영상 목록 컨테이너 ID
-
-            classVideoScreen: document.getElementById('student-class-video-screen'),
-            backToSubjectsFromClassVideoBtn: document.getElementById('student-back-to-subjects-from-class-video-btn'),
-            classVideoDatePicker: document.getElementById('class-video-date-picker'),
-            classVideoList: document.getElementById('class-video-list'),
-
+            startLessonCard: document.getElementById('student-start-lesson-card'),
+            gotoQnaVideoCard: document.getElementById('student-goto-qna-video-card'),
+            gotoHomeworkCard: document.getElementById('student-goto-homework-card'),
+            gotoClassVideoCard: document.getElementById('student-goto-class-video-card'),
             lessonSelectionScreen: document.getElementById('student-lesson-selection-screen'),
             selectedSubjectTitle: document.getElementById('student-selected-subject-title'),
             lessonsList: document.getElementById('student-lessons-list'),
             noLessonScreen: document.getElementById('student-no-lesson-screen'),
-            backToSubjectsBtn: document.getElementById('student-back-to-subjects-btn'), // 학습선택->과목선택
-
+            backToSubjectsBtn: document.getElementById('student-back-to-subjects-btn'),
             homeworkScreen: document.getElementById('student-homework-screen'),
             homeworkList: document.getElementById('student-homework-list'),
             backToSubjectsFromHomeworkBtn: document.getElementById('student-back-to-subjects-from-homework-btn'),
-
             uploadModal: document.getElementById('student-upload-modal'),
             uploadModalTitle: document.getElementById('student-upload-modal-title'),
             closeUploadModalBtn: document.getElementById('student-close-upload-modal-btn'),
@@ -83,134 +74,145 @@ const StudentApp = {
             uploadBtn: document.getElementById('student-upload-btn'),
             uploadBtnText: document.getElementById('student-upload-btn-text'),
             uploadLoader: document.getElementById('student-upload-loader'),
-
-            video1Screen: document.getElementById('student-video1-screen'), // 영상 1 화면
+            video1Screen: document.getElementById('student-video1-screen'),
             video1Title: document.getElementById('student-video1-title'),
-            video1Iframe: document.getElementById('student-video1-iframe'), // 영상 1 iframe
-            gotoRev1Btn: document.getElementById('student-goto-rev1-btn'), // 영상 1 보충 버튼
-            startQuizBtn: document.getElementById('student-start-quiz-btn'), // 퀴즈 시작 버튼
-            backToLessonsFromVideoBtn: document.getElementById('student-back-to-lessons-from-video-btn'), // 영상->학습선택
-
+            video1Iframe: document.getElementById('student-video1-iframe'),
+            gotoRev1Btn: document.getElementById('student-goto-rev1-btn'),
+            startQuizBtn: document.getElementById('student-start-quiz-btn'),
+            backToLessonsFromVideoBtn: document.getElementById('student-back-to-lessons-from-video-btn'),
             quizScreen: document.getElementById('student-quiz-screen'),
             progressText: document.getElementById('student-progress-text'),
             scoreText: document.getElementById('student-score-text'),
             progressBar: document.getElementById('student-progress-bar'),
             questionText: document.getElementById('student-question-text'),
             optionsContainer: document.getElementById('student-options-container'),
-
             resultScreen: document.getElementById('student-result-screen'),
             successMessage: document.getElementById('student-success-message'),
             failureMessage: document.getElementById('student-failure-message'),
             resultScoreTextSuccess: document.getElementById('student-result-score-text-success'),
             resultScoreTextFailure: document.getElementById('student-result-score-text-failure'),
-            reviewVideo2Iframe: document.getElementById('student-review-video2-iframe'), // 성공 시 영상 2 iframe
-            rewatchVideo1Btn: document.getElementById('student-rewatch-video1-btn'), // 영상 1 다시보기 버튼
-            showRev2BtnSuccess: document.getElementById('student-show-rev2-btn-success'), // 성공 시 보충 영상 2 버튼
-            video2Iframe: document.getElementById('student-video2-iframe'), // 실패 시 영상 2 iframe
-            retryQuizBtn: document.getElementById('student-retry-quiz-btn'), // 퀴즈 재시도 버튼
-            showRev2BtnFailure: document.getElementById('student-show-rev2-btn-failure'), // 실패 시 보충 영상 2 버튼
-            backToLessonsBtnSuccess: document.getElementById('student-back-to-lessons-btn-success'), // 성공 시 학습목록 버튼
+            reviewVideo2Iframe: document.getElementById('student-review-video2-iframe'),
+            rewatchVideo1Btn: document.getElementById('student-rewatch-video1-btn'),
+            showRev2BtnSuccess: document.getElementById('student-show-rev2-btn-success'),
+            video2Iframe: document.getElementById('student-video2-iframe'),
+            retryQuizBtn: document.getElementById('student-retry-quiz-btn'),
+            showRev2BtnFailure: document.getElementById('student-show-rev2-btn-failure'),
+            backToLessonsBtnSuccess: document.getElementById('student-back-to-lessons-btn-success'),
+
+            // ======[ 영상 화면 요소 수정 및 추가 ]======
+            qnaVideoScreen: document.getElementById('student-qna-video-screen'),
+            backToSubjectsFromQnaBtn: document.getElementById('student-back-to-subjects-from-qna-btn'),
+            // qnaDatePicker: 제거됨
+            qnaVideoDateList: document.getElementById('qna-video-date-list'), // ID 변경됨
+
+            classVideoScreen: document.getElementById('student-class-video-screen'),
+            backToSubjectsFromClassVideoBtn: document.getElementById('student-back-to-subjects-from-class-video-btn'),
+            // classVideoDatePicker: 제거됨
+            classVideoDateList: document.getElementById('class-video-date-list'), // ID 변경됨
+
+            videoDisplayModal: document.getElementById('student-video-display-modal'),
+            videoModalTitle: document.getElementById('student-video-modal-title'),
+            closeVideoModalBtn: document.getElementById('student-close-video-modal-btn'),
+            videoModalContent: document.getElementById('student-video-modal-content'),
+            // ===================================
         };
-        // console.log("[studentApp.js] Elements cached:", Object.keys(this.elements).filter(key => this.elements[key])); // 로그 필요시 주석 해제
     },
 
     addEventListeners() {
+        // ... (기존 리스너 유지) ...
         this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToLessonsBtnSuccess?.addEventListener('click', () => this.showLessonSelectionScreen());
         this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
         this.elements.backToSubjectsFromQnaBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToSubjectsFromClassVideoBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
-        this.elements.qnaDatePicker?.addEventListener('change', (e) => this.loadQnaVideos(e.target.value));
-        this.elements.classVideoDatePicker?.addEventListener('change', (e) => this.loadClassVideos(e.target.value));
+        // DatePicker 리스너 제거됨
+        // this.elements.qnaDatePicker?.addEventListener('change', (e) => this.loadQnaVideos(e.target.value));
+        // this.elements.classVideoDatePicker?.addEventListener('change', (e) => this.loadClassVideos(e.target.value));
         this.elements.gotoQnaVideoCard?.addEventListener('click', () => this.showQnaVideoScreen());
         this.elements.gotoHomeworkCard?.addEventListener('click', () => studentHomework.showHomeworkScreen());
         this.elements.gotoClassVideoCard?.addEventListener('click', () => this.showClassVideoScreen());
+
+        // ======[ 모달 닫기 리스너 추가 ]======
+        this.elements.closeVideoModalBtn?.addEventListener('click', () => this.closeVideoModal());
+        // ===================================
     },
 
     showScreen(screenElement) {
-        // console.log(`[studentApp.js] Attempting to show screen: ${screenElement ? screenElement.id : 'null'}`); // 로그 필요시 주석 해제
+        // ... (기존 화면 숨김 로직 유지, videoDisplayModal 추가) ...
         const screens = [
             this.elements.loadingScreen, this.elements.loginScreen,
             this.elements.subjectSelectionScreen, this.elements.lessonSelectionScreen,
             this.elements.video1Screen, this.elements.quizScreen, this.elements.resultScreen,
             this.elements.homeworkScreen, this.elements.qnaVideoScreen, this.elements.classVideoScreen,
+            // this.elements.videoDisplayModal // 모달은 별도 관리
         ];
         let hidingVideoScreen = false;
         screens.forEach(s => {
             if (s && s.style.display !== 'none') {
-                if (s === this.elements.video1Screen || s === this.elements.resultScreen || s === this.elements.qnaVideoScreen || s === this.elements.classVideoScreen) {
+                // qna/classVideoScreen도 비디오 화면으로 간주
+                if (s === this.elements.video1Screen || s === this.elements.resultScreen ||
+                    s === this.elements.qnaVideoScreen || s === this.elements.classVideoScreen) {
                     hidingVideoScreen = true;
                 }
-                // console.log(`[studentApp.js] Hiding screen: ${s.id}`); // 로그 필요시 주석 해제
                 s.style.display = 'none';
             }
         });
         if (hidingVideoScreen) {
-            // console.log("[studentApp.js] Calling stopAllVideos because a video screen was hidden."); // 로그 필요시 주석 해제
             this.stopAllVideos();
-        } else {
-             // console.log("[studentApp.js] Skipping stopAllVideos as no video screen was hidden."); // 로그 필요시 주석 해제
         }
         if(screenElement) {
-            // console.log(`[studentApp.js] Setting display = 'flex' for: ${screenElement.id}`); // 로그 필요시 주석 해제
-            screenElement.style.display = 'flex';
+            screenElement.style.display = 'flex'; // 기본값 flex로 변경
         } else {
             console.warn("[studentApp.js] showScreen called with null screenElement.");
         }
     },
 
     stopAllVideos() {
+        // 모달 내 iframe도 포함하도록 셀렉터 수정
         const iframes = document.querySelectorAll(
-            '#student-video1-iframe, #student-review-video2-iframe, #student-video2-iframe, #qna-video-list iframe, #class-video-list iframe'
+            '#student-video1-iframe, #student-review-video2-iframe, #student-video2-iframe, #student-video-modal-content iframe'
         );
-        // console.log(`[studentApp.js] stopAllVideos called. Found ${iframes.length} iframes to potentially stop.`); // 로그 필요시 주석 해제
-        iframes.forEach((iframe, index) => {
+        iframes.forEach((iframe) => {
             if (iframe && iframe.src && iframe.src !== 'about:blank') {
-                // console.log(`[studentApp.js] Stopping video in iframe #${index + 1} (current src: ${iframe.src})`); // 로그 필요시 주석 해제
-                iframe.src = 'about:blank';
+                iframe.src = 'about:blank'; // iframe 중지
             }
         });
+        // 모달 닫기 (비디오 화면 전환 시 모달도 닫도록)
+        this.closeVideoModal();
     },
 
+    // ... (showSubjectSelectionScreen, showLessonSelectionScreen 등 기존 함수 유지) ...
     showSubjectSelectionScreen() {
         if (!this.elements.welcomeMessage) {
             console.error("[studentApp.js] Welcome message element not found.");
             return;
         }
-        // console.log(`[studentApp.js] showSubjectSelectionScreen called. Current classType: ${this.state.classType}`); // 로그 필요시 주석 해제
         this.elements.welcomeMessage.textContent = `${this.state.studentName || '학생'}님, 환영합니다!`;
         const isLiveLecture = this.state.classType === 'live-lecture';
         const isSelfDirected = !isLiveLecture;
         if (this.elements.startLessonCard) {
             this.elements.startLessonCard.style.display = isSelfDirected ? 'flex' : 'none';
-             // console.log(`[studentApp.js] startLessonCard display set to: ${this.elements.startLessonCard.style.display}`); // 로그 필요시 주석 해제
         }
         if (this.elements.gotoClassVideoCard) {
             this.elements.gotoClassVideoCard.style.display = isLiveLecture ? 'flex' : 'none';
-             // console.log(`[studentApp.js] gotoClassVideoCard display set to: ${this.elements.gotoClassVideoCard.style.display}`); // 로그 필요시 주석 해제
         }
         const commonMenuStyle = this.state.classId ? 'flex' : 'none';
         if (this.elements.gotoQnaVideoCard) {
              this.elements.gotoQnaVideoCard.style.display = commonMenuStyle;
-              // console.log(`[studentApp.js] gotoQnaVideoCard display set to: ${this.elements.gotoQnaVideoCard.style.display}`); // 로그 필요시 주석 해제
         }
         if (this.elements.gotoHomeworkCard) {
             this.elements.gotoHomeworkCard.style.display = commonMenuStyle;
-             // console.log(`[studentApp.js] gotoHomeworkCard display set to: ${this.elements.gotoHomeworkCard.style.display}`); // 로그 필요시 주석 해제
         }
         if (isSelfDirected && this.elements.subjectsList) {
              this.elements.subjectsList.innerHTML = '';
              if (this.state.activeSubjects.length === 0) {
                  this.elements.subjectsList.innerHTML = '<p class="text-center text-sm text-slate-400 py-4">수강 가능한 과목이 없습니다.</p>';
-                  // console.log("[studentApp.js] No subjects to render for self-directed class."); // 로그 필요시 주석 해제
              } else {
-                 // console.log("[studentApp.js] Rendering subjects for self-directed class:", this.state.activeSubjects.map(s => s.name)); // 로그 필요시 주석 해제
                  this.state.activeSubjects.forEach(subject => this.renderSubjectChoice(subject));
              }
         } else if (this.elements.subjectsList) {
              this.elements.subjectsList.innerHTML = '';
-             // console.log("[studentApp.js] Not rendering subjects list (not self-directed or element missing)."); // 로그 필요시 주석 해제
         }
         this.showScreen(this.elements.subjectSelectionScreen);
     },
@@ -232,221 +234,214 @@ const StudentApp = {
         this.showScreen(this.elements.lessonSelectionScreen);
     },
 
+    // ======[ 질문 영상 화면 표시 로직 수정 ]======
     showQnaVideoScreen() {
-        if (!this.elements.qnaDatePicker || !this.elements.qnaVideoScreen) {
+        if (!this.elements.qnaVideoDateList || !this.elements.qnaVideoScreen) {
              console.error("[studentApp.js] Cannot show QnA video screen: Required elements missing.");
              return;
         }
-        this.elements.qnaDatePicker.value = new Date().toISOString().slice(0, 10);
-        this.loadQnaVideos(this.elements.qnaDatePicker.value); // 날짜 설정 후 바로 로드
-        this.showScreen(this.elements.qnaVideoScreen); // 화면 먼저 표시
+        this.loadAndRenderVideoDates('qna'); // 데이터 로드 및 날짜 카드 렌더링 함수 호출
+        this.showScreen(this.elements.qnaVideoScreen);
     },
+    // ===================================
 
+    // ======[ 수업 영상 화면 표시 로직 수정 ]======
     showClassVideoScreen() {
          if (this.state.classType !== 'live-lecture') {
               console.warn("[studentApp.js] Self-directed students cannot access class video screen.");
               this.showSubjectSelectionScreen();
               return;
          }
-         if (!this.elements.classVideoDatePicker || !this.elements.classVideoScreen) {
+         if (!this.elements.classVideoDateList || !this.elements.classVideoScreen) {
              console.error("[studentApp.js] Cannot show class video screen: Required elements missing.");
              return;
          }
-         this.elements.classVideoDatePicker.value = new Date().toISOString().slice(0, 10);
-         this.loadClassVideos(this.elements.classVideoDatePicker.value); // 날짜 설정 후 바로 로드
-         this.showScreen(this.elements.classVideoScreen); // 화면 먼저 표시
+         this.loadAndRenderVideoDates('class'); // 데이터 로드 및 날짜 카드 렌더링 함수 호출
+         this.showScreen(this.elements.classVideoScreen);
      },
+    // ===================================
 
-    // --- 👇 질문 영상 로드 함수 수정 👇 ---
-    async loadQnaVideos(selectedDate) {
-        const listEl = this.elements.qnaVideoList; // 목록 표시할 요소
-        // console.log(`[studentApp.js] loadQnaVideos called for date: ${selectedDate}, classId: ${this.state.classId}`); // 로그 필요시 주석 해제
+    // ======[ 영상 날짜 로드 및 카드 렌더링 함수 추가 ]======
+    async loadAndRenderVideoDates(videoType) { // 'qna' 또는 'class'
+        const isQna = videoType === 'qna';
+        const collectionName = isQna ? 'classVideos' : 'classLectures';
+        const dateFieldName = isQna ? 'videoDate' : 'lectureDate';
+        const listElement = isQna ? this.elements.qnaVideoDateList : this.elements.classVideoDateList;
+        const stateKey = isQna ? 'qnaVideosByDate' : 'classVideosByDate';
 
-        if (!listEl) { console.error("[studentApp.js] qnaVideoList element not found."); return; }
-        if (!selectedDate || !this.state.classId) {
-            listEl.innerHTML = '<p class="text-center text-slate-400 py-8">날짜를 선택해 주세요.</p>';
+        if (!listElement) {
+            console.error(`[studentApp.js] Video date list element for ${videoType} not found.`);
+            return;
+        }
+        if (!this.state.classId) {
+            listElement.innerHTML = '<p class="text-center text-slate-500 py-8">반이 배정되지 않아 영상을 조회할 수 없습니다.</p>';
             return;
         }
 
-        listEl.innerHTML = '<div class="loader mx-auto"></div>'; // 로딩 표시
+        listElement.innerHTML = '<div class="loader mx-auto"></div>'; // 로딩 표시
 
         try {
             const q = query(
-                collection(db, 'classVideos'),
+                collection(db, collectionName),
                 where('classId', '==', this.state.classId),
-                where('videoDate', '==', selectedDate),
-                orderBy('createdAt', 'desc')
+                orderBy(dateFieldName, 'desc') // 날짜 필드로 최신순 정렬
             );
-            // console.log("[studentApp.js] Executing Firestore query for QnA videos..."); // 로그 필요시 주석 해제
             const snapshot = await getDocs(q);
-            // console.log(`[studentApp.js] Firestore query returned ${snapshot.size} documents.`); // 로그 필요시 주석 해제
 
-            listEl.innerHTML = ''; // 기존 목록 비우기
+            const videosByDate = {};
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                const date = data[dateFieldName]; // 'YYYY-MM-DD' 형식
+                const videos = isQna ? [data] : (data.videos || []); // QnA는 문서당 영상 1개, 수업은 배열
 
-            if (snapshot.empty) {
-                // console.log("[studentApp.js] No QnA videos found for this date."); // 로그 필요시 주석 해제
-                listEl.innerHTML = '<p class="text-center text-slate-500 py-8">해당 날짜에 등록된 질문 영상이 없습니다.</p>';
+                if (!date || videos.length === 0) return; // 날짜 없거나 영상 없으면 스킵
+
+                if (!videosByDate[date]) {
+                    videosByDate[date] = [];
+                }
+                // QnA 영상은 바로 추가, 수업 영상은 배열 내 영상들을 추가
+                if (isQna) {
+                     videosByDate[date].push({ id: doc.id, ...data });
+                } else {
+                     videos.forEach(v => videosByDate[date].push(v)); // 수업 영상 배열 추가
+                }
+            });
+
+            this.state[stateKey] = videosByDate; // 상태 업데이트
+
+            // 날짜 카드 렌더링
+            listElement.innerHTML = ''; // 기존 목록 비우기
+            const sortedDates = Object.keys(videosByDate).sort((a, b) => b.localeCompare(a)); // 최신 날짜 순
+
+            if (sortedDates.length === 0) {
+                listElement.innerHTML = `<p class="text-center text-slate-500 py-8">등록된 ${isQna ? '질문' : '수업'} 영상이 없습니다.</p>`;
                 return;
             }
 
-            // ✨ 수정: for...of 루프 사용 (forEach에서 async/await 사용 방지)
-            for (const docSnap of snapshot.docs) {
-                const video = docSnap.data();
-                const videoIndex = snapshot.docs.indexOf(docSnap) + 1; // 로그용 인덱스
-                // console.log(`[studentApp.js] Processing video ${videoIndex}:`, video.title); // 로그 필요시 주석 해제
+            sortedDates.forEach(date => {
+                const videos = videosByDate[date];
+                const card = document.createElement('button');
+                card.className = "w-full p-4 border border-blue-300 bg-blue-50 rounded-lg text-lg font-semibold text-slate-800 hover:bg-blue-100 transition text-left";
+                card.textContent = `${date} (${videos.length}개 영상)`;
+                card.dataset.date = date;
+                card.dataset.videoType = videoType;
 
-                let embedUrl = null;
-                try {
-                    embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.youtubeUrl);
-                } catch (convertError) {
-                    console.error(`[studentApp.js] Error converting YouTube URL for video "${video.title}":`, video.youtubeUrl, convertError);
-                }
+                card.addEventListener('click', () => {
+                    const clickedDate = card.dataset.date;
+                    const type = card.dataset.videoType;
+                    const videosForDate = this.state[type === 'qna' ? 'qnaVideosByDate' : 'classVideosByDate'][clickedDate];
+                    this.openVideoModal(clickedDate, videosForDate, type);
+                });
+                listElement.appendChild(card);
+            });
 
+        } catch (error) {
+            console.error(`[studentApp.js] Error loading ${videoType} video dates:`, error);
+            listElement.innerHTML = `<p class="text-center text-red-500 py-8">${isQna ? '질문' : '수업'} 영상 목록 로딩 실패</p>`;
+            showToast(`${isQna ? '질문' : '수업'} 영상 목록 로딩 실패`, true);
+        }
+    },
+    // ===================================
+
+    // ======[ 영상 표시 모달 열기 함수 추가 ]======
+    openVideoModal(date, videos, videoType) {
+        if (!this.elements.videoDisplayModal || !this.elements.videoModalTitle || !this.elements.videoModalContent) {
+            console.error("Video display modal elements not found.");
+            return;
+        }
+
+        this.elements.videoModalTitle.textContent = `${date} ${videoType === 'qna' ? '질문' : '수업'} 영상`;
+        this.elements.videoModalContent.innerHTML = ''; // 내용 초기화
+
+        if (!videos || videos.length === 0) {
+            this.elements.videoModalContent.innerHTML = '<p class="text-center text-slate-500 py-8">해당 날짜에 영상이 없습니다.</p>';
+        } else {
+            videos.forEach(video => {
                 const videoContainer = document.createElement('div');
                 videoContainer.className = 'mb-6';
 
                 const titleElement = document.createElement('h3');
-                titleElement.className = 'text-xl font-bold text-slate-800 mb-2';
+                titleElement.className = 'text-lg font-bold text-slate-700 mb-2';
                 titleElement.textContent = video.title || '제목 없음';
                 videoContainer.appendChild(titleElement);
 
+                // QnA 영상은 youtubeUrl, 수업 영상은 url 필드 사용
+                const urlField = videoType === 'qna' ? 'youtubeUrl' : 'url';
+                const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video[urlField]);
+
                 if (embedUrl) {
-                    // console.log(`[studentApp.js] Creating iframe for video "${video.title}" with URL:`, embedUrl); // 로그 필요시 주석 해제
-                    // ✨ 수정: iframe 컨테이너 스타일 직접 설정
                     const iframeContainer = document.createElement('div');
-                    iframeContainer.className = 'aspect-w-16 aspect-h-9 shadow-lg rounded-lg overflow-hidden relative pb-[56.25%] h-0'; // aspect ratio 클래스 사용
+                    iframeContainer.className = 'aspect-video shadow-lg rounded-lg overflow-hidden relative'; // aspect-video 사용
 
                     const iframe = document.createElement('iframe');
-                    // ✨ 수정: iframe 스타일 직접 설정 (absolute positioning)
                     iframe.className = 'absolute top-0 left-0 w-full h-full';
-                    iframe.src = embedUrl;
+                    iframe.src = 'about:blank'; // 초기에는 비움 (스크롤 성능 위해)
+                    iframe.dataset.src = embedUrl; // 실제 URL 저장
                     iframe.frameBorder = '0';
                     iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
                     iframe.allowFullscreen = true;
-                    iframe.style.display = 'none'; // 초기에는 숨김
-
-                    // iframe 로드/오류 이벤트
-                    iframe.onload = () => {
-                        // console.log(`[studentApp.js] iframe for "${video.title}" loaded.`); // 로그 필요시 주석 해제
-                        iframe.style.display = 'block'; // 로드 완료 후 표시
-                    };
-                    iframe.onerror = (e) => {
-                        console.error(`[studentApp.js] iframe for "${video.title}" failed to load:`, e);
-                        const errorMsg = document.createElement('p');
-                        errorMsg.className = 'text-sm text-red-500';
-                        errorMsg.textContent = '(영상 로딩 실패)';
-                        // iframe 대신 오류 메시지를 컨테이너에 추가
-                        iframeContainer.innerHTML = ''; // 기존 iframe 제거 (필요시)
-                        iframeContainer.appendChild(errorMsg);
-                        iframeContainer.style.paddingBottom = '0'; // Aspect ratio 제거
-                        iframeContainer.style.height = 'auto'; // 높이 자동 조절
-                    };
+                    // iframe.style.display = 'none'; // 초기에는 숨김 (Intersection Observer 사용 예정)
 
                     iframeContainer.appendChild(iframe);
                     videoContainer.appendChild(iframeContainer);
                 } else {
-                    console.warn(`[studentApp.js] Skipping iframe rendering for video "${video.title}" due to invalid URL.`);
                     const errorMsg = document.createElement('p');
                     errorMsg.className = 'text-sm text-red-500';
-                    errorMsg.textContent = `(영상 URL(${video.youtubeUrl || '없음'})이 올바르지 않아 표시할 수 없습니다.)`;
+                    errorMsg.textContent = `(영상 URL(${video[urlField] || '없음'})이 올바르지 않아 표시할 수 없습니다.)`;
                     videoContainer.appendChild(errorMsg);
                 }
-                listEl.appendChild(videoContainer); // 생성된 비디오 컨테이너를 목록에 추가
+                this.elements.videoModalContent.appendChild(videoContainer);
+            });
 
-                // ✨ 추가: 비동기적으로 iframe src 설정 (DOM 추가 후) - 선택 사항, 브라우저 렌더링 최적화
-                // const addedIframe = videoContainer.querySelector('iframe');
-                // if (addedIframe && embedUrl) {
-                //     setTimeout(() => { addedIframe.src = embedUrl; }, 10);
-                // }
-
-            } // End of for...of loop
-            // console.log("[studentApp.js] Finished rendering QnA video list."); // 로그 필요시 주석 해제
-
-        } catch (error) {
-            console.error("[studentApp.js] Error loading or rendering QnA videos:", error);
-            listEl.innerHTML = '<p class="text-center text-red-500 py-8">영상을 불러오는 중 오류가 발생했습니다.</p>';
-            showToast("질문 영상 로딩 실패", true);
-            if (error.message?.includes("Timeout") || error.code === 'unavailable' || error.code === 'internal') {
-                showToast("데이터 로딩 시간 초과. 네트워크 확인 후 다시 시도해주세요.", true);
-           }
+             // Intersection Observer로 iframe 지연 로딩 (모달 열린 후)
+             setTimeout(() => { // 모달 표시 후 잠시 기다렸다가 옵저버 실행
+                 const iframes = this.elements.videoModalContent.querySelectorAll('iframe[data-src]');
+                 const observer = new IntersectionObserver((entries) => {
+                     entries.forEach(entry => {
+                         if (entry.isIntersecting) {
+                             const iframe = entry.target;
+                             iframe.src = iframe.dataset.src;
+                             iframe.style.display = 'block';
+                             observer.unobserve(iframe); // 한 번 로드되면 관찰 중지
+                         }
+                     });
+                 });
+                 iframes.forEach(iframe => observer.observe(iframe));
+             }, 100); // 100ms 지연
         }
-   },
-   // --- 👆 질문 영상 로드 함수 수정 끝 ---
 
-    async loadClassVideos(selectedDate) {
-         if (!this.elements.classVideoList) return;
-         if (!selectedDate || !this.state.classId) {
-             this.elements.classVideoList.innerHTML = '<p class="text-center text-slate-400 py-8">날짜를 선택해 주세요.</p>';
-             return;
-         }
-         this.elements.classVideoList.innerHTML = '<div class="loader mx-auto"></div>';
-         try {
-             const q = query(
-                 collection(db, 'classLectures'),
-                 where('classId', '==', this.state.classId),
-                 where('lectureDate', '==', selectedDate)
-             );
-             const snapshot = await getDocs(q);
-             if (snapshot.empty || !snapshot.docs[0].data().videos || snapshot.docs[0].data().videos.length === 0) {
-                 this.elements.classVideoList.innerHTML = '<p class="text-center text-slate-500 py-8">해당 날짜에 등록된 수업 영상이 없습니다.</p>';
-                 return;
-             }
-             const videos = snapshot.docs[0].data().videos;
-             this.elements.classVideoList.innerHTML = '';
-             videos.forEach(video => {
-                 const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url);
-                 if (!embedUrl) {
-                     console.error("[studentApp.js] Invalid YouTube URL for class video:", video.title, video.url);
-                     return;
+        this.elements.videoDisplayModal.style.display = 'flex';
+        document.body.classList.add('modal-open'); // 스크롤 방지
+    },
+    // ===================================
+
+    // ======[ 영상 표시 모달 닫기 함수 추가 ]======
+    closeVideoModal() {
+        if (this.elements.videoDisplayModal) {
+            this.elements.videoDisplayModal.style.display = 'none';
+             // 모달 내 모든 iframe 중지
+             const iframes = this.elements.videoDisplayModal.querySelectorAll('iframe');
+             iframes.forEach(iframe => {
+                 if (iframe && iframe.src !== 'about:blank') {
+                      iframe.src = 'about:blank';
                  }
-                 const videoContainer = document.createElement('div');
-                 videoContainer.className = 'mb-6';
-
-                 const titleElement = document.createElement('h3');
-                 titleElement.className = 'text-xl font-bold text-slate-800 mb-2';
-                 titleElement.textContent = video.title || '제목 없음';
-                 videoContainer.appendChild(titleElement);
-
-                 const iframeContainer = document.createElement('div');
-                 iframeContainer.className = 'aspect-w-16 aspect-h-9 shadow-lg rounded-lg overflow-hidden relative pb-[56.25%] h-0';
-
-                 const iframe = document.createElement('iframe');
-                 iframe.className = 'absolute top-0 left-0 w-full h-full';
-                 iframe.src = embedUrl;
-                 iframe.frameBorder = '0';
-                 iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
-                 iframe.allowFullscreen = true;
-                 iframe.style.display = 'none'; // 초기 숨김
-
-                 iframe.onload = () => { iframe.style.display = 'block'; };
-                 iframe.onerror = (e) => {
-                     console.error(`[studentApp.js] iframe for class video "${video.title}" failed to load:`, e);
-                     const errorMsg = document.createElement('p');
-                     errorMsg.className = 'text-sm text-red-500';
-                     errorMsg.textContent = '(수업 영상 로딩 실패)';
-                     iframeContainer.innerHTML = '';
-                     iframeContainer.appendChild(errorMsg);
-                     iframeContainer.style.paddingBottom = '0';
-                     iframeContainer.style.height = 'auto';
-                 };
-
-                 iframeContainer.appendChild(iframe);
-                 videoContainer.appendChild(iframeContainer);
-                 this.elements.classVideoList.appendChild(videoContainer);
              });
-         } catch (error) {
-             console.error("[studentApp.js] Error loading class videos:", error);
-             this.elements.classVideoList.innerHTML = '<p class="text-center text-red-500 py-8">수업 영상을 불러오는 데 실패했습니다.</p>';
-             showToast("수업 영상 로딩 실패", true);
-         }
-     },
+        }
+        document.body.classList.remove('modal-open'); // 스크롤 잠금 해제
+    },
+    // ===================================
 
+
+    // --- 기존 loadQnaVideos, loadClassVideos 함수 제거 ---
+    // async loadQnaVideos(selectedDate) { ... } // 제거
+    // async loadClassVideos(selectedDate) { ... } // 제거
+
+    // ... (loadAvailableSubjects, listenForAvailableLessons, renderSubjectChoice, renderLessonChoice 함수 유지) ...
     async loadAvailableSubjects() {
         this.showScreen(this.elements.loadingScreen);
         this.state.activeSubjects = [];
         if (!this.state.classId) {
             this.state.classType = 'self-directed';
-            // console.log("[studentApp.js] No classId found, defaulting classType to self-directed."); // 로그 필요시 주석 해제
             this.showSubjectSelectionScreen();
             return;
         }
@@ -458,12 +453,10 @@ const StudentApp = {
                 this.state.classType = 'self-directed';
             } else {
                  this.state.classType = classDoc.data().classType || 'self-directed';
-                 // console.log(`[studentApp.js] Fetched classType: ${this.state.classType}`); // 로그 필요시 주석 해제
             }
              if (this.state.classType === 'self-directed') {
                 const subjectsData = classDoc.exists() ? classDoc.data().subjects : {};
                 if (!subjectsData || Object.keys(subjectsData).length === 0) {
-                     // console.log("[studentApp.js] No subjects assigned to this self-directed class."); // 로그 필요시 주석 해제
                 } else {
                     const subjectIds = Object.keys(subjectsData);
                     const subjectDocs = await Promise.all(subjectIds.map(id => getDoc(doc(db, 'subjects', id))));
@@ -471,11 +464,9 @@ const StudentApp = {
                         .filter(d => d.exists())
                         .map(d => ({ id: d.id, ...d.data() }));
                      this.state.activeSubjects.sort((a,b) => a.name.localeCompare(b.name));
-                      // console.log("[studentApp.js] Loaded active subjects:", this.state.activeSubjects.map(s => s.name)); // 로그 필요시 주석 해제
                 }
              } else {
                  this.state.activeSubjects = [];
-                 // console.log("[studentApp.js] Class is live-lecture type, clearing active subjects list."); // 로그 필요시 주석 해제
              }
              this.showSubjectSelectionScreen();
         } catch (error) {
@@ -553,11 +544,11 @@ const StudentApp = {
         button.addEventListener('click', () => studentLesson.startSelectedLesson(lesson));
         this.elements.lessonsList.appendChild(button);
     },
+
 }; // StudentApp 객체 끝
 
 document.addEventListener('DOMContentLoaded', () => {
     ensureAnonymousAuth((user) => {
-        // console.log("[studentApp.js] Anonymous user authenticated:", user.uid); // 로그 필요시 주석 해제
         StudentApp.state.authUid = user.uid;
         StudentApp.init();
     });
