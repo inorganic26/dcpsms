@@ -212,7 +212,6 @@
                             <select id="admin-target-class-select" class="form-select mb-6"><option value="">-- 배정할 반 --</option></select>
                         </div>
 
-                        <!-- ✅ 오른쪽 학생 목록 컨테이너 (신규 추가) -->
                         <div id="admin-target-student-list"
                              class="space-y-2 p-2 border rounded-lg min-h-[300px] overflow-y-auto custom-scrollbar bg-white mb-6">
                             <p class="text-sm text-slate-400">오른쪽 상단에서 배정할 반을 선택하세요.</p>
@@ -251,12 +250,12 @@
                     <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">수업 질문 영상 관리</h2>
                     <div class="space-y-4 max-w-lg mx-auto p-4 border rounded-lg bg-slate-50 mb-8">
                         <div>
-                            <label for="admin-qna-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
-                            <select id="admin-qna-class-select" class="form-select"></select>
-                        </div>
-                        <div>
                             <label for="admin-qna-video-date" class="block text-sm font-medium text-slate-600 mb-1">수업 날짜</label>
                             <input type="date" id="admin-qna-video-date" class="form-input">
+                        </div>
+                        <div>
+                            <label for="admin-qna-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
+                            <select id="admin-qna-class-select" class="form-select" disabled></select>
                         </div>
                         <div>
                             <label for="admin-qna-video-title" class="block text-sm font-medium text-slate-600 mb-1">영상 제목</label>
@@ -271,12 +270,12 @@
                         </div>
                     </div>
                     <div class="mt-8 border-t pt-6">
-                        <h3 class="text-xl font-semibold text-slate-700 mb-4">선택한 날짜의 영상 목록</h3>
+                        <h3 class="text-xl font-semibold text-slate-700 mb-4">선택한 날짜와 반의 영상 목록</h3>
                         <div id="admin-qna-videos-list" class="space-y-3">
-                            <p class="text-sm text-slate-500">반과 날짜를 선택하면 해당 날짜에 등록된 영상 목록이 표시됩니다.</p>
+                            <p class="text-sm text-slate-500">날짜와 반을 선택하면 해당 영상 목록이 표시됩니다.</p>
                         </div>
                     </div>
-                    </div>
+                </div>
             </div>
             <div id="admin-class-video-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
@@ -284,15 +283,15 @@
                     <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">수업 영상 관리 (현강반)</h2>
                     <div class="space-y-4 max-w-lg mx-auto">
                         <div class="mb-4">
-                            <label for="admin-class-video-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
-                            <select id="admin-class-video-class-select" class="form-select"></select>
-                        </div>
-                        <div>
                             <label for="admin-class-video-date" class="block text-sm font-medium text-slate-600 mb-1">수업 날짜</label>
                             <input type="date" id="admin-class-video-date" class="form-input">
                         </div>
+                        <div class="mb-4">
+                            <label for="admin-class-video-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
+                            <select id="admin-class-video-class-select" class="form-select" disabled></select>
+                        </div>
                         <div id="admin-class-video-list-container" class="space-y-4 border-t pt-4 mt-4">
-                            <p class="text-sm text-slate-500">반과 날짜를 선택하면 해당 날짜의 영상 목록이 표시됩니다.</p>
+                            <p class="text-sm text-slate-500">날짜와 반을 선택하면 해당 날짜의 영상 목록이 표시됩니다.</p>
                         </div>
                         <div class="flex justify-between items-center mt-4 border-t pt-4">
                              <button id="admin-add-class-video-field-btn" class="btn-secondary btn-sm">+ 영상 필드 추가</button>
