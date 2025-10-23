@@ -1,9 +1,7 @@
 // src/teacher/analysisDashboard.js
 
 import { showToast } from '../shared/utils.js';
-import { storage, db } from '../shared/firebase.js';
-import { ref, uploadBytes } from "firebase/storage";
-import { doc, onSnapshot } from "firebase/firestore";
+// storage, db, ref, uploadBytes, doc, onSnapshot 제거 (AI 분석 관련 Firestore/Storage 사용 안함)
 
 // ✅ jsPDF와 html2canvas 불러오기 (CDN 환경)
 import jsPDF from "jspdf";
@@ -11,17 +9,15 @@ import html2canvas from "html2canvas";
 
 export const analysisDashboard = {
     studentData: null,
-    pdfAnalysisResult: null,
-    currentTestId: null,
-    analysisUnsubscribe: null,
+    // pdfAnalysisResult, currentTestId, analysisUnsubscribe 제거
+    pdfAnalysisResult: null, // 임시: 수동으로 분석 결과를 넣을 수 있도록 유지 (추후 다른 방식으로 대체 가능)
     currentStudentName: null,
 
     init(app) {
         this.app = app;
         this.elements = {
-            testPdfUploadInput: document.getElementById('test-pdf-upload-input'),
+            // testPdfUploadInput, pdfAnalysisStatus 제거
             studentDataUploadInput: document.getElementById('student-data-upload-input'),
-            pdfAnalysisStatus: document.getElementById('pdf-analysis-status'),
             testStudentListContainer: document.getElementById('test-analysis-student-list'),
 
             analysisModal: document.getElementById('analysis-report-modal'),
@@ -29,6 +25,10 @@ export const analysisDashboard = {
             analysisMain: document.getElementById('analysis-report-main'),
             analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
             analysisSaveBtn: document.getElementById('analysis-report-save-btn'),
+             // 임시: PDF 분석 결과 JSON 입력 필드 추가 (AI 대체용)
+             pdfAnalysisJsonInput: document.getElementById('pdf-analysis-json-input'),
+             loadAnalysisJsonBtn: document.getElementById('load-analysis-json-btn'),
+             pdfAnalysisStatus: document.getElementById('pdf-analysis-status'), // 상태 표시줄은 유지
         };
 
         this.addEventListeners();
@@ -36,7 +36,7 @@ export const analysisDashboard = {
 
     addEventListeners() {
         document.addEventListener('class-changed', () => this.renderStudentLists());
-        this.elements.testPdfUploadInput?.addEventListener('change', (e) => this.handlePdfUpload(e));
+        // testPdfUploadInput 리스너 제거
         this.elements.studentDataUploadInput?.addEventListener('change', (e) => this.handleStudentDataUpload(e));
 
         this.elements.analysisCloseBtn?.addEventListener('click', () => {
@@ -47,106 +47,48 @@ export const analysisDashboard = {
         this.elements.analysisSaveBtn?.addEventListener('click', () => {
             if (this.currentStudentName) this.saveReportAsPDF(this.currentStudentName);
         });
+
+        // 임시: JSON 분석 결과 로드 버튼 이벤트 추가
+        this.elements.loadAnalysisJsonBtn?.addEventListener('click', () => this.handleAnalysisJsonLoad());
     },
 
-    async handlePdfUpload(event) {
-        const file = event.target.files[0];
-        if (!file || !this.app.state.selectedClassId) {
-            showToast("반을 먼저 선택한 후 PDF 파일을 업로드해주세요.");
+    // handlePdfUpload 함수 제거
+    // listenForPdfAnalysisResult 함수 제거
+
+     // 임시: JSON 분석 결과 로드 핸들러 추가
+     handleAnalysisJsonLoad() {
+        const jsonInput = this.elements.pdfAnalysisJsonInput;
+        const statusEl = this.elements.pdfAnalysisStatus;
+        if (!jsonInput || !statusEl) return;
+
+        const jsonText = jsonInput.value.trim();
+        if (!jsonText) {
+            showToast("분석 결과 JSON을 입력해주세요.");
+            this.pdfAnalysisResult = null;
+            statusEl.innerHTML = '<span class="text-red-600">❌ 분석 결과 없음</span>';
+            this.renderStudentListForTest();
             return;
         }
 
-        if (this.analysisUnsubscribe) this.analysisUnsubscribe();
-
-        const testId = `test_${this.app.state.selectedClassId}_${Date.now()}`;
-        this.currentTestId = testId;
-        this.pdfAnalysisResult = null;
-
-        const storageRef = ref(storage, `test-analysis/${testId}/${file.name}`);
-
-        this.elements.pdfAnalysisStatus.innerHTML = `
-            <div class="flex items-center gap-2 text-blue-600">
-                <div class="loader-small"></div><span>PDF 업로드 중...</span>
-            </div>`;
-
         try {
-            await uploadBytes(storageRef, file);
-            this.elements.pdfAnalysisStatus.innerHTML = `
-                <div class="flex items-center gap-2 text-blue-600">
-                    <div class="loader-small"></div><span>✅ 업로드 완료! AI 분석 요청 중...</span>
-                </div>`;
-            showToast("PDF 업로드 성공! AI 분석이 시작되었습니다.", false);
-            this.listenForPdfAnalysisResult(testId);
+            const parsedJson = JSON.parse(jsonText);
+            // 간단한 유효성 검사 (객체 형태인지, 비어있지 않은지)
+            if (typeof parsedJson !== 'object' || parsedJson === null || Object.keys(parsedJson).length === 0) {
+                throw new Error("유효한 JSON 객체 형식이 아닙니다.");
+            }
+            this.pdfAnalysisResult = parsedJson;
+            const qCount = Object.keys(this.pdfAnalysisResult).length;
+            statusEl.innerHTML = `<span class="text-green-600">✅ 분석 완료 (${qCount}문항)</span>`;
+            showToast("분석 결과를 성공적으로 불러왔습니다.", false);
+            this.renderStudentListForTest(); // 학생 목록 업데이트
         } catch (error) {
-            console.error("PDF 업로드 오류:", error);
-            this.elements.pdfAnalysisStatus.innerHTML = "❌ PDF 업로드 실패";
-            showToast("PDF 업로드 실패: " + error.message);
+            this.pdfAnalysisResult = null;
+            statusEl.innerHTML = `<span class="text-red-600">❌ JSON 파싱 오류: ${error.message}</span>`;
+            showToast(`JSON 형식이 올바르지 않습니다: ${error.message}`);
+            this.renderStudentListForTest(); // 학생 목록 업데이트 (리포트 보기 비활성화)
         }
     },
 
-    listenForPdfAnalysisResult(testId) {
-        const resultDocRef = doc(db, "testAnalysisResults", testId);
-        if (this.analysisUnsubscribe) this.analysisUnsubscribe();
-
-        const TIMEOUT_DURATION_MS = 180000;
-        const timeoutId = setTimeout(() => {
-            this.elements.pdfAnalysisStatus.innerHTML = `
-                <span class="text-red-600">❌ 분석 시간 초과(3분). 다시 시도해 주세요.</span>`;
-            if (this.analysisUnsubscribe) {
-                this.analysisUnsubscribe();
-                this.analysisUnsubscribe = null;
-            }
-        }, TIMEOUT_DURATION_MS);
-
-        if (!document.getElementById('loader-style')) {
-            const style = document.createElement('style');
-            style.id = 'loader-style';
-            style.textContent = `
-                .loader-small {
-                    border: 2px solid rgba(0, 0, 0, 0.1);
-                    border-top: 2px solid #3b82f6;
-                    border-radius: 50%;
-                    width: 16px;
-                    height: 16px;
-                    animation: spin 1s linear infinite;
-                }
-                @keyframes spin { 0% { transform: rotate(0deg);} 100% {transform: rotate(360deg);} }`;
-            document.head.appendChild(style);
-        }
-
-        this.analysisUnsubscribe = onSnapshot(resultDocRef, (docSnap) => {
-            if (!docSnap.exists()) return;
-            const result = docSnap.data();
-            const status = result.status || "unknown";
-
-            if (status === 'processing') {
-                this.elements.pdfAnalysisStatus.innerHTML = `
-                    <div class="flex items-center gap-2 text-orange-600">
-                        <div class="loader-small" style="border-top-color: #f97316;"></div>
-                        <span>AI 분석 중... (최대 3분)</span>
-                    </div>`;
-            } else if (status === 'completed') {
-                clearTimeout(timeoutId);
-                if (result.analysis && typeof result.analysis === 'object') {
-                    this.pdfAnalysisResult = result.analysis;
-                    const qCount = Object.keys(result.analysis).length;
-                    this.elements.pdfAnalysisStatus.innerHTML = `
-                        <span class="text-green-600">✅ 분석 완료 (${qCount}문항)</span>`;
-                    showToast("AI 시험지 분석 완료!", false);
-                    this.renderStudentListForTest();
-                } else {
-                    this.elements.pdfAnalysisStatus.innerHTML = `
-                        <span class="text-red-600">⚠️ 분석 결과 형식 오류</span>`;
-                }
-                if (this.analysisUnsubscribe) this.analysisUnsubscribe();
-            } else if (status === 'error') {
-                clearTimeout(timeoutId);
-                const msg = result.error || "알 수 없는 오류";
-                this.elements.pdfAnalysisStatus.innerHTML = `<span class="text-red-600">❌ 분석 실패: ${msg}</span>`;
-                if (this.analysisUnsubscribe) this.analysisUnsubscribe();
-            }
-        });
-    },
 
     handleStudentDataUpload(event) {
         const XLSX = window.XLSX;
@@ -171,9 +113,13 @@ export const analysisDashboard = {
             } catch (error) {
                 console.error("XLSX 오류:", error);
                 showToast("학생 성적 파일 처리 오류 발생.");
+                this.studentData = null; // 오류 시 데이터 초기화
+                this.renderStudentListForTest(); // 목록 다시 렌더링
             }
         };
         reader.readAsArrayBuffer(file);
+        // 파일 입력 초기화 (같은 파일 다시 선택 가능)
+        event.target.value = '';
     },
 
     _calculateScore(studentResult, problemMetadata) {
@@ -193,15 +139,26 @@ export const analysisDashboard = {
     showTestAnalysisReport(studentName) {
         this.currentStudentName = studentName;
 
-        if (!this.pdfAnalysisResult || !this.studentData) {
-            showToast("AI 분석 결과와 학생 성적 파일이 모두 필요합니다.");
-            return;
-        }
+        // pdfAnalysisResult와 studentData 유효성 검사 강화
+        if (!this.pdfAnalysisResult || typeof this.pdfAnalysisResult !== 'object' || Object.keys(this.pdfAnalysisResult).length === 0) {
+             showToast("시험 분석 결과가 필요합니다. JSON을 입력하고 로드해주세요.");
+             return;
+         }
+         if (!this.studentData || !Array.isArray(this.studentData) || this.studentData.length === 0) {
+             showToast("학생 성적 파일이 필요합니다. 엑셀 파일을 업로드해주세요.");
+             return;
+         }
 
-        const nameKey = Object.keys(this.studentData[0]).find(k => k.includes('학생') || k.includes('이름'));
+
+        const nameKey = Object.keys(this.studentData[0]).find(k => k.toLowerCase().includes('학생') || k.toLowerCase().includes('이름') || k.toLowerCase().includes('name'));
+         if (!nameKey) {
+            showToast("학생 이름 컬럼을 찾을 수 없습니다 ('학생' 또는 '이름' 포함).");
+            return;
+         }
+
         const studentResult = this.studentData.find(r => r[nameKey] === studentName);
         if (!studentResult) {
-            showToast(`'${studentName}' 학생 정보를 찾을 수 없습니다.`);
+            showToast(`'${studentName}' 학생 정보를 성적 파일에서 찾을 수 없습니다.`);
             return;
         }
 
@@ -209,8 +166,11 @@ export const analysisDashboard = {
         const wrongAnswers = [];
 
         Object.keys(this.pdfAnalysisResult).forEach(qNum => {
-            const res = studentResult['q' + qNum] || studentResult[qNum];
-            if (res !== 'O' && res !== 'o') {
+             // 성적 데이터 키 확인 ('q1', '1', 'Q1' 등 다양한 형식 처리)
+             const resultKey = Object.keys(studentResult).find(k => k.toLowerCase() === `q${qNum}` || k === qNum);
+             const res = resultKey ? studentResult[resultKey] : undefined;
+
+            if (res !== 'O' && res !== 'o') { // 대소문자 구분 없이 'O'가 아니면 오답 처리
                 wrongAnswers.push({ qNum, metadata: this.pdfAnalysisResult[qNum] });
             }
         });
@@ -224,6 +184,7 @@ export const analysisDashboard = {
         if (wrongAnswers.length === 0) {
             html = `<div class="text-center py-10 text-green-600 font-semibold">🎉 모든 문제 정답! 🎉</div>`;
         } else {
+             wrongAnswers.sort((a, b) => parseInt(a.qNum) - parseInt(b.qNum)); // 문항 번호 순 정렬 추가
             html = `<div class="overflow-x-auto relative shadow-md sm:rounded-lg">
               <table class="w-full text-sm text-left text-gray-500">
                 <thead class="text-xs text-gray-700 uppercase bg-gray-50">
@@ -235,12 +196,16 @@ export const analysisDashboard = {
                   </tr>
                 </thead><tbody>`;
             wrongAnswers.forEach(item => {
+                // JSON 데이터 키 이름이 다를 수 있으므로 유연하게 처리
+                const unit = item.metadata['단원명'] || item.metadata['unit'] || '-';
+                const difficulty = item.metadata['난이도'] || item.metadata['difficulty'] || '-';
+                const solution = item.metadata['오답대응방안'] || item.metadata['solution'] || '-';
                 html += `
                   <tr class="bg-red-50 border-b hover:bg-slate-100">
                     <td class="py-3 px-6 font-medium text-gray-900">${item.qNum}번</td>
-                    <td class="py-3 px-6">${item.metadata['단원명'] || '-'}</td>
-                    <td class="py-3 px-6">${item.metadata['난이도'] || '-'}</td>
-                    <td class="py-3 px-6">${item.metadata['오답대응방안'] || '-'}</td>
+                    <td class="py-3 px-6">${unit}</td>
+                    <td class="py-3 px-6">${difficulty}</td>
+                    <td class="py-3 px-6">${solution}</td>
                   </tr>`;
             });
             html += `</tbody></table></div>`;
@@ -255,24 +220,46 @@ export const analysisDashboard = {
     async saveReportAsPDF(studentName) {
         try {
             const modalEl = this.elements.analysisModal;
-            if (!modalEl) return showToast("리포트가 표시되어야 PDF로 저장할 수 있습니다.");
+            if (!modalEl || modalEl.style.display === 'none') return showToast("리포트가 표시되어야 PDF로 저장할 수 있습니다.");
 
             showToast("PDF 생성 중...", false);
 
-            const canvas = await html2canvas(modalEl.querySelector('.overflow-x-auto') || modalEl, {
-                scale: 2,
+            // 리포트 내용이 테이블인지, 아니면 "모든 문제 정답" 메시지인지 확인
+            const reportContentElement = this.elements.analysisMain.querySelector('.overflow-x-auto') || this.elements.analysisMain.querySelector('div');
+
+            if (!reportContentElement) {
+                showToast("PDF로 변환할 리포트 내용을 찾을 수 없습니다.");
+                return;
+            }
+
+            // html2canvas 옵션 조정 (배경색 흰색, 스케일 조정)
+            const canvas = await html2canvas(reportContentElement, {
+                scale: 2, // 해상도 향상
                 useCORS: true,
-                backgroundColor: "#ffffff"
+                backgroundColor: "#ffffff" // 배경색 명시
             });
 
             const imgData = canvas.toDataURL("image/png");
             const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 
-            const imgWidth = 210;
-            const pageHeight = 297;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const imgWidthMM = 190; // A4 용지 너비에 맞춤 (여백 고려)
+            const pageHeightMM = 297;
+            const imgHeightMM = (canvas.height * imgWidthMM) / canvas.width;
+            let heightLeft = imgHeightMM;
+            let position = 10; // 상단 여백
 
-            pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+            // 첫 페이지 추가
+            pdf.addImage(imgData, "PNG", 10, position, imgWidthMM, imgHeightMM); // 좌우 여백 추가
+            heightLeft -= (pageHeightMM - 20); // 상하 여백 고려
+
+            // 내용이 길 경우 여러 페이지에 걸쳐 추가
+            while (heightLeft > 0) {
+                position = -heightLeft - 10; // 다음 페이지 위치 계산
+                pdf.addPage();
+                pdf.addImage(imgData, "PNG", 10, position, imgWidthMM, imgHeightMM);
+                heightLeft -= (pageHeightMM - 20);
+            }
+
             const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
             pdf.save(`오답분석_${studentName}_${dateStr}.pdf`);
 
@@ -282,6 +269,7 @@ export const analysisDashboard = {
             showToast("PDF 저장 중 오류가 발생했습니다.");
         }
     },
+
 
     renderStudentLists() {
         this.renderStudentListForTest();
@@ -293,21 +281,28 @@ export const analysisDashboard = {
         listEl.innerHTML = '';
 
         if (!this.app.state.selectedClassId || this.app.state.studentsInClass.size === 0) {
-            listEl.innerHTML = '<p class="text-slate-400 col-span-full text-center py-4">학생 목록이 없습니다.</p>';
+            listEl.innerHTML = '<p class="text-slate-400 col-span-full text-center py-4">선택된 반에 학생이 없습니다.</p>';
             return;
         }
 
-        const ready = !!this.studentData && !!this.pdfAnalysisResult;
+        // 분석 결과와 학생 데이터가 모두 준비되었는지 확인
+         const isAnalysisReady = !!this.pdfAnalysisResult && typeof this.pdfAnalysisResult === 'object' && Object.keys(this.pdfAnalysisResult).length > 0;
+         const isStudentDataReady = !!this.studentData && Array.isArray(this.studentData) && this.studentData.length > 0;
+         const ready = isAnalysisReady && isStudentDataReady;
 
-        this.app.state.studentsInClass.forEach((name) => {
+
+        // Map을 이름순으로 정렬
+        const sortedStudents = Array.from(this.app.state.studentsInClass.values()).sort((a, b) => a.localeCompare(b));
+
+        sortedStudents.forEach((name) => {
             const card = document.createElement('div');
-            card.className = `p-3 border rounded-lg text-center shadow-sm transition 
-                ${ready ? 'bg-white hover:bg-blue-50 cursor-pointer' : 'opacity-50 cursor-not-allowed'}`;
+            card.className = `p-3 border rounded-lg text-center shadow-sm transition
+                ${ready ? 'bg-white hover:bg-blue-50 cursor-pointer' : 'bg-slate-100 opacity-60 cursor-not-allowed'}`; // 준비 안되면 비활성 스타일
 
             card.innerHTML = `
                 <h3 class="font-semibold text-slate-800 text-sm">${name}</h3>
                 <p class="text-xs ${ready ? 'text-blue-500' : 'text-slate-400'}">
-                    ${ready ? '리포트 보기' : 'AI 분석 / 성적 파일 필요'}
+                    ${ready ? '리포트 보기' : (isAnalysisReady ? '성적 파일 필요' : (isStudentDataReady ? '분석 결과 필요' : '분석/성적 필요'))}
                 </p>`;
 
             if (ready) card.addEventListener('click', () => this.showTestAnalysisReport(name));

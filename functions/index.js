@@ -1,10 +1,7 @@
 // functions/index.js
-import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { onCall } from "firebase-functions/v2/https";
 import * as functions from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-import { getStorage } from "firebase-admin/storage";
 import { getAuth } from "firebase-admin/auth";
 import dotenv from "dotenv";
 
@@ -12,8 +9,6 @@ dotenv.config(); // ✅ .env 파일 자동 로드
 
 initializeApp();
 
-const db = getFirestore();
-const storage = getStorage();
 const auth = getAuth();
 const region = "asia-northeast3";
 
@@ -27,24 +22,15 @@ const region = "asia-northeast3";
 // =====================================================
 // AI 관련 기능이 제거되었으므로 API 키 로드 코드는 필요하지 않습니다.
 
-
 // =====================================================
 // 3️⃣ 시험지 PDF 분석 함수 (제거됨)
 // =====================================================
-/*
-export const analyzeTestPdf = onObjectFinalized({ region }, async (event) => {
-  // AI 분석 기능이 제거되었습니다.
-});
-*/
+// AI 분석 기능이 제거되었습니다.
 
 // =====================================================
 // 4️⃣ 숙제 이미지 채점 함수 (제거됨)
 // =====================================================
-/*
-export const gradeHomeworkImage = onObjectFinalized({ region }, async (event) => {
-  // AI 분석 기능이 제거되었습니다.
-});
-*/
+// AI 분석 기능이 제거되었습니다.
 
 // =====================================================
 // 5️⃣ 사용자 역할 설정 함수들

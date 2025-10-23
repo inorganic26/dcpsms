@@ -16,14 +16,14 @@ export const studentHomework = {
         this.app.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
         this.app.elements.closeUploadModalBtn?.addEventListener('click', () => this.closeUploadModal());
         this.app.elements.cancelUploadBtn?.addEventListener('click', () => this.closeUploadModal());
-        this.app.elements.filesInput?.addEventListener('change', (e) => this.handleFileSelection(e));
+        this.app.elements.filesInput?.addEventListener('change', (e) => this.handleFileSelection(e)); // 여기가 수정될 부분
         this.app.elements.uploadBtn?.addEventListener('click', () => this.handleUpload());
     },
 
     // 숙제 목록 화면 표시
     async showHomeworkScreen() {
         this.app.showScreen(this.app.elements.loadingScreen);
-        
+
         // classId가 없으면 빈 화면 표시
         if (!this.app.state.classId) {
             this.app.elements.homeworkList.innerHTML = '<p class="text-center text-slate-500 py-8">배정된 반이 없어 숙제를 확인할 수 없습니다.</p>';
@@ -32,15 +32,15 @@ export const studentHomework = {
         }
 
         const homeworksQuery = query(
-            collection(db, 'homeworks'), 
-            where('classId', '==', this.app.state.classId), 
+            collection(db, 'homeworks'),
+            where('classId', '==', this.app.state.classId),
             orderBy('dueDate', 'desc')
         );
-        
+
         try {
             const homeworkSnapshot = await getDocs(homeworksQuery);
             const homeworks = homeworkSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
-            
+
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1); // 한 달 전으로 설정
             const recentHomeworks = homeworks.filter(hw => {
@@ -54,7 +54,7 @@ export const studentHomework = {
                 this.app.elements.homeworkList.innerHTML = '<p class="text-center text-slate-500 py-8">최근 1개월 내에 출제된 숙제가 없습니다.</p>';
             } else {
                 // 각 숙제에 대한 학생의 제출 정보를 병렬로 조회
-                const submissionPromises = recentHomeworks.map(hw => 
+                const submissionPromises = recentHomeworks.map(hw =>
                     // ✅ 수정: 학생의 익명 UID를 제출물 ID로 사용 (권한 문제 해결)
                     getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.authUid))
                 );
@@ -86,15 +86,15 @@ export const studentHomework = {
         const isComplete = totalPages > 0 && submittedPages >= totalPages;
 
         item.className = `p-4 border rounded-lg flex items-center justify-between ${isComplete ? 'bg-green-50 border-green-200' : 'bg-white'}`;
-        
+
         const pagesInfo = totalPages ? `(${submittedPages}/${totalPages}p)` : `(${submittedPages}p)`;
-        const statusHtml = isSubmitted 
+        const statusHtml = isSubmitted
             ? `<div class="flex items-center gap-2">
                  <span class="text-sm font-semibold ${isComplete ? 'text-green-700' : 'text-yellow-600'}">${isComplete ? '제출 완료' : '제출 중'} ${pagesInfo}</span>
                  <button class="edit-homework-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg hover:bg-yellow-600 transition">수정하기</button>
                </div>`
             : `<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg hover:bg-blue-700 transition">숙제 올리기</button>`;
-        
+
         const displayDate = hw.dueDate || '기한없음';
         const titlePages = totalPages ? `(${totalPages}p)` : '';
         item.innerHTML = `
@@ -111,7 +111,7 @@ export const studentHomework = {
         });
 
         item.querySelector('.edit-homework-btn')?.addEventListener('click', (e) => {
-            const parent = e.target.parentElement.parentElement;
+            const parent = e.target.parentElement.parentElement; // 버튼의 부모(div)의 부모(div)에서 dataset 가져옴
             this.openUploadModal(parent.dataset.id, parent.dataset.textbook, true);
         });
     },
@@ -127,8 +127,10 @@ export const studentHomework = {
         try {
             const homeworkDocRef = doc(db, 'homeworks', homeworkId);
             const homeworkDoc = await getDoc(homeworkDocRef);
-            const totalPages = homeworkDoc.data()?.pages || 0;
-            state.currentHomeworkPages = totalPages;
+            // totalPages가 0 또는 undefined일 수 있음
+            const totalPages = homeworkDoc.data()?.pages;
+            // totalPages가 유효한 양의 정수인지 확인, 아니면 0으로 설정
+            state.currentHomeworkPages = (typeof totalPages === 'number' && totalPages > 0) ? totalPages : 0;
 
             elements.uploadModalTitle.textContent = `[${textbookName}] 숙제 ${isEditing ? '수정' : '업로드'}`;
             this.updateUploadButtonText(0);
@@ -145,7 +147,7 @@ export const studentHomework = {
                     this.renderImagePreviews();
                 }
             } else {
-                this.renderImagePreviews();
+                this.renderImagePreviews(); // 새 업로드 시 빈 미리보기 렌더링
             }
 
             elements.uploadModal.style.display = 'flex';
@@ -165,18 +167,30 @@ export const studentHomework = {
         elements.uploadModal.style.display = 'none';
     },
 
-    // 업로드할 파일 선택 처리 (기존 유지)
+    // 파일 선택 처리 (페이지 수 제한 추가됨)
     handleFileSelection(event) {
         const newFiles = Array.from(event.target.files).map(file => ({ type: 'new', file }));
-        this.app.state.filesToUpload.push(...newFiles);
-        this.renderImagePreviews();
+        const currentCount = this.app.state.filesToUpload.length;
+        const totalPages = this.app.state.currentHomeworkPages; // 숙제에 설정된 총 페이지 수 가져오기
+
+        // 총 페이지 수가 0보다 크고, 현재 파일 수 + 새 파일 수가 총 페이지 수를 초과하는 경우 제한
+        if (totalPages > 0 && currentCount + newFiles.length > totalPages) {
+            showToast(`최대 ${totalPages}페이지만 업로드할 수 있습니다. (${currentCount}개 선택됨)`); // 사용자에게 알림
+            event.target.value = ''; // 파일 입력 필드 초기화 (같은 파일 다시 선택 시 change 이벤트 발생 위함)
+            return; // 파일 추가 중단
+        }
+
+        this.app.state.filesToUpload.push(...newFiles); // 제한에 걸리지 않으면 파일 목록에 추가
+        this.renderImagePreviews(); // 미리보기 업데이트
         // input 초기화 (같은 파일 다시 선택 가능하도록)
         event.target.value = '';
     },
 
+
     updateUploadButtonText(uploadedCount) {
         const { uploadBtnText } = this.app.elements;
         const totalPages = this.app.state.currentHomeworkPages;
+        // 총 페이지 수가 0보다 크면 "/ N" 표시, 아니면 그냥 개수만 표시
         const totalText = totalPages > 0 ? `/ ${totalPages}` : '';
         uploadBtnText.textContent = `${uploadedCount} ${totalText} 페이지 업로드`;
     },
@@ -187,7 +201,7 @@ export const studentHomework = {
         this.app.state.filesToUpload.forEach((fileObject, index) => {
             const previewWrapper = document.createElement('div');
             previewWrapper.className = 'relative';
-            
+
             const img = document.createElement('img');
             img.className = 'w-full h-24 object-cover rounded-md border border-slate-200';
 
@@ -197,35 +211,37 @@ export const studentHomework = {
             deleteBtn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.app.state.filesToUpload.splice(index, 1);
-                this.renderImagePreviews();
+                this.app.state.filesToUpload.splice(index, 1); // 해당 인덱스 파일 제거
+                this.renderImagePreviews(); // 미리보기 다시 렌더링
             };
-            
+
             previewWrapper.appendChild(img);
             previewWrapper.appendChild(deleteBtn);
 
             if (fileObject.type === 'existing') {
                 img.src = fileObject.url;
-            } else { 
+            } else {
                 const reader = new FileReader();
                 reader.onload = (e) => { img.src = e.target.result; };
                 reader.readAsDataURL(fileObject.file);
             }
             this.app.elements.previewContainer.appendChild(previewWrapper);
         });
+        // 파일 개수가 변경되었으므로 업로드 버튼 텍스트 업데이트
         this.updateUploadButtonText(this.app.state.filesToUpload.length);
     },
 
-    // 파일 업로드 및 DB 저장 처리
+
+    // 파일 업로드 및 DB 저장 처리 (기존 유지)
     async handleUpload() {
         const { state } = this.app;
-        
+
         // ✅ 수정된 로직: 수정 모드이고 파일이 0개인 경우, 오류 메시지 출력 없이 바로 저장 로직으로 진입합니다.
-        if (state.filesToUpload.length === 0 && !state.isEditingHomework) { 
-            showToast("업로드할 파일을 한 개 이상 선택해주세요."); 
-            return; 
+        if (state.filesToUpload.length === 0 && !state.isEditingHomework) {
+            showToast("업로드할 파일을 한 개 이상 선택해주세요.");
+            return;
         }
-        
+
         this.setUploadButtonLoading(true);
 
         // 기존 URL과 새로 업로드할 파일을 분리
@@ -234,7 +250,7 @@ export const studentHomework = {
 
         try {
             let finalImageUrls = existingUrls;
-            
+
             // 새로 업로드할 파일이 있는 경우에만 Storage 업로드 진행
             if (newFiles.length > 0) {
                  const uploadPromises = newFiles.map((file, i) => {
@@ -256,7 +272,7 @@ export const studentHomework = {
                 submittedAt: serverTimestamp(),
                 imageUrls: finalImageUrls // 파일이 0개여도 빈 배열이 저장되어 제출 기록은 유지됨
             };
-            
+
             if (state.isEditingHomework) {
                 await updateDoc(submissionRef, dataToSave);
                 showToast("숙제를 성공적으로 수정했습니다.", false);
@@ -295,8 +311,9 @@ export const studentHomework = {
 
     setUploadButtonLoading(isLoading) {
         const { uploadBtn, uploadBtnText, uploadLoader } = this.app.elements;
-        uploadBtnText.classList.toggle('hidden', isLoading);
-        uploadLoader.classList.toggle('hidden', !isLoading);
-        uploadBtn.disabled = isLoading;
+        // Optional chaining 추가
+        uploadBtnText?.classList.toggle('hidden', isLoading);
+        uploadLoader?.classList.toggle('hidden', !isLoading);
+        if (uploadBtn) uploadBtn.disabled = isLoading;
     }
 };
