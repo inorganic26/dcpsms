@@ -135,59 +135,98 @@ export const studentManager = {
       );
       return;
     }
+    console.log("[studentManager] Starting to listen for students..."); // 로그 추가
 
     const q = query(collection(db, "students"));
     onSnapshot(
       q,
       (snapshot) => {
-        listEl.innerHTML = ""; // 전체 초기화
-        if (snapshot.empty) {
-          listEl.innerHTML =
-            '<p class="text-sm text-slate-400">등록된 학생이 없습니다.</p>';
-          return;
-        }
-
+        console.log(`[studentManager] Firestore snapshot received for students. Size: ${snapshot.size}`); // 로그 추가
         const students = [];
         snapshot.forEach((d) => students.push({ id: d.id, ...d.data() }));
         students.sort((a, b) => a.name.localeCompare(b.name));
 
-        const assigned = students.filter((s) => s.classId);
-        const unassigned = students.filter((s) => !s.classId);
-
-        // 미배정
-        listEl.innerHTML +=
-          '<h4 class="text-md font-semibold text-slate-600 mt-4">미배정 학생</h4>';
-        if (unassigned.length === 0) {
-          listEl.innerHTML +=
-            '<p class="text-sm text-slate-400">미배정 학생이 없습니다.</p>';
+        // 앱 상태 업데이트
+        if (this.app && this.app.state) {
+            this.app.state.students = students; // 전체 학생 목록 저장
+            console.log(`[studentManager] Updated app.state.students with ${students.length} students.`);
         } else {
-          unassigned.forEach((std) => this.renderStudent(std));
+             console.error("[studentManager] AdminApp instance or state is not available for updating students!");
+             return;
         }
 
-        // 배정됨
-        listEl.innerHTML +=
-          '<h4 class="text-md font-semibold text-slate-600 mt-6">반 배정된 학생</h4>';
-        if (assigned.length === 0) {
-          listEl.innerHTML +=
-            '<p class="text-sm text-slate-400">반 배정된 학생이 없습니다.</p>';
-        } else {
-          assigned.forEach((std) => this.renderStudent(std));
+
+        // 학생 명단 관리 뷰 렌더링 (현재 화면이 학생 관리일 경우에만)
+        if (document.getElementById('admin-student-mgmt-view')?.style.display === 'block') {
+            this.renderStudentListView();
         }
+
+        // ======[ 학생 로딩 완료 이벤트 발생 ]======
+        console.log("[studentManager] Dispatching 'studentsLoaded' event.");
+        document.dispatchEvent(new CustomEvent('studentsLoaded'));
+        // =====================================
       },
       (error) => {
         console.error("[studentManager] Error listening for students:", error);
         showToast("학생 목록 실시간 로딩 중 오류 발생.", true);
-        listEl.innerHTML = '<p class="text-red-500">학생 목록 로딩 실패</p>';
+        if (listEl && document.getElementById('admin-student-mgmt-view')?.style.display === 'block') {
+            listEl.innerHTML = '<p class="text-red-500">학생 목록 로딩 실패</p>';
+        }
+         // ======[ 오류 발생 시에도 이벤트 발생 (선택적) ]======
+         console.log("[studentManager] Dispatching 'studentsLoaded' event (even on error).");
+         document.dispatchEvent(new CustomEvent('studentsLoaded'));
+         // =====================================
       }
     );
   },
 
+  // =============== 학생 명단 관리 뷰 렌더링 함수 (분리) ===============
+  renderStudentListView() {
+    const listEl = this.elements.studentsList;
+    if (!listEl || !this.app || !this.app.state) return;
+
+    listEl.innerHTML = ""; // 전체 초기화
+
+    const students = this.app.state.students;
+
+    if (!students || students.length === 0) {
+      listEl.innerHTML =
+        '<p class="text-sm text-slate-400">등록된 학생이 없습니다.</p>';
+      return;
+    }
+
+    const assigned = students.filter((s) => s.classId);
+    const unassigned = students.filter((s) => !s.classId);
+
+    // 미배정
+    listEl.innerHTML +=
+      '<h4 class="text-md font-semibold text-slate-600 mt-4">미배정 학생</h4>';
+    if (unassigned.length === 0) {
+      listEl.innerHTML +=
+        '<p class="text-sm text-slate-400">미배정 학생이 없습니다.</p>';
+    } else {
+      unassigned.forEach((std) => this.renderStudentCard(std));
+    }
+
+    // 배정됨
+    listEl.innerHTML +=
+      '<h4 class="text-md font-semibold text-slate-600 mt-6">반 배정된 학생</h4>';
+    if (assigned.length === 0) {
+      listEl.innerHTML +=
+        '<p class="text-sm text-slate-400">반 배정된 학생이 없습니다.</p>';
+    } else {
+      assigned.forEach((std) => this.renderStudentCard(std));
+    }
+     console.log("[studentManager] Student list view rendered.");
+  },
+
+
   // =============== 학생 카드 렌더링 (데이터 속성 정리) ===============
-  renderStudent(studentData) {
+  renderStudentCard(studentData) { // 함수 이름 변경: renderStudent -> renderStudentCard
     const listEl = this.elements.studentsList;
     if (!listEl) {
       console.error(
-        "[studentManager] studentsList element not found in renderStudent."
+        "[studentManager] studentsList element not found in renderStudentCard."
       );
       return;
     }

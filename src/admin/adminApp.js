@@ -111,7 +111,7 @@ const AdminApp = {
         lessonManager.init(this);
         studentAssignmentManager.init(this);
         adminHomeworkDashboard.init(this); // ======[ 숙제 모듈 초기화 ]======
-        this.addEventListeners();
+        this.addEventListeners(); // 이벤트 리스너 추가 먼저
         this.showAdminSection('dashboard'); // 대시보드 메뉴부터 표시
         // 학생 목록 로드 (숙제 현황 등에서 사용)
         // studentManager.listenForStudents()는 studentManager.init에서 호출됨
@@ -262,6 +262,7 @@ const AdminApp = {
         };
     },
 
+    // ======[ 이벤트 리스너 함수 수정 ]======
     addEventListeners() {
         console.log("[adminApp] Adding event listeners...");
         // 메뉴 버튼 이벤트
@@ -274,9 +275,7 @@ const AdminApp = {
         this.elements.gotoStudentAssignmentBtn?.addEventListener('click', () => this.showAdminSection('student-assignment'));
         this.elements.gotoQnaVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('qna-video-mgmt'));
         this.elements.gotoClassVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('class-video-mgmt'));
-        // ======[ 숙제 메뉴 버튼 이벤트 추가 ]======
         this.elements.gotoHomeworkMgmtBtn?.addEventListener('click', () => this.showAdminSection('homework-mgmt'));
-        // ===================================
 
         // 뒤로가기 버튼 이벤트
         document.querySelectorAll('.back-to-admin-dashboard-btn').forEach(btn => {
@@ -298,34 +297,45 @@ const AdminApp = {
             console.log("[adminApp] 'subjectsUpdated' event received.");
             this.renderSubjectOptionsForTextbook();
             this.renderSubjectOptionsForLesson();
-            // ======[ 숙제 모달 과목 드롭다운 업데이트 ]======
-            if (adminHomeworkDashboard && typeof adminHomeworkDashboard.populateSubjectsForHomeworkModal === 'function') {
-                // 모달이 열려있을 때만 업데이트 (선택 사항)
+            if (adminHomeworkDashboard?.populateSubjectsForHomeworkModal) {
                 if (this.elements.assignHomeworkModal?.style.display === 'flex') {
                     adminHomeworkDashboard.populateSubjectsForHomeworkModal();
                 }
             }
-            // ===================================
         });
         document.addEventListener('classesUpdated', () => {
             console.log("[adminApp] 'classesUpdated' event received.");
             this.populateClassSelectForQnaVideo();
             this.populateClassSelectForClassVideo();
-            // ======[ 숙제 뷰 반 드롭다운 업데이트 ]======
-            if (adminHomeworkDashboard && typeof adminHomeworkDashboard.populateClassSelect === 'function') {
+            if (adminHomeworkDashboard?.populateClassSelect) {
                 adminHomeworkDashboard.populateClassSelect();
             }
-            // ===================================
-            if (studentAssignmentManager && typeof studentAssignmentManager.populateClassSelects === 'function') {
+            if (studentAssignmentManager?.populateClassSelects) {
                 console.log("[adminApp] Populating student assignment class selects.");
                 studentAssignmentManager.populateClassSelects();
             } else {
                 console.warn("[adminApp] studentAssignmentManager or populateClassSelects function not found.");
             }
         });
+
+        // ======[ studentsLoaded 이벤트 리스너 추가 ]======
+        // 이 리스너는 adminHomeworkDashboard.js 내부에서 직접 처리하도록 변경되었습니다.
+        // adminApp.js에서는 더 이상 이 이벤트를 직접 처리할 필요가 없습니다.
+        /*
+        document.addEventListener('studentsLoaded', () => {
+            console.log("[adminApp] 'studentsLoaded' event received.");
+            // 숙제 현황 모듈에 알림 (필요한 경우)
+            if (this.state.selectedClassIdForHomework && adminHomeworkDashboard?.filterAndDisplayStudents) {
+                 console.log("[adminApp] Triggering student filtering in homework dashboard.");
+                 adminHomeworkDashboard.filterAndDisplayStudents(this.state.selectedClassIdForHomework);
+            }
+        });
+        */
+       // ============================================
+
         console.log("[adminApp] Event listeners added.");
     },
-
+    // =====================================
 
     showAdminSection(sectionName) {
         console.log(`[adminApp] Attempting to show section: ${sectionName}`);
@@ -396,6 +406,13 @@ const AdminApp = {
                 }
                 break;
             // ===================================
+            // ======[ 학생 관리 뷰 진입 시 목록 렌더링 호출 추가 ]======
+            case 'student-mgmt':
+                 if (studentManager && typeof studentManager.renderStudentListView === 'function') {
+                     studentManager.renderStudentListView();
+                 }
+                break;
+            // ====================================================
         }
     },
 
