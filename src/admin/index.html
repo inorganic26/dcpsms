@@ -28,6 +28,7 @@
 
     <div id="admin-main-dashboard" style="display: none;">
         <div class="container mx-auto max-w-6xl p-4 sm:p-6 md:p-8">
+
             <div id="admin-dashboard-view">
                 <a href="/" class="back-to-portal-btn mb-8 inline-block text-sm text-slate-500 hover:text-slate-800 transition no-underline">&larr; 포털로 돌아가기</a>
                 <header class="text-center mb-10">
@@ -80,6 +81,7 @@
                     <div class="mt-8"><h3 class="text-lg font-semibold text-slate-700 mb-2">생성된 과목 목록</h3><div id="admin-subjects-list" class="space-y-2"></div></div>
                 </div>
             </div>
+
             <div id="admin-textbook-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
@@ -102,6 +104,7 @@
                     </div>
                 </div>
             </div>
+
             <div id="admin-class-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
@@ -119,6 +122,7 @@
                     </div>
                 </div>
             </div>
+
             <div id="admin-student-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
@@ -151,6 +155,7 @@
                     </div>
                 </div>
             </div>
+
             <div id="admin-teacher-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
@@ -185,6 +190,7 @@
                     </div>
                 </div>
             </div>
+
             <div id="admin-student-assignment-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="mb-6"><h2 class="text-2xl font-bold text-slate-800">반 배정 관리</h2></div>
@@ -211,12 +217,9 @@
                             <label for="admin-target-class-select" class="block text-sm font-medium text-slate-700 mb-1">배정할 반 선택</label>
                             <select id="admin-target-class-select" class="form-select mb-6"><option value="">-- 배정할 반 --</option></select>
                         </div>
-
-                        <div id="admin-target-student-list"
-                             class="space-y-2 p-2 border rounded-lg min-h-[300px] overflow-y-auto custom-scrollbar bg-white mb-6">
+                        <div id="admin-target-student-list" class="space-y-2 p-2 border rounded-lg min-h-[300px] overflow-y-auto custom-scrollbar bg-white mb-6">
                             <p class="text-sm text-slate-400">오른쪽 상단에서 배정할 반을 선택하세요.</p>
                         </div>
-
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-1">배정 실행</label>
                             <button id="admin-assign-students-btn" class="btn-primary w-full py-3">선택한 학생 배정하기</button>
@@ -224,6 +227,7 @@
                     </div>
                 </div>
             </div>
+
             <div id="admin-lesson-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
@@ -244,18 +248,21 @@
                     <p id="admin-lesson-prompt" class="text-center text-slate-500 py-8">먼저 과목을 선택해주세요.</p>
                 </div>
             </div>
+
             <div id="admin-qna-video-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
                     <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">수업 질문 영상 관리</h2>
                     <div class="space-y-4 max-w-lg mx-auto p-4 border rounded-lg bg-slate-50 mb-8">
-                        <div>
-                            <label for="admin-qna-video-date" class="block text-sm font-medium text-slate-600 mb-1">수업 날짜</label>
-                            <input type="date" id="admin-qna-video-date" class="form-input">
-                        </div>
-                        <div>
-                            <label for="admin-qna-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
-                            <select id="admin-qna-class-select" class="form-select" disabled></select>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="admin-qna-video-date" class="block text-sm font-medium text-slate-600 mb-1">수업 날짜</label>
+                                <input type="date" id="admin-qna-video-date" class="form-input">
+                            </div>
+                            <div>
+                                <label for="admin-qna-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
+                                <select id="admin-qna-class-select" class="form-select" disabled></select>
+                            </div>
                         </div>
                         <div>
                             <label for="admin-qna-video-title" class="block text-sm font-medium text-slate-600 mb-1">영상 제목</label>
@@ -277,33 +284,49 @@
                     </div>
                 </div>
             </div>
+
             <div id="admin-class-video-mgmt-view" class="admin-section-view" style="display: none;">
                 <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
                 <div class="content-card">
                     <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">수업 영상 관리 (현강반)</h2>
                     <div class="space-y-4 max-w-lg mx-auto">
-                        <div class="mb-4">
-                            <label for="admin-class-video-date" class="block text-sm font-medium text-slate-600 mb-1">수업 날짜</label>
-                            <input type="date" id="admin-class-video-date" class="form-input">
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label for="admin-class-video-date" class="block text-sm font-medium text-slate-600 mb-1">수업 날짜</label>
+                                <input type="date" id="admin-class-video-date" class="form-input">
+                            </div>
+                            <div>
+                                <label for="admin-class-video-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
+                                <select id="admin-class-video-class-select" class="form-select" disabled></select>
+                            </div>
                         </div>
-                        <div class="mb-4">
-                            <label for="admin-class-video-class-select" class="block text-sm font-medium text-slate-600 mb-1">반 선택</label>
-                            <select id="admin-class-video-class-select" class="form-select" disabled></select>
+
+                        <div class="space-y-4 p-4 border rounded-lg bg-slate-50 mb-8">
+                             <h3 class="text-lg font-semibold text-slate-700 mb-2">영상 추가 또는 수정</h3>
+                             <div>
+                                 <label for="admin-class-video-title" class="block text-sm font-medium text-slate-600 mb-1">영상 제목</label>
+                                 <input type="text" id="admin-class-video-title" class="form-input" placeholder="예: 수학 1단원 개념">
+                             </div>
+                             <div>
+                                 <label for="admin-class-video-url" class="block text-sm font-medium text-slate-600 mb-1">YouTube URL</label>
+                                 <input type="url" id="admin-class-video-url" class="form-input" placeholder="https://youtube.com/watch?v=...">
+                             </div>
+                             <div class="text-right">
+                                 <button id="admin-save-class-video-btn" class="btn-primary">영상 저장하기</button>
+                             </div>
                         </div>
-                        <div id="admin-class-video-list-container" class="space-y-4 border-t pt-4 mt-4">
-                            <p class="text-sm text-slate-500">날짜와 반을 선택하면 해당 날짜의 영상 목록이 표시됩니다.</p>
+
+                        <div class="mt-8 border-t pt-6">
+                            <h3 class="text-xl font-semibold text-slate-700 mb-4">선택한 날짜와 반의 영상 목록</h3>
+                            <div id="admin-class-video-list-container" class="space-y-3">
+                                <p class="text-sm text-slate-500">날짜와 반을 선택하면 해당 영상 목록이 표시됩니다.</p>
+                            </div>
                         </div>
-                        <div class="flex justify-between items-center mt-4 border-t pt-4">
-                             <button id="admin-add-class-video-field-btn" class="btn-secondary btn-sm">+ 영상 필드 추가</button>
-                             <button id="admin-save-class-video-btn" class="btn-primary">저장하기</button>
-                         </div>
-                    </div>
+                        </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <div id="admin-edit-teacher-modal" class="modal-backdrop" style="display: none;">
+        </div> </div> <div id="admin-edit-teacher-modal" class="modal-backdrop" style="display: none;">
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
             <header class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-2xl font-bold text-slate-800">교사 정보 수정</h2>
