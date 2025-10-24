@@ -11,6 +11,7 @@ import {
     onSnapshot, // 수정됨
     updateDoc,  // 추가됨
     addDoc,     // 추가됨
+    setDoc,     // 추가됨 (수업 영상 저장 시 사용)
     serverTimestamp,
     orderBy,
     deleteDoc
@@ -22,7 +23,7 @@ import { showToast } from '../shared/utils.js';
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js';
-import { classVideoManager } from './classVideoManager.js';
+// import { classVideoManager } from './classVideoManager.js'; // ⛔️ 제거
 
 // ✅ const로 선언하여 export 가능하도록 수정
 const TeacherApp = {
@@ -48,6 +49,11 @@ const TeacherApp = {
         isSubjectsLoading: true, // 과목 로딩 상태 추가
         isClassDataLoading: false, // 반 데이터 로딩 상태 추가
         areTextbooksLoading: {}, // { subjectId: boolean } 교재 로딩 상태
+        // --- 수업 영상 관련 상태 추가 ---
+        currentClassVideoDate: null,
+        currentClassVideos: [], // 현재 로드된 영상 목록 [{title, url}, ...]
+        editingClassVideoIndex: null, // 수정 중인 영상 인덱스 (-1: 새 영상 추가 모드)
+        // -----------------------------
     },
 
     init() {
@@ -167,14 +173,14 @@ const TeacherApp = {
         this.homeworkDashboard = homeworkDashboard;
         this.lessonManager = lessonManager;
         this.classEditor = classEditor;
-        this.classVideoManager = classVideoManager;
+        // this.classVideoManager = classVideoManager; // ⛔️ 제거
 
         // 모듈 초기화 (this(TeacherApp)를 전달)
         try {
             this.homeworkDashboard.init(this);
             this.lessonManager.init(this);
             this.classEditor.init(this); // classEditor 초기화 호출 확인
-            this.classVideoManager.init(this);
+            // this.classVideoManager.init(this); // ⛔️ 제거
         } catch (e) {
              console.error("Error initializing modules:", e);
              showToast("앱 초기화 중 오류 발생", true);
@@ -228,7 +234,7 @@ const TeacherApp = {
                 'lesson-mgmt': document.getElementById('view-lesson-mgmt'),
                 'student-list-mgmt': document.getElementById('view-student-list-mgmt'),
                 'class-mgmt': document.getElementById('view-class-mgmt'),
-                'class-video-mgmt': document.getElementById('view-class-video-mgmt'),
+                'class-video-mgmt': document.getElementById('view-class-video-mgmt'), // 수업 영상 뷰
             },
             studentListContainer: document.getElementById('teacher-student-list-container'),
 
@@ -300,15 +306,16 @@ const TeacherApp = {
             qnaVideoTitleInput: document.getElementById('qna-video-title'),
             qnaVideoUrlInput: document.getElementById('qna-video-url'),
             saveQnaVideoBtn: document.getElementById('save-qna-video-btn'),
-            qnaVideoListContainer: document.getElementById('qna-video-list-teacher-container'),
-            qnaVideosList: document.getElementById('qna-videos-list-teacher'),
+            qnaVideoListContainer: document.getElementById('qna-video-list-teacher-container'), // QnA 영상 목록 컨테이너의 부모 (선택적)
+            qnaVideosList: document.getElementById('qna-videos-list-teacher'), // QnA 영상 목록 자체
 
-            // 수업 영상 관련
-            classVideoDateInput: document.getElementById('class-video-date'),
-            classVideoListContainer: document.getElementById('class-video-list-container'),
-            addClassVideoFieldBtn: document.getElementById('add-class-video-field-btn'),
-            saveClassVideoBtn: document.getElementById('save-class-video-btn'),
-            gotoClassVideoMgmtBtn: document.querySelector('[data-view="class-video-mgmt"]'),
+            // 수업 영상 관련 (✅ 수정/추가됨)
+            classVideoDateInput: document.getElementById('class-video-date'), // 날짜 입력
+            classVideoTitleInput: document.getElementById('class-video-title'), // 제목 입력
+            classVideoUrlInput: document.getElementById('class-video-url'), // URL 입력
+            saveClassVideoBtn: document.getElementById('save-class-video-btn'), // 저장 버튼
+            classVideoListContainer: document.getElementById('class-video-list-container'), // 영상 목록 컨테이너
+            gotoClassVideoMgmtBtn: document.querySelector('[data-view="class-video-mgmt"]'), // 수업 영상 관리 메뉴 버튼
         };
         // 캐싱 후 필수 요소 확인 (디버깅용)
         // if (!this.elements.editClassModal) console.error("FATAL: teacher-edit-class-modal not found during cache!");
@@ -332,10 +339,24 @@ const TeacherApp = {
                  if (e.target.classList.contains('back-to-teacher-menu')) {
                      this.showDashboardMenu();
                  }
+                 // 수업 영상 삭제 버튼 위임 (✅ 추가됨)
+                 if (e.target.classList.contains('delete-class-video-btn') && e.target.dataset.index !== undefined) {
+                      this.deleteClassVideo(parseInt(e.target.dataset.index, 10));
+                 }
+                 // 수업 영상 수정 버튼 위임 (✅ 추가됨)
+                 if (e.target.classList.contains('edit-class-video-btn') && e.target.dataset.index !== undefined) {
+                      this.editClassVideo(parseInt(e.target.dataset.index, 10));
+                 }
              });
          }
+         // 질문 영상 리스너
          this.elements.saveQnaVideoBtn?.addEventListener('click', () => this.saveQnaVideo().then(() => this.loadQnaVideosForTeacher()));
          this.elements.qnaVideoDateInput?.addEventListener('change', () => this.loadQnaVideosForTeacher());
+
+         // 수업 영상 리스너 (✅ 추가됨)
+         this.elements.classVideoDateInput?.addEventListener('change', () => this.handleClassVideoDateChange());
+         this.elements.saveClassVideoBtn?.addEventListener('click', () => this.saveClassVideo());
+
 
          // 과목 로딩 완료 시 UI 업데이트 리스너
          document.addEventListener('subjectsUpdated', () => {
@@ -356,7 +377,8 @@ const TeacherApp = {
         });
     },
 
-    showDashboardMenu() {
+    // ... (showDashboardMenu 함수 등 기존 함수 유지) ...
+     showDashboardMenu() {
         this.state.currentView = 'dashboard';
         if (this.elements.navButtonsContainer) this.elements.navButtonsContainer.style.display = 'grid';
         Object.values(this.elements.views).forEach(view => { if (view) view.style.display = 'none'; });
@@ -424,14 +446,16 @@ const TeacherApp = {
                     }
                 }
                 break;
-             case 'class-video-mgmt':
-                 this.classVideoManager.initView();
+             case 'class-video-mgmt': // ✅ 수정됨
+                 this.initClassVideoView(); // 수업 영상 뷰 초기화 함수 호출
                  break;
             default: this.showDashboardMenu(); break;
         }
     },
 
-    async handleClassSelection(event) {
+    // ... (handleClassSelection, fetchClassData, renderStudentList, displayCurrentClassInfo, listenForSubjects, updateSubjectDropdowns, populateClassSelect, populateSubjectSelectForMgmt 함수는 기존과 동일하게 유지) ...
+
+     async handleClassSelection(event) {
         const selectedOption = event.target.options[event.target.selectedIndex];
         const newClassId = selectedOption.value;
         const newClassName = selectedOption.text;
@@ -451,6 +475,12 @@ const TeacherApp = {
             if (this.state.currentView === 'student-list-mgmt') { this.renderStudentList(); }
             if (this.state.currentView === 'class-mgmt') { this.displayCurrentClassInfo(); }
             if (this.elements.gotoClassVideoMgmtBtn) { this.elements.gotoClassVideoMgmtBtn.style.display = 'none'; }
+            // --- 수업 영상 관련 UI 초기화 (✅ 추가됨) ---
+            if (this.state.currentView === 'class-video-mgmt') {
+                 this.loadClassVideos(); // 반 ID가 null이므로 빈 목록 표시
+            }
+            // ------------------------------------------
+            document.dispatchEvent(new CustomEvent('class-changed')); // 반 변경 이벤트 발생
             return;
         }
 
@@ -458,6 +488,11 @@ const TeacherApp = {
         this.state.isClassDataLoading = true;
         if (this.state.currentView === 'class-mgmt') { this.displayCurrentClassInfo(); }
         if (this.state.currentView === 'student-list-mgmt') { this.renderStudentList(); }
+         // --- 수업 영상 로딩 표시 (✅ 추가됨) ---
+         if (this.state.currentView === 'class-video-mgmt' && this.elements.classVideoListContainer) {
+              this.elements.classVideoListContainer.innerHTML = '<div class="loader-small mx-auto"></div>';
+         }
+         // ------------------------------------
 
         await this.fetchClassData(this.state.selectedClassId); // 데이터 로드 (학생 + 반)
         this.state.isClassDataLoading = false; // 로딩 완료
@@ -465,10 +500,15 @@ const TeacherApp = {
         // 반 선택 완료 후 대시보드 메뉴 표시
         this.showDashboardMenu();
 
+         // --- 수업 영상 뷰 업데이트 (✅ 추가됨) ---
+         if (this.state.currentView === 'class-video-mgmt') {
+             this.loadClassVideos(); // 선택된 반의 영상 로드
+         }
+         // --------------------------------------
         document.dispatchEvent(new CustomEvent('class-changed'));
     },
 
-    async fetchClassData(classId) {
+     async fetchClassData(classId) {
         this.state.studentsInClass.clear();
         this.state.selectedClassData = null; // 로드 전 초기화
         let studentFetchError = false;
@@ -488,7 +528,7 @@ const TeacherApp = {
         // 로딩 상태 해제는 handleClassSelection에서
     },
 
-    renderStudentList(hasError = false) {
+     renderStudentList(hasError = false) {
         if (this.state.currentView !== 'student-list-mgmt') return;
         const container = this.elements.studentListContainer;
         if (!container) { console.error("studentListContainer element not found."); return; }
@@ -638,7 +678,7 @@ const TeacherApp = {
     },
     // ===========================================
 
-    listenForSubjects() {
+     listenForSubjects() {
         this.state.isSubjectsLoading = true;
         try {
             const q = query(collection(db, 'subjects')); // orderBy 제거 가능 (클라이언트 정렬)
@@ -661,7 +701,7 @@ const TeacherApp = {
         }
     },
 
-    updateSubjectDropdowns() {
+     updateSubjectDropdowns() {
          if (this.state.isSubjectsLoading) {
              console.log("Subjects still loading, delaying dropdown update.");
              return;
@@ -675,7 +715,7 @@ const TeacherApp = {
         }
     },
 
-    async populateClassSelect() {
+     async populateClassSelect() {
         const select = this.elements.classSelect;
         if (!select) return;
         select.disabled = true;
@@ -702,7 +742,7 @@ const TeacherApp = {
         }
     },
 
-    populateSubjectSelectForMgmt() {
+     populateSubjectSelectForMgmt() {
         if (this.state.isSubjectsLoading) {
              const select = this.elements.subjectSelectForMgmt;
              if (select) { select.innerHTML = '<option value="">-- 과목 로딩 중... --</option>'; select.disabled = true; }
@@ -739,6 +779,8 @@ const TeacherApp = {
              if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block';
         }
     },
+
+    // ======== 질문 영상 관련 함수 (기존 유지) ========
     async saveQnaVideo() {
         const classId = this.state.selectedClassId;
         const videoDate = this.elements.qnaVideoDateInput?.value;
@@ -828,19 +870,316 @@ const TeacherApp = {
         }
      },
 
-}; // TeacherApp 객체 끝
+     // ======== 수업 영상 관련 함수 (✅ 추가됨) ========
 
-// ✅ 제거: DOMContentLoaded 리스너 제거 (index.html에서 처리)
-/*
-document.addEventListener('DOMContentLoaded', () => {
-    // DOM 로드 후 TeacherApp 초기화
-    if (TeacherApp?.init) {
-      TeacherApp.init();
-    } else {
-      console.error('TeacherApp.init()가 없습니다. teacherApp.js export를 확인하세요.');
-    }
-});
-*/
+     // 수업 영상 뷰 초기화
+     initClassVideoView() {
+         const dateInput = this.elements.classVideoDateInput;
+         if (dateInput) {
+             const today = new Date().toISOString().slice(0, 10);
+             if (!dateInput.value || dateInput.value !== today) {
+                 dateInput.value = today;
+             }
+             this.state.currentClassVideoDate = dateInput.value;
+         } else {
+              this.state.currentClassVideoDate = null;
+         }
+         // 뷰 로딩 시 데이터 로드
+         this.loadClassVideos();
+         // 입력 필드 및 상태 초기화
+         this.state.editingClassVideoIndex = null;
+         if (this.elements.classVideoTitleInput) this.elements.classVideoTitleInput.value = '';
+         if (this.elements.classVideoUrlInput) this.elements.classVideoUrlInput.value = '';
+         if (this.elements.saveClassVideoBtn) this.elements.saveClassVideoBtn.textContent = '영상 저장하기';
+     },
+
+     // 수업 영상 날짜 변경 핸들러
+     handleClassVideoDateChange() {
+         const dateInput = this.elements.classVideoDateInput;
+         this.state.currentClassVideoDate = dateInput?.value || null;
+         // 날짜 변경 시 데이터 다시 로드
+         this.loadClassVideos();
+         // 입력 필드 및 상태 초기화
+         this.state.editingClassVideoIndex = null;
+         if (this.elements.classVideoTitleInput) this.elements.classVideoTitleInput.value = '';
+         if (this.elements.classVideoUrlInput) this.elements.classVideoUrlInput.value = '';
+         if (this.elements.saveClassVideoBtn) this.elements.saveClassVideoBtn.textContent = '영상 저장하기';
+     },
+
+     // 수업 영상 목록 로드
+     async loadClassVideos() {
+         const listContainer = this.elements.classVideoListContainer;
+         const classId = this.state.selectedClassId;
+         const selectedDate = this.state.currentClassVideoDate;
+
+         if (!listContainer) { console.error("Class video list container not found."); return; }
+
+         if (!classId) {
+             listContainer.innerHTML = '<p class="text-sm text-slate-500">반을 먼저 선택해주세요.</p>';
+             this.state.currentClassVideos = []; // 상태 초기화
+             return;
+         }
+         if (!selectedDate) {
+             listContainer.innerHTML = '<p class="text-sm text-slate-500">날짜를 선택해주세요.</p>';
+             this.state.currentClassVideos = []; // 상태 초기화
+             return;
+         }
+
+         listContainer.innerHTML = '<div class="loader-small mx-auto"></div>'; // 로딩 표시
+
+         try {
+             const q = query(
+                 collection(db, 'classLectures'),
+                 where('classId', '==', classId),
+                 where('lectureDate', '==', selectedDate)
+             );
+             const snapshot = await getDocs(q);
+
+             if (snapshot.empty) {
+                 this.state.currentClassVideos = [];
+             } else {
+                 // 해당 날짜+반 조합에는 문서가 하나만 있다고 가정
+                 const docSnap = snapshot.docs[0];
+                 // Firestore 문서 ID를 저장해둠 (수정/삭제 시 필요)
+                 this.state.classLectureDocId = docSnap.id;
+                 this.state.currentClassVideos = docSnap.data().videos || [];
+             }
+             this.renderClassVideoList(this.state.currentClassVideos);
+         } catch (error) {
+             console.error("수업 영상 로딩 실패:", error);
+             showToast("수업 영상을 불러오는 데 실패했습니다.");
+             listContainer.innerHTML = '<p class="text-red-500">영상 목록 로딩 실패</p>';
+             this.state.currentClassVideos = []; // 상태 초기화
+         }
+     },
+
+     // 수업 영상 목록 렌더링
+     renderClassVideoList(videos) {
+         const listContainer = this.elements.classVideoListContainer;
+         if (!listContainer) return;
+         listContainer.innerHTML = ''; // 기존 목록 초기화
+
+         if (!Array.isArray(videos) || videos.length === 0) {
+             listContainer.innerHTML = '<p class="text-sm text-slate-500">등록된 영상이 없습니다. 아래 입력칸에서 추가하세요.</p>';
+             return;
+         }
+
+         videos.forEach((video, index) => {
+             const div = document.createElement('div');
+             div.className = 'p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm';
+             // data-index 속성 추가
+             div.innerHTML = `
+                 <div class="flex-grow mr-4 overflow-hidden">
+                     <p class="font-medium text-slate-700 break-words">${index + 1}. ${video.title || '제목 없음'}</p>
+                     <a href="${video.url}" target="_blank" rel="noopener noreferrer" class="text-xs text-blue-500 hover:underline break-all block">${video.url || 'URL 없음'}</a>
+                 </div>
+                 <div class="flex gap-2 flex-shrink-0">
+                     <button data-index="${index}" class="edit-class-video-btn btn btn-secondary btn-sm">수정</button>
+                     <button data-index="${index}" class="delete-class-video-btn btn btn-danger btn-sm">삭제</button>
+                 </div>
+             `;
+             // 이벤트 리스너는 addEventListeners에서 위임 처리
+             listContainer.appendChild(div);
+         });
+     },
+
+     // 수업 영상 수정 모드 진입
+     editClassVideo(index) {
+         if (index === undefined || index < 0 || index >= this.state.currentClassVideos.length) {
+             showToast("수정할 영상을 찾을 수 없습니다.");
+             return;
+         }
+         const videoData = this.state.currentClassVideos[index];
+         const titleInput = this.elements.classVideoTitleInput;
+         const urlInput = this.elements.classVideoUrlInput;
+         const saveBtn = this.elements.saveClassVideoBtn;
+
+         if (titleInput) titleInput.value = videoData.title || '';
+         if (urlInput) urlInput.value = videoData.url || '';
+
+         this.state.editingClassVideoIndex = index; // 수정 중인 인덱스 저장
+         if (saveBtn) saveBtn.textContent = '수정 완료'; // 버튼 텍스트 변경
+
+         showToast("영상 정보를 불러왔습니다. 수정 후 [수정 완료] 버튼을 누르세요.", false);
+         // 입력 필드로 스크롤 (선택 사항)
+         titleInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+     },
+
+     // 수업 영상 저장 또는 수정 (핵심 로직 변경)
+     async saveClassVideo() {
+         const classId = this.state.selectedClassId;
+         const selectedDate = this.state.currentClassVideoDate;
+         const titleInput = this.elements.classVideoTitleInput;
+         const urlInput = this.elements.classVideoUrlInput;
+         const saveBtn = this.elements.saveClassVideoBtn;
+
+         const title = titleInput?.value.trim();
+         const url = urlInput?.value.trim();
+         const editingIndex = this.state.editingClassVideoIndex;
+
+         if (!classId || !selectedDate) {
+             showToast("반과 날짜를 먼저 선택해주세요.");
+             return;
+         }
+         if (!title || !url) {
+             showToast("영상 제목과 URL을 모두 입력해주세요.");
+             return;
+         }
+          // URL 유효성 검사 추가
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+               showToast(`URL 형식이 올바르지 않습니다. (http:// 또는 https:// 로 시작)`, true);
+               urlInput?.classList.add('border-red-500'); // 입력 필드 강조
+               return;
+          } else {
+               urlInput?.classList.remove('border-red-500'); // 유효하면 강조 제거
+          }
+
+         if (saveBtn) saveBtn.disabled = true; // 저장 시작 시 비활성화
+
+         const newVideoData = { title, url };
+         let updatedVideos = [...this.state.currentClassVideos]; // 현재 영상 목록 복사
+
+         try {
+             // 해당 날짜+반 ID로 기존 문서 찾기
+             const q = query(
+                 collection(db, 'classLectures'),
+                 where('classId', '==', classId),
+                 where('lectureDate', '==', selectedDate)
+             );
+             const snapshot = await getDocs(q);
+
+             let docRef;
+             let currentData = {};
+
+             if (!snapshot.empty) {
+                 // 기존 문서가 있으면 해당 문서 참조 및 현재 데이터 가져오기
+                 docRef = snapshot.docs[0].ref;
+                 currentData = snapshot.docs[0].data();
+                 updatedVideos = currentData.videos || []; // 기존 비디오 목록 사용
+             } else {
+                 // 기존 문서가 없으면 새 문서 참조 생성
+                 docRef = doc(collection(db, 'classLectures'));
+                 currentData = { // 새 문서 기본 구조
+                     classId: classId,
+                     lectureDate: selectedDate,
+                     videos: [],
+                     createdAt: serverTimestamp() // 최초 생성 시 추가
+                 };
+             }
+
+             // 수정 모드인지 확인
+             if (editingIndex !== null && editingIndex >= 0 && editingIndex < updatedVideos.length) {
+                 // 수정: 해당 인덱스의 영상 데이터 업데이트
+                 updatedVideos[editingIndex] = newVideoData;
+             } else {
+                 // 추가: 배열 끝에 새 영상 데이터 추가
+                 updatedVideos.push(newVideoData);
+             }
+
+             // Firestore에 업데이트된 videos 배열 저장
+             // setDoc을 사용하여 문서 전체를 덮어쓰거나 생성 (merge: true 옵션은 여기서는 불필요)
+             // 기존 문서 업데이트 시 createdAt 필드는 유지됨 (currentData에 포함되어 있으므로)
+             await setDoc(docRef, { ...currentData, videos: updatedVideos });
+
+             showToast(`수업 영상 ${editingIndex !== null ? '수정' : '추가'} 성공!`, false);
+
+             // 상태 업데이트 및 UI 재렌더링
+             this.state.currentClassVideos = updatedVideos;
+             this.state.classLectureDocId = docRef.id; // 문서 ID 업데이트 (필요시)
+             this.renderClassVideoList(updatedVideos);
+
+             // 입력 필드 및 상태 초기화
+             this.state.editingClassVideoIndex = null;
+             if (titleInput) titleInput.value = '';
+             if (urlInput) urlInput.value = '';
+             if (saveBtn) saveBtn.textContent = '영상 저장하기';
+
+         } catch (error) {
+             console.error("수업 영상 저장/수정 실패:", error);
+             showToast("수업 영상 처리에 실패했습니다.");
+         } finally {
+             if (saveBtn) saveBtn.disabled = false; // 작업 완료 후 활성화
+         }
+     },
+
+     // 수업 영상 삭제
+     async deleteClassVideo(index) {
+          if (index === undefined || index < 0 || index >= this.state.currentClassVideos.length) {
+               showToast("삭제할 영상을 찾을 수 없습니다.");
+               return;
+          }
+          const videoToDelete = this.state.currentClassVideos[index];
+          if (!confirm(`'${videoToDelete.title}' 영상을 정말 삭제하시겠습니까?`)) {
+               return;
+          }
+
+          const classId = this.state.selectedClassId;
+          const selectedDate = this.state.currentClassVideoDate;
+          const saveBtn = this.elements.saveClassVideoBtn; // 삭제 중에도 버튼 비활성화
+
+          if (!classId || !selectedDate) {
+               showToast("반과 날짜 정보가 유효하지 않습니다.");
+               return;
+          }
+          if (saveBtn) saveBtn.disabled = true;
+
+          try {
+               const q = query(
+                    collection(db, 'classLectures'),
+                    where('classId', '==', classId),
+                    where('lectureDate', '==', selectedDate)
+               );
+               const snapshot = await getDocs(q);
+
+               if (snapshot.empty) {
+                    showToast("삭제할 영상이 포함된 문서를 찾을 수 없습니다.");
+                    this.state.currentClassVideos = []; // 상태 동기화
+                    this.renderClassVideoList([]);
+                    return;
+               }
+
+               const docRef = snapshot.docs[0].ref;
+               const currentVideos = snapshot.docs[0].data().videos || [];
+
+               // 삭제할 인덱스를 제외한 새 배열 생성
+               const updatedVideos = currentVideos.filter((_, i) => i !== index);
+
+               if (updatedVideos.length === 0) {
+                    // 영상 배열이 비었으면 문서 자체를 삭제
+                    await deleteDoc(docRef);
+                    showToast("모든 영상이 삭제되어 해당 날짜의 수업 영상 기록이 삭제되었습니다.", false);
+                    this.state.currentClassVideos = [];
+               } else {
+                    // 영상 배열 업데이트
+                    await updateDoc(docRef, { videos: updatedVideos });
+                    showToast("영상이 삭제되었습니다.", false);
+                    this.state.currentClassVideos = updatedVideos;
+               }
+
+                // 수정 중이던 영상이 삭제된 경우 또는 인덱스가 밀린 경우 처리
+                if (this.state.editingClassVideoIndex === index) {
+                     this.state.editingClassVideoIndex = null;
+                     if (this.elements.classVideoTitleInput) this.elements.classVideoTitleInput.value = '';
+                     if (this.elements.classVideoUrlInput) this.elements.classVideoUrlInput.value = '';
+                     if (saveBtn) saveBtn.textContent = '영상 저장하기';
+                } else if (this.state.editingClassVideoIndex !== null && this.state.editingClassVideoIndex > index) {
+                     this.state.editingClassVideoIndex--; // 삭제된 인덱스보다 뒤에 있었다면 인덱스 감소
+                }
+
+               this.renderClassVideoList(this.state.currentClassVideos); // UI 업데이트
+
+          } catch (error) {
+               console.error("수업 영상 삭제 실패:", error);
+               showToast("영상 삭제에 실패했습니다.");
+          } finally {
+               if (saveBtn) saveBtn.disabled = false;
+          }
+     },
+
+
+     // ============================================
+
+}; // TeacherApp 객체 끝
 
 // ✅ 수정: Named export 유지
 export { TeacherApp };
