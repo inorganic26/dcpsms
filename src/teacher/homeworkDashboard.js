@@ -29,26 +29,27 @@ export const homeworkDashboard = {
         const subjectSelect = this.app.elements.homeworkSubjectSelect;
         const pagesInput = document.getElementById('teacher-homework-pages');
         
-        subjectSelect.innerHTML = '<option value="">-- 과목 선택 --</option>';
-        this.app.elements.homeworkTextbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
-        this.app.elements.homeworkTextbookSelect.disabled = true;
-        this.app.elements.homeworkDueDateInput.value = '';
+        // 🚨 수정: null 체크 적용
+        if (subjectSelect) subjectSelect.innerHTML = '<option value="">-- 과목 선택 --</option>';
+        if (this.app.elements.homeworkTextbookSelect) this.app.elements.homeworkTextbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
+        if (this.app.elements.homeworkTextbookSelect) this.app.elements.homeworkTextbookSelect.disabled = true;
+        if (this.app.elements.homeworkDueDateInput) this.app.elements.homeworkDueDateInput.value = '';
         if(pagesInput) pagesInput.value = '';
 
         if (!this.app.state.selectedClassData || !this.app.state.selectedClassData.subjects) {
-            this.app.elements.assignHomeworkModal.style.display = 'flex';
+            if (this.app.elements.assignHomeworkModal) this.app.elements.assignHomeworkModal.style.display = 'flex';
             return;
         }
 
         const subjectIds = Object.keys(this.app.state.selectedClassData.subjects);
         if (subjectIds.length === 0) {
-            this.app.elements.assignHomeworkModal.style.display = 'flex';
+            if (this.app.elements.assignHomeworkModal) this.app.elements.assignHomeworkModal.style.display = 'flex';
             return;
         }
 
         subjectIds.forEach(id => {
             const subject = this.app.state.subjects.find(s => s.id === id);
-            if (subject) {
+            if (subject && subjectSelect) {
                  subjectSelect.innerHTML += `<option value="${subject.id}">${subject.name}</option>`;
             }
         });
@@ -57,19 +58,21 @@ export const homeworkDashboard = {
             const homeworkDoc = await getDoc(doc(db, 'homeworks', this.app.state.editingHomeworkId));
             if (homeworkDoc.exists()) {
                 const hwData = homeworkDoc.data();
-                subjectSelect.value = hwData.subjectId;
+                if (subjectSelect) subjectSelect.value = hwData.subjectId;
                 await this.populateTextbooksForHomework(hwData.subjectId);
-                this.app.elements.homeworkTextbookSelect.value = hwData.textbookId;
-                this.app.elements.homeworkDueDateInput.value = hwData.dueDate;
+                if (this.app.elements.homeworkTextbookSelect) this.app.elements.homeworkTextbookSelect.value = hwData.textbookId;
+                if (this.app.elements.homeworkDueDateInput) this.app.elements.homeworkDueDateInput.value = hwData.dueDate;
                 if(pagesInput) pagesInput.value = hwData.pages || '';
             }
         }
 
-        this.app.elements.assignHomeworkModal.style.display = 'flex';
+        if (this.app.elements.assignHomeworkModal) this.app.elements.assignHomeworkModal.style.display = 'flex';
     },
 
     async populateTextbooksForHomework(subjectId) {
         const textbookSelect = this.app.elements.homeworkTextbookSelect;
+        if (!textbookSelect) return; // 🚨 null 체크 추가
+        
         textbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
         if (!subjectId || !this.app.state.selectedClassData || !this.app.state.selectedClassData.subjects[subjectId]) {
             textbookSelect.disabled = true; return;
@@ -92,20 +95,21 @@ export const homeworkDashboard = {
     },
 
     closeHomeworkModal() {
-        this.app.elements.assignHomeworkModal.style.display = 'none';
+        if (this.app.elements.assignHomeworkModal) this.app.elements.assignHomeworkModal.style.display = 'none'; // 🚨 null 체크 적용
         this.app.state.editingHomeworkId = null;
     },
 
     async saveHomework() {
-        const subjectId = this.app.elements.homeworkSubjectSelect.value;
+        const subjectId = this.app.elements.homeworkSubjectSelect?.value; // 🚨 null 체크 적용
         const textbookSelect = this.app.elements.homeworkTextbookSelect;
-        const textbookId = textbookSelect.value;
-        const textbookName = textbookSelect.options[textbookSelect.selectedIndex].text;
-        const dueDate = this.app.elements.homeworkDueDateInput.value;
-        const pages = document.getElementById('teacher-homework-pages').value;
+        const textbookId = textbookSelect?.value; // 🚨 null 체크 적용
+        const textbookName = textbookSelect?.options[textbookSelect.selectedIndex]?.text; // 🚨 null 체크 적용
+        const dueDate = this.app.elements.homeworkDueDateInput?.value; // 🚨 null 체크 적용
+        const pagesInput = document.getElementById('teacher-homework-pages');
+        const pages = pagesInput?.value; // 🚨 null 체크 적용
 
         if (!subjectId || !textbookId || !dueDate || !pages) { showToast("과목, 교재, 제출 기한, 총 페이지 수를 모두 입력해주세요."); return; }
-        if (parseInt(pages, 10) <= 0) { showToast("페이지 수는 1 이상의 숫자를 입력해주세요."); return; }
+        if (parseInt(pages, 10) <= 0 || isNaN(parseInt(pages, 10))) { showToast("페이지 수는 1 이상의 숫자를 입력해주세요."); return; } // 🚨 유효성 검사 강화
 
         const homeworkData = {
             classId: this.app.state.selectedClassId,
@@ -128,7 +132,8 @@ export const homeworkDashboard = {
             }
             this.closeHomeworkModal();
             await this.populateHomeworkSelect();
-            this.app.elements.homeworkSelect.value = this.app.state.editingHomeworkId || '';
+            // 🚨 null 체크 적용
+            if (this.app.elements.homeworkSelect) this.app.elements.homeworkSelect.value = this.app.state.editingHomeworkId || '';
         } catch (error) {
             console.error("숙제 저장/수정 실패: ", error);
             showToast("숙제 처리에 실패했습니다.");
@@ -136,17 +141,23 @@ export const homeworkDashboard = {
     },
 
     async populateHomeworkSelect() {
-        this.app.elements.homeworkSelect.innerHTML = '<option value="">-- 숙제 선택 --</option>';
-        this.app.elements.homeworkContent.style.display = 'none';
-        this.app.elements.homeworkManagementButtons.style.display = 'none';
+        // 🚨 null 체크 적용
+        if (this.app.elements.homeworkSelect) this.app.elements.homeworkSelect.innerHTML = '<option value="">-- 숙제 선택 --</option>';
+        if (this.app.elements.homeworkContent) this.app.elements.homeworkContent.style.display = 'none';
+        if (this.app.elements.homeworkManagementButtons) this.app.elements.homeworkManagementButtons.style.display = 'none';
+
+        if (!this.app.state.selectedClassId) return; // 반이 선택되지 않았으면 로드 중단
+
         const q = query(collection(db, 'homeworks'), where('classId', '==', this.app.state.selectedClassId), orderBy('createdAt', 'desc'));
         const snapshot = await getDocs(q);
         if (snapshot.empty) return;
+        
         snapshot.forEach(doc => {
             const hw = doc.data();
             const displayDate = hw.dueDate || '기한없음';
             const pagesText = hw.pages ? `(${hw.pages}p)` : '';
-            this.app.elements.homeworkSelect.innerHTML += `<option value="${doc.id}">[${displayDate}] ${hw.textbookName} ${pagesText}</option>`;
+            // 🚨 null 체크 적용
+            if (this.app.elements.homeworkSelect) this.app.elements.homeworkSelect.innerHTML += `<option value="${doc.id}">[${displayDate}] ${hw.textbookName} ${pagesText}</option>`;
         });
     },
 
@@ -154,20 +165,23 @@ export const homeworkDashboard = {
         this.app.state.selectedHomeworkId = homeworkId;
         if (this.unsubscribe) this.unsubscribe();
         
+        // 🚨 null 체크 적용
         if (!homeworkId) {
-            this.app.elements.homeworkContent.style.display = 'none';
-            this.app.elements.homeworkManagementButtons.style.display = 'none';
+            if (this.app.elements.homeworkContent) this.app.elements.homeworkContent.style.display = 'none';
+            if (this.app.elements.homeworkManagementButtons) this.app.elements.homeworkManagementButtons.style.display = 'none';
             return;
         }
         
-        this.app.elements.homeworkContent.style.display = 'block';
-        this.app.elements.homeworkManagementButtons.style.display = 'flex';
+        // 🚨 null 체크 적용
+        if (this.app.elements.homeworkContent) this.app.elements.homeworkContent.style.display = 'block';
+        if (this.app.elements.homeworkManagementButtons) this.app.elements.homeworkManagementButtons.style.display = 'flex';
         
         const hwText = this.app.elements.homeworkSelect.options[this.app.elements.homeworkSelect.selectedIndex].text;
         
-        this.app.elements.selectedHomeworkTitle.innerHTML = `'${hwText}' 숙제 제출 현황`;
+        if (this.app.elements.selectedHomeworkTitle) this.app.elements.selectedHomeworkTitle.innerHTML = `'${hwText}' 숙제 제출 현황`; // 🚨 null 체크 적용
 
-        this.renderTableHeader(this.app.elements.homeworkTableBody, ['학생 이름', '제출 상태', '제출 시간', '관리']);
+        // 🚨 null 체크 적용
+        if (this.app.elements.homeworkTableBody) this.renderTableHeader(this.app.elements.homeworkTableBody, ['학생 이름', '제출 상태', '제출 시간', '관리']);
         
         const submissionsRef = collection(db, 'homeworks', homeworkId, 'submissions');
         this.unsubscribe = onSnapshot(query(submissionsRef), (snapshot) => this.renderHomeworkSubmissions(snapshot));
@@ -181,7 +195,7 @@ export const homeworkDashboard = {
                 await deleteDoc(doc(db, 'homeworks', this.app.state.selectedHomeworkId));
                 showToast("숙제가 삭제되었습니다.", false);
                 this.app.state.selectedHomeworkId = null;
-                this.populateHomeworkSelect();
+                await this.populateHomeworkSelect(); // 🚨 await 추가
             } catch (error) {
                 console.error("숙제 삭제 실패:", error);
                 showToast("숙제 삭제에 실패했습니다.");
@@ -191,6 +205,8 @@ export const homeworkDashboard = {
 
     async renderHomeworkSubmissions(snapshot) {
         const tbody = this.app.elements.homeworkTableBody;
+        if (!tbody) return; // 🚨 null 체크 추가
+        
         tbody.innerHTML = '';
     
         if (this.app.state.studentsInClass.size === 0) {
@@ -280,6 +296,8 @@ export const homeworkDashboard = {
 
     renderTableHeader(tbody, headers) {
         const table = tbody.parentElement;
+        if (!table) return; // 🚨 null 체크 추가
+        
         table.querySelector('thead')?.remove();
         const thead = document.createElement('thead');
         thead.className = 'text-xs text-gray-700 uppercase bg-gray-50';
