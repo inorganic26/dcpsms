@@ -1,7 +1,6 @@
 // src/shared/reportManager.js
-import { ref, uploadBytes, getDownloadURL, listAll } from "firebase/storage";
-import { storage } from './firebase.js'; // db import 제거
-// import { doc, getDoc } from "firebase/firestore"; // Firestore getDoc 제거
+import { ref, uploadBytes, getDownloadURL, listAll, deleteObject } from "firebase/storage"; // deleteObject 추가
+import { storage } from './firebase.js';
 import { showToast } from './utils.js';
 
 // 파일 이름 형식: "{자유형식}_{학생이름}_리포트.pdf"
@@ -175,5 +174,83 @@ export const reportManager = {
             }
             return null;
         }
+    },
+
+    // --- ✨ 추가된 함수 시작 ---
+
+    /**
+     * 특정 반과 날짜의 모든 리포트 파일 목록을 가져옵니다. (관리자/교사용)
+     * @param {string} classId - 반 ID
+     * @param {string} testDate - 시험 날짜 (YYYYMMDD)
+     * @returns {Promise<Array<{fileName: string, storagePath: string}>|null>} - 파일 정보 배열 또는 오류 시 null
+     */
+    async listReportsForDateAndClass(classId, testDate) {
+        if (!classId || !testDate) {
+            console.warn("[ReportManager] Cannot list reports: Missing classId or testDate.");
+            return []; // 빈 배열 반환
+        }
+        // 날짜 형식 검증
+        if (testDate.length !== 8 || !/^\d+$/.test(testDate)) {
+             console.error(`[ReportManager] Invalid testDate format: ${testDate}. Expected YYYYMMDD.`);
+             return null; // 오류 표시
+        }
+        console.log(`[ReportManager] Listing all reports for class: ${classId}, date: ${testDate}`);
+
+        const dateFolderRef = ref(storage, `reports/${classId}/${testDate}`);
+        const reportList = [];
+
+        try {
+            const listResult = await listAll(dateFolderRef);
+            listResult.items.forEach((itemRef) => {
+                reportList.push({
+                    fileName: itemRef.name,
+                    storagePath: itemRef.fullPath,
+                });
+            });
+            console.log(`[ReportManager] Found ${reportList.length} reports.`);
+            return reportList;
+        } catch (error) {
+            console.error(`[ReportManager] Error listing reports for ${classId}/${testDate}:`, error);
+            if (error.code === 'storage/object-not-found') {
+                console.log(`[ReportManager] No reports folder found for ${classId}/${testDate}.`);
+                return []; // 폴더 없으면 빈 배열 반환
+            } else if (error.code === 'storage/unauthorized') {
+                 showToast("리포트 목록 조회 권한이 없습니다. Storage 규칙을 확인하세요.", true);
+            } else {
+                 showToast("리포트 목록 조회 중 오류 발생", true);
+            }
+            return null; // 그 외 오류는 null 반환
+        }
+    },
+
+    /**
+     * Storage 경로를 사용하여 리포트 파일을 삭제합니다.
+     * @param {string} storagePath - Firebase Storage 전체 경로
+     * @returns {Promise<boolean>} - 삭제 성공 여부
+     */
+    async deleteReport(storagePath) {
+        if (!storagePath) {
+            showToast("삭제할 파일 경로가 없습니다.", true);
+            return false;
+        }
+        console.log(`[ReportManager] Attempting to delete report: ${storagePath}`);
+        const fileRef = ref(storage, storagePath);
+        try {
+            await deleteObject(fileRef);
+            console.log(`[ReportManager] Successfully deleted ${storagePath}`);
+            showToast("리포트 파일 삭제 완료.", false);
+            return true;
+        } catch (error) {
+            console.error(`[ReportManager] Error deleting ${storagePath}:`, error);
+             if (error.code === 'storage/object-not-found') {
+                 showToast("삭제할 파일을 찾을 수 없습니다.", true);
+             } else if (error.code === 'storage/unauthorized') {
+                 showToast("파일 삭제 권한이 없습니다. Storage 규칙을 확인하세요.", true);
+             } else {
+                 showToast(`파일 삭제 실패: ${error.message}`, true);
+             }
+            return false;
+        }
     }
+    // --- ✨ 추가된 함수 끝 ---
 };

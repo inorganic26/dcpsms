@@ -46,6 +46,9 @@ const TeacherApp = {
         isSubjectsLoading: true,
         isClassDataLoading: false,
         areTextbooksLoading: {},
+        // ✨ 추가: 리포트 관리 상태
+        selectedReportDate: null, // YYYYMMDD 형식
+        uploadedReports: [], // 현재 표시된 리포트 파일 목록
     },
 
     init() {
@@ -301,6 +304,8 @@ const TeacherApp = {
             reportCurrentClassSpan: document.getElementById('teacher-report-current-class'),
             uploadReportsBtn: document.getElementById('teacher-upload-reports-btn'),
             reportUploadStatus: document.getElementById('teacher-report-upload-status'),
+            // ✨ 추가: 업로드된 리포트 목록 컨테이너
+            uploadedReportsList: document.getElementById('teacher-uploaded-reports-list'),
         };
     },
 
@@ -324,26 +329,41 @@ const TeacherApp = {
          // 시험 결과 업로드 버튼 (추가)
          this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload());
 
+         // ✨ 추가: 시험 결과 리포트 날짜 변경 시 목록 업데이트
+         this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
+
+         // ✨ 추가: 업로드된 리포트 목록에서 삭제 버튼 클릭 처리 (이벤트 위임)
+         this.elements.uploadedReportsList?.addEventListener('click', (e) => {
+             if (e.target.classList.contains('delete-report-btn') && e.target.dataset.path) {
+                 this.handleDeleteReport(e.target.dataset.path, e.target.dataset.filename);
+             }
+         });
+
+
          // 과목 목록 업데이트 시 관련 UI 갱신 리스너
          document.addEventListener('subjectsUpdated', () => {
              console.log("[TeacherApp] 'subjectsUpdated' event received.");
              this.state.isSubjectsLoading = false; // 로딩 상태 해제
              this.updateSubjectDropdowns(); // 학습 관리, 숙제 모달 등 드롭다운 업데이트
 
-             // 과목/교재 관리 모달 열려있으면 목록 새로고침 (classEditor 내부 로직)
-             // ▼▼▼ 이 부분이 스크린샷의 오류 지점입니다. ▼▼▼
+             // ✨ 수정: this.classEditor 객체 자체의 isSubjectTextbookMgmtModalOpen 호출
              if (this.classEditor?.isSubjectTextbookMgmtModalOpen()) {
                   this.classEditor.renderSubjectListForMgmt();
                   this.classEditor.populateSubjectSelectForTextbookMgmt();
              }
-             // ▲▲▲ this.classEditor 로 수정되었습니다. ▲▲▲
 
              // 반 설정 뷰가 열려있으면 정보 업데이트
              if(this.state.currentView === 'class-mgmt') this.displayCurrentClassInfo();
         });
 
         // 반 변경 시 필요한 UI 업데이트 리스너 (handleClassSelection 내부에서 직접 호출됨)
-        // document.addEventListener('class-changed', () => { ... });
+        document.addEventListener('class-changed', () => {
+            // ✨ 추가: 반 변경 시 리포트 관리 뷰의 파일 목록도 업데이트
+            if (this.state.currentView === 'report-mgmt') {
+                 this.initReportUploadView(); // 반 이름 업데이트 및 입력 초기화
+                 this.loadAndRenderUploadedReports(); // 파일 목록 로드
+            }
+        });
     },
 
     // 메인 대시보드 메뉴 표시
@@ -409,7 +429,8 @@ const TeacherApp = {
                  this.classVideoManager.initLectureView(); // 수업 영상 뷰 초기화
                  break;
             case 'report-mgmt': // 추가
-                 this.initReportUploadView(); // 리포트 업로드 뷰 초기화
+                 this.initReportUploadView(); // 리포트 업로드 뷰 초기화 (반 이름 표시 등)
+                 this.loadAndRenderUploadedReports(); // 파일 목록 로드
                  break;
             default:
                  this.showDashboardMenu(); // 정의되지 않은 뷰면 메뉴로
@@ -433,6 +454,9 @@ const TeacherApp = {
         this.state.selectedClassData = null;
         this.state.studentsInClass.clear();
         this.state.textbooksBySubject = {}; // 교재 캐시 초기화
+        // ✨ 리포트 관련 상태도 초기화
+        this.state.selectedReportDate = null;
+        this.state.uploadedReports = [];
 
         // 반 선택 해제 시 UI 초기화
         if (!this.state.selectedClassId) {
@@ -775,13 +799,20 @@ const TeacherApp = {
 
     // 리포트 업로드 뷰 초기화 (현재 반 이름 표시) - 추가됨
     initReportUploadView() {
-        if (this.elements.reportCurrentClassSpan) {
-            this.elements.reportCurrentClassSpan.textContent = this.state.selectedClassName || '반 선택 필요';
+        const span = this.elements.reportCurrentClassSpan;
+        if (span) {
+            span.textContent = this.state.selectedClassName || '반 선택 필요';
         }
+        // 상태 초기화
+        this.state.selectedReportDate = null;
+        this.state.uploadedReports = [];
+
         // 입력 필드 및 상태 초기화
         if(this.elements.reportDateInput) this.elements.reportDateInput.value = '';
         if(this.elements.reportFilesInput) this.elements.reportFilesInput.value = '';
         if(this.elements.reportUploadStatus) this.elements.reportUploadStatus.textContent = '';
+        // ✨ 목록 영역 초기화
+        this.renderReportFileList([]);
     },
 
     // 리포트 업로드 처리 - 추가됨
@@ -839,6 +870,8 @@ const TeacherApp = {
             statusEl.textContent = `업로드 완료: 총 ${files.length}개 중 ${successCount}개 성공, ${failCount}개 실패.`;
             showToast(`리포트 업로드 완료 (성공: ${successCount}, 실패: ${failCount})`, failCount > 0);
             filesInput.value = ''; // 파일 입력 필드 초기화
+            // ✨ 업로드 성공 후 파일 목록 새로고침
+            await this.loadAndRenderUploadedReports();
         } catch (error) {
             console.error("Error during parallel report upload:", error);
             statusEl.textContent = `업로드 중 오류 발생. 일부 파일 실패 가능성 있음. (성공: ${successCount}, 실패: ${failCount})`;
@@ -848,6 +881,98 @@ const TeacherApp = {
         }
     },
 
+    // --- ✨ 추가된 함수들 시작 ---
+
+    /**
+     * 선택된 날짜와 반의 업로드된 리포트 파일 목록을 로드하고 화면에 표시합니다.
+     */
+    async loadAndRenderUploadedReports() {
+        const dateInput = this.elements.reportDateInput;
+        const listContainer = this.elements.uploadedReportsList;
+        const classId = this.state.selectedClassId; // 교사 앱은 반 선택이 이미 되어 있음
+
+        if (!dateInput || !listContainer) return;
+
+        const testDateRaw = dateInput.value;
+
+        // 날짜나 반이 선택되지 않았으면 목록 초기화
+        if (!testDateRaw || !classId) {
+            this.state.selectedReportDate = null;
+            this.state.uploadedReports = [];
+            this.renderReportFileList([]); // 빈 목록으로 렌더링
+            return;
+        }
+
+        const testDate = testDateRaw.replace(/-/g, ''); // YYYYMMDD
+        this.state.selectedReportDate = testDate;
+
+        listContainer.innerHTML = '<p class="text-sm text-slate-400">파일 목록 로딩 중...</p>'; // 로딩 표시
+
+        const reports = await reportManager.listReportsForDateAndClass(classId, testDate);
+
+        if (reports === null) { // 오류 발생 시
+            listContainer.innerHTML = '<p class="text-sm text-red-500">파일 목록 로딩 실패</p>';
+            this.state.uploadedReports = [];
+        } else {
+            this.state.uploadedReports = reports;
+            this.renderReportFileList(reports); // 목록 렌더링
+        }
+    },
+
+    /**
+     * 가져온 리포트 파일 목록을 HTML로 렌더링합니다.
+     * @param {Array<{fileName: string, storagePath: string}>} reports - 표시할 리포트 파일 정보 배열
+     */
+    renderReportFileList(reports) {
+        const listContainer = this.elements.uploadedReportsList;
+        if (!listContainer) return;
+
+        listContainer.innerHTML = ''; // 기존 내용 지우기
+
+        if (!reports || reports.length === 0) {
+            listContainer.innerHTML = '<p class="text-sm text-slate-400 mt-4">해당 날짜에 업로드된 리포트가 없습니다.</p>';
+            return;
+        }
+
+        const listTitle = document.createElement('h3');
+        listTitle.className = 'text-lg font-semibold text-slate-700 mb-2 mt-4 border-t pt-4';
+        listTitle.textContent = `업로드된 리포트 (${reports.length}개)`;
+        listContainer.appendChild(listTitle);
+
+        const ul = document.createElement('ul');
+        ul.className = 'space-y-2';
+        reports.forEach(report => {
+            const li = document.createElement('li');
+            li.className = 'p-2 border rounded-md flex justify-between items-center text-sm bg-white';
+            li.innerHTML = `
+                <span>${report.fileName}</span>
+                <button
+                    class="delete-report-btn text-red-500 hover:text-red-700 text-xs font-bold"
+                    data-path="${report.storagePath}"
+                    data-filename="${report.fileName}"
+                >삭제</button>
+            `;
+            ul.appendChild(li);
+        });
+        listContainer.appendChild(ul);
+    },
+
+    /**
+     * 삭제 버튼 클릭 시 확인 후 reportManager의 삭제 함수를 호출하고 목록을 새로고침합니다.
+     * @param {string} storagePath - 삭제할 파일의 Storage 경로
+     * @param {string} fileName - 삭제할 파일 이름 (확인 메시지용)
+     */
+    async handleDeleteReport(storagePath, fileName) {
+        if (confirm(`'${fileName}' 리포트 파일을 정말 삭제하시겠습니까?`)) {
+            const success = await reportManager.deleteReport(storagePath);
+            if (success) {
+                // 삭제 성공 시 현재 목록에서 해당 항목 제거 또는 목록 새로고침
+                // 여기서는 목록 새로고침 선택
+                await this.loadAndRenderUploadedReports();
+            }
+        }
+    }
+    // --- ✨ 추가된 함수들 끝 ---
 
 }; // TeacherApp 객체 끝
 

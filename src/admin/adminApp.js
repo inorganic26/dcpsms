@@ -36,6 +36,10 @@ const AdminApp = {
         selectedHomeworkId: null,
         editingHomeworkId: null,
         textbooksBySubject: {},
+        // ✨ 추가: 리포트 관리 상태
+        selectedReportClassId: null,
+        selectedReportDate: null, // YYYYMMDD 형식
+        uploadedReports: [], // 현재 표시된 리포트 파일 목록
     },
 
     init() {
@@ -268,6 +272,8 @@ const AdminApp = {
             reportFilesInput: document.getElementById('admin-report-files-input'),
             uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
             reportUploadStatus: document.getElementById('admin-report-upload-status'),
+            // ✨ 추가: 업로드된 리포트 목록 컨테이너
+            uploadedReportsList: document.getElementById('admin-uploaded-reports-list'),
         };
     },
 
@@ -293,6 +299,17 @@ const AdminApp = {
 
         // 시험 결과 리포트 업로드 버튼
         this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload()); // 추가
+
+        // ✨ 추가: 시험 결과 리포트 날짜 또는 반 변경 시 목록 업데이트
+        this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
+        this.elements.reportClassSelect?.addEventListener('change', () => this.loadAndRenderUploadedReports());
+
+        // ✨ 추가: 업로드된 리포트 목록에서 삭제 버튼 클릭 처리 (이벤트 위임)
+        this.elements.uploadedReportsList?.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-report-btn') && e.target.dataset.path) {
+                this.handleDeleteReport(e.target.dataset.path, e.target.dataset.filename);
+            }
+        });
 
         // 사용자 정의 이벤트 리스너
         document.addEventListener('subjectsUpdated', () => {
@@ -326,7 +343,8 @@ const AdminApp = {
             }
             // 리포트 관리 뷰가 활성화 상태이면 반 목록 업데이트 (추가)
             if (this.elements.reportMgmtView?.style.display === 'block') {
-                this.initReportUploadView();
+                this.initReportUploadView(); // 반 목록만 업데이트
+                this.loadAndRenderUploadedReports(); // 목록 다시 로드
             }
         });
         console.log("[adminApp] Event listeners added.");
@@ -397,7 +415,8 @@ const AdminApp = {
                  }
                 break;
             case 'report-mgmt': // 추가
-                this.initReportUploadView();
+                this.initReportUploadView(); // 반 목록 채우기 및 상태 초기화
+                this.loadAndRenderUploadedReports(); // 파일 목록 로드
                 break;
         }
     },
@@ -437,20 +456,29 @@ const AdminApp = {
     initReportUploadView() {
         const select = this.elements.reportClassSelect;
         if (!select) return;
+
+        // 상태 초기화
+        this.state.selectedReportClassId = null;
+        this.state.selectedReportDate = null;
+        this.state.uploadedReports = [];
+
         select.innerHTML = '<option value="">-- 반 선택 --</option>';
         if (!this.state.classes || this.state.classes.length === 0) {
             select.innerHTML += '<option value="" disabled>등록된 반 없음</option>';
             return;
         }
-        // 클래스 목록을 이름순으로 정렬하여 표시 (classManager에서 이미 정렬했을 수 있음)
+        // 클래스 목록을 이름순으로 정렬하여 표시
         const sortedClasses = [...this.state.classes].sort((a, b) => a.name.localeCompare(b.name));
         sortedClasses.forEach(cls => {
             select.innerHTML += `<option value="${cls.id}">${cls.name}</option>`;
         });
-        // 상태 초기화
+
+        // 입력 필드 및 상태 초기화
         if(this.elements.reportDateInput) this.elements.reportDateInput.value = '';
         if(this.elements.reportFilesInput) this.elements.reportFilesInput.value = '';
         if(this.elements.reportUploadStatus) this.elements.reportUploadStatus.textContent = '';
+        // ✨ 목록 영역 초기화
+        this.renderReportFileList([]);
     },
 
     // 리포트 업로드 처리
@@ -498,6 +526,8 @@ const AdminApp = {
             statusEl.textContent = `업로드 완료: 총 ${files.length}개 중 ${successCount}개 성공, ${failCount}개 실패.`;
             showToast(`리포트 업로드 완료 (성공: ${successCount}, 실패: ${failCount})`, failCount > 0);
             filesInput.value = ''; // 파일 입력 초기화
+            // ✨ 업로드 성공 후 파일 목록 새로고침
+            await this.loadAndRenderUploadedReports();
         } catch (error) {
             // 개별 업로드 실패는 이미 처리되었으므로 여기서는 최종 상태만 업데이트
             console.error("Error during parallel upload:", error); // 전체 실패 시 추가 로그
@@ -507,6 +537,102 @@ const AdminApp = {
             uploadBtn.disabled = false;
         }
     },
+
+    // --- ✨ 추가된 함수들 시작 ---
+
+    /**
+     * 선택된 날짜와 반의 업로드된 리포트 파일 목록을 로드하고 화면에 표시합니다.
+     */
+    async loadAndRenderUploadedReports() {
+        const dateInput = this.elements.reportDateInput;
+        const classSelect = this.elements.reportClassSelect;
+        const listContainer = this.elements.uploadedReportsList;
+
+        if (!dateInput || !classSelect || !listContainer) return;
+
+        const testDateRaw = dateInput.value;
+        const classId = classSelect.value;
+
+        // 날짜나 반이 선택되지 않았으면 목록 초기화
+        if (!testDateRaw || !classId) {
+            this.state.selectedReportClassId = null;
+            this.state.selectedReportDate = null;
+            this.state.uploadedReports = [];
+            this.renderReportFileList([]); // 빈 목록으로 렌더링
+            return;
+        }
+
+        const testDate = testDateRaw.replace(/-/g, ''); // YYYYMMDD
+        this.state.selectedReportClassId = classId;
+        this.state.selectedReportDate = testDate;
+
+        listContainer.innerHTML = '<p class="text-sm text-slate-400">파일 목록 로딩 중...</p>'; // 로딩 표시
+
+        const reports = await reportManager.listReportsForDateAndClass(classId, testDate);
+
+        if (reports === null) { // 오류 발생 시
+            listContainer.innerHTML = '<p class="text-sm text-red-500">파일 목록 로딩 실패</p>';
+            this.state.uploadedReports = [];
+        } else {
+            this.state.uploadedReports = reports;
+            this.renderReportFileList(reports); // 목록 렌더링
+        }
+    },
+
+    /**
+     * 가져온 리포트 파일 목록을 HTML로 렌더링합니다.
+     * @param {Array<{fileName: string, storagePath: string}>} reports - 표시할 리포트 파일 정보 배열
+     */
+    renderReportFileList(reports) {
+        const listContainer = this.elements.uploadedReportsList;
+        if (!listContainer) return;
+
+        listContainer.innerHTML = ''; // 기존 내용 지우기
+
+        if (!reports || reports.length === 0) {
+            listContainer.innerHTML = '<p class="text-sm text-slate-400">해당 날짜와 반에 업로드된 리포트가 없습니다.</p>';
+            return;
+        }
+
+        const listTitle = document.createElement('h3');
+        listTitle.className = 'text-lg font-semibold text-slate-700 mb-2 mt-4 border-t pt-4';
+        listTitle.textContent = `업로드된 리포트 (${reports.length}개)`;
+        listContainer.appendChild(listTitle);
+
+        const ul = document.createElement('ul');
+        ul.className = 'space-y-2';
+        reports.forEach(report => {
+            const li = document.createElement('li');
+            li.className = 'p-2 border rounded-md flex justify-between items-center text-sm bg-white';
+            li.innerHTML = `
+                <span>${report.fileName}</span>
+                <button
+                    class="delete-report-btn text-red-500 hover:text-red-700 text-xs font-bold"
+                    data-path="${report.storagePath}"
+                    data-filename="${report.fileName}"
+                >삭제</button>
+            `;
+            ul.appendChild(li);
+        });
+        listContainer.appendChild(ul);
+    },
+
+    /**
+     * 삭제 버튼 클릭 시 확인 후 reportManager의 삭제 함수를 호출하고 목록을 새로고침합니다.
+     * @param {string} storagePath - 삭제할 파일의 Storage 경로
+     * @param {string} fileName - 삭제할 파일 이름 (확인 메시지용)
+     */
+    async handleDeleteReport(storagePath, fileName) {
+        if (confirm(`'${fileName}' 리포트 파일을 정말 삭제하시겠습니까?`)) {
+            const success = await reportManager.deleteReport(storagePath);
+            if (success) {
+                // 삭제 성공 시 현재 목록에서 해당 항목 제거 또는 목록 새로고침
+                // 여기서는 목록 새로고침 선택
+                await this.loadAndRenderUploadedReports();
+            }
+        }
+    }
+    // --- ✨ 추가된 함수들 끝 ---
 
 }; // AdminApp 객체 끝
 
