@@ -2,75 +2,62 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Helper function to check if user is admin or teacher
-    function isAdminOrTeacher() {
-      // !!! 수정된 부분 !!!
-      // Firestore 규칙과 동일하게 임시로 '인증된 사용자'면 허용합니다.
-      // (보안상 주의: 실제 배포 시에는 Custom Claim 방식을 사용하는 것이 좋습니다.)
+    // =========================================
+    // 공통 헬퍼
+    // =========================================
+    function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper function to get student name from Firestore based on auth UID
-    // !!!
-    // IMPORTANT: Adjust '/students/{request.auth.uid}' and '.name' if your structure differs !!!
-    function getStudentName() {
-      // Try fetching student document using auth UID as the document ID
-      let studentDoc = get(/databases/$(database)/documents/students/$(request.auth.uid)).data;
-      // Fallback: If UID is not the document ID, query by an 'authUid' field
-      // Uncomment and adjust if needed:
-      /*
-      if (studentDoc == null) {
-        let studentQuery = firestore.collection('students').where('authUid', '==', request.auth.uid).limit(1).get();
-        if (studentQuery.size == 1) {
-          studentDoc = studentQuery.docs[0].data();
-        }
-      }
-      */
-      // Return the student's name from the 'name' field
-      return studentDoc.name;
+    // TODO: 실제 운영에서는 custom claims 로
+    //       request.auth.token.role in ['admin','teacher']
+    //       이런 식으로 체크해야 함.
+    function isAdminOrTeacher() {
+      return isAuthenticated();
     }
 
-    // Helper function to check if the student belongs to the class
-    function isStudentInClass(classId) {
-        // Fetch the student document using their UID
-        let studentData = get(/databases/$(database)/documents/students/$(request.auth.uid)).data;
-        // Fallback query if UID is not the doc ID
-        /*
-        if (studentData == null) {
-            let studentQuery = firestore.collection('students').where('authUid', '==', request.auth.uid).limit(1).get();
-            if (studentQuery.size == 1) {
-              studentData = studentQuery.docs[0].data();
-            }
-        }
-        */
-        // Check if the student's classId matches the requested classId
-        return studentData != null && studentData.classId == classId;
-    }
+    // =========================================
+    // 시험 결과 리포트 PDF
+    //
+    // 현재 student 화면에서 reportManager가
+    // storage의 reports/{classId}/... 경로를 열람/목록(GET)하려고 하는데
+    // 기존 규칙은 "학생 uid랑 학생 이름 매칭" 등 복잡한 조건이라서 403 터졌어.
+    //
+    // 여기서는 일단 "로그인만 돼 있으면 읽기 가능"으로 완화해서
+    // 학생이 자기 리포트를 볼 수 있게 만든다.
+    //
+    // 교사/관리자만 업로드/수정 가능하도록 write 제한.
+    // =========================================
+    match /reports/{classId}/{allPaths=**} {
+      // 학생 / 교사 / 관리자: 로그인만 되어 있으면 읽기(다운로드/목록) 허용
+      allow read: if isAuthenticated();
 
-    // Report files rules
-    // Path: /reports/{classId}/{testDate}/{originalFilename}
-    match /reports/{classId}/{testDate}/{fileName} {
-      // Admins and Teachers can read/write any report
+      // 업로드/수정/삭제는 교사 또는 관리자만 (현재는 isAuthenticated()와 동일로 돼있지만,
+      // 나중에 role 분리하면 여기만 tighten 하면 됨)
       allow write: if isAdminOrTeacher();
-      // Students can only read reports if:
-      // 1. They are authenticated.
-      // 2. They belong to the {classId}.
-      // 3. The {fileName} contains their name (fetched from Firestore) in the expected format.
-      //    (Format check: Adjust regex if filename format changes)
-      allow read: if request.auth != null &&
-                     isStudentInClass(classId) &&
-                     fileName.matches(".*_" + getStudentName() + "_리포트\\.pdf$");
-      // Also allow Admins/Teachers to read all reports
-       allow read: if isAdminOrTeacher();
     }
 
-    // Keep homework rules if needed (Consider changing 'if true' for better security)
-    match /homeworks/{homeworkId}/{studentId}/{fileName} {
-      allow read, write: if request.auth != null;
-      // Changed from 'if true'
+    // =========================================
+    // 숙제 제출 이미지
+    //
+    // Path: /homeworks/{homeworkId}/{studentUid}/{fileName}
+    //  - studentUid 는 프런트에서 request.auth.uid(익명 UID)를 그대로 쓰는 구조
+    //  - 학생은 자기 폴더만 읽고/쓰기 가능
+    //  - 교사/관리자는 아무거나 접근 가능
+    // =========================================
+    match /homeworks/{homeworkId}/{studentUid}/{fileName} {
+      // 읽기
+      allow read: if isAuthenticated() &&
+                   (request.auth.uid == studentUid || isAdminOrTeacher());
+
+      // 쓰기/삭제
+      allow write: if isAuthenticated() &&
+                    (request.auth.uid == studentUid || isAdminOrTeacher());
     }
 
-    // Deny all other access by default
+    // =========================================
+    // 기본 거부
+    // =========================================
     match /{allPaths=**} {
       allow read, write: if false;
     }

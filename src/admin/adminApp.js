@@ -1,9 +1,15 @@
 // src/admin/adminApp.js
+//
+// 관리자 앱 전체 컨트롤러
+// - 로그인
+// - 섹션 전환
+// - 각 매니저 초기화
+// - 시험 결과 리포트 업로드 / 목록 표시 / 삭제
+//
 
-import { auth, signInAnonymously } from '../shared/firebase.js'; // db 관련 import 제거 (여기선 불필요)
+import { auth, signInAnonymously } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
-// 기존 관리자 모듈 import
 import { subjectManager } from './subjectManager.js';
 import { textbookManager } from './textbookManager.js';
 import { classManager } from './classManager.js';
@@ -13,22 +19,22 @@ import { lessonManager } from './lessonManager.js';
 import { studentAssignmentManager } from './studentAssignmentManager.js';
 import { adminHomeworkDashboard } from './adminHomeworkDashboard.js';
 import { adminClassVideoManager } from './adminClassVideoManager.js';
-import { reportManager } from '../shared/reportManager.js'; // reportManager import 추가
+import { reportManager } from '../shared/reportManager.js';
 
 const AdminApp = {
     isInitialized: false,
     elements: {},
     state: {
         subjects: [],
-        classes: [],
+        classes: [], // [{id, name, ...}] ← classManager에서 복사
         students: [],
         studentsInClass: new Map(),
         teachers: [],
         lessons: [],
         editingClass: null,
-        selectedSubjectIdForLesson: null, // lessonManager에서 사용
-        editingLesson: null,        // lessonManager에서 사용
-        generatedQuiz: null,        // lessonManager에서 사용
+        selectedSubjectIdForLesson: null,
+        editingLesson: null,
+        generatedQuiz: null,
         selectedClassIdForStudent: null,
         selectedSubjectIdForTextbook: null,
         editingQnaVideoId: null,
@@ -36,12 +42,16 @@ const AdminApp = {
         selectedHomeworkId: null,
         editingHomeworkId: null,
         textbooksBySubject: {},
-        // ✨ 추가: 리포트 관리 상태
-        selectedReportClassId: null,
-        selectedReportDate: null, // YYYYMMDD 형식
-        uploadedReports: [], // 현재 표시된 리포트 파일 목록
+
+        // 리포트 관리용
+        selectedReportClassId: null,   // Firestore class 문서 ID
+        selectedReportDate: null,      // 'YYYYMMDD'
+        uploadedReports: [],           // [{fileName,url,storagePath}]
     },
 
+    /* --------------------------
+       초기 진입 / 로그인 처리
+    ---------------------------*/
     init() {
         const initialLogin = document.getElementById('admin-initial-login');
         const mainDashboard = document.getElementById('admin-main-dashboard');
@@ -53,9 +63,9 @@ const AdminApp = {
 
         const passwordInput = document.getElementById('admin-secret-password');
         passwordInput?.addEventListener('keyup', (e) => {
-             if (e.key === 'Enter') {
-                 this.handleSecretLogin();
-             }
+            if (e.key === 'Enter') {
+                this.handleSecretLogin();
+            }
         });
     },
 
@@ -64,17 +74,16 @@ const AdminApp = {
         if (!inputPasswordEl) return;
         const inputPassword = inputPasswordEl.value;
 
-        // 실제 비밀번호 대신 환경 변수나 다른 안전한 방법 사용 권장
-        // TODO: 비밀번호를 안전한 방식으로 확인하도록 변경
-        if (inputPassword !== 'qkraudtls0626^^') { // 비밀번호 확인
+        // TODO: 운영 시 안전하게 교체
+        if (inputPassword !== 'qkraudtls0626^^') {
             showToast('비밀번호가 올바르지 않습니다.');
             return;
         }
 
         try {
-            await signInAnonymously(auth); // 익명 로그인 시도
+            await signInAnonymously(auth);
             showToast("인증 성공!", false);
-            this.showDashboard(); // 성공 시 대시보드 표시
+            this.showDashboard();
         } catch (error) {
             console.error("익명 로그인 실패:", error);
             showToast("관리자 인증 실패. 인터넷 연결을 확인해주세요.");
@@ -92,13 +101,17 @@ const AdminApp = {
         }
     },
 
+    /* --------------------------
+       대시보드 전체 초기화
+    ---------------------------*/
     initializeDashboard() {
         if (this.isInitialized) return;
         this.isInitialized = true;
         console.log("[adminApp] Initializing dashboard...");
 
         this.cacheElements();
-        // 각 매니저 초기화
+
+        // 각 매니저들 초기화
         subjectManager.init(this);
         textbookManager.init(this);
         classManager.init(this);
@@ -108,13 +121,20 @@ const AdminApp = {
         studentAssignmentManager.init(this);
         adminHomeworkDashboard.init(this);
         adminClassVideoManager.init(this);
-        this.addEventListeners(); // 이벤트 리스너 추가 먼저
-        this.showAdminSection('dashboard'); // 대시보드 메뉴부터 표시
+
+        this.addEventListeners();
+
+        this.showAdminSection('dashboard');
+
         console.log("[adminApp] Dashboard initialized.");
     },
 
+    /* --------------------------
+       DOM 캐싱
+    ---------------------------*/
     cacheElements() {
         this.elements = {
+            // 네비 / 섹션 전환 버튼
             dashboardView: document.getElementById('admin-dashboard-view'),
             gotoSubjectMgmtBtn: document.getElementById('goto-subject-mgmt-btn'),
             gotoTextbookMgmtBtn: document.getElementById('goto-textbook-mgmt-btn'),
@@ -126,9 +146,9 @@ const AdminApp = {
             gotoQnaVideoMgmtBtn: document.getElementById('goto-qna-video-mgmt-btn'),
             gotoClassVideoMgmtBtn: document.getElementById('goto-class-video-mgmt-btn'),
             gotoHomeworkMgmtBtn: document.getElementById('goto-homework-mgmt-btn'),
-            gotoReportMgmtBtn: document.getElementById('goto-report-mgmt-btn'), // 추가
+            gotoReportMgmtBtn: document.getElementById('goto-report-mgmt-btn'),
 
-            // 뷰 컨테이너
+            // 섹션 뷰 컨테이너
             subjectMgmtView: document.getElementById('admin-subject-mgmt-view'),
             textbookMgmtView: document.getElementById('admin-textbook-mgmt-view'),
             classMgmtView: document.getElementById('admin-class-mgmt-view'),
@@ -139,7 +159,7 @@ const AdminApp = {
             qnaVideoMgmtView: document.getElementById('admin-qna-video-mgmt-view'),
             classVideoMgmtView: document.getElementById('admin-class-video-mgmt-view'),
             homeworkMgmtView: document.getElementById('admin-homework-mgmt-view'),
-            reportMgmtView: document.getElementById('admin-report-mgmt-view'), // 추가
+            reportMgmtView: document.getElementById('admin-report-mgmt-view'),
 
             // 과목 관리
             newSubjectNameInput: document.getElementById('admin-new-subject-name'),
@@ -172,7 +192,6 @@ const AdminApp = {
             addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
             teachersList: document.getElementById('admin-teachers-list'),
 
-            // 교사 수정 모달
             editTeacherModal: document.getElementById('admin-edit-teacher-modal'),
             closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
             cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
@@ -189,7 +208,6 @@ const AdminApp = {
             saveOrderBtn: document.getElementById('admin-save-lesson-order-btn'),
             showNewLessonModalBtn: document.getElementById('admin-show-new-lesson-modal-btn'),
 
-            // 학습 생성/수정 모달 (lessonManager config와 동일)
             modal: document.getElementById('admin-new-lesson-modal'),
             modalTitle: document.getElementById('admin-lesson-modal-title'),
             closeModalBtn: document.getElementById('admin-close-modal-btn'),
@@ -209,14 +227,14 @@ const AdminApp = {
             saveBtnText: document.getElementById('admin-save-btn-text'),
             saveLoader: document.getElementById('admin-save-loader'),
 
-             // 반 설정 수정 모달 (classEditor config와 동일)
+            // 반 수정 모달
             editClassModal: document.getElementById('admin-edit-class-modal'),
             editClassName: document.getElementById('admin-edit-class-name'),
             closeEditClassModalBtn: document.getElementById('admin-close-edit-class-modal-btn'),
             cancelEditClassBtn: document.getElementById('admin-cancel-edit-class-btn'),
             saveClassEditBtn: document.getElementById('admin-save-class-edit-btn'),
             editClassTypeSelect: document.getElementById('admin-edit-class-type'),
-            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'), // 추가
+            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'),
 
             // 학생 수정 모달
             editStudentModal: document.getElementById('admin-edit-student-modal'),
@@ -227,7 +245,7 @@ const AdminApp = {
             editStudentPhoneInput: document.getElementById('admin-edit-student-phone'),
             editParentPhoneInput: document.getElementById('admin-edit-parent-phone'),
 
-            // 숙제 관리 (homeworkManager config와 동일)
+            // 숙제 관리
             homeworkClassSelect: document.getElementById('admin-homework-class-select'),
             homeworkMainContent: document.getElementById('admin-homework-main-content'),
             homeworkDashboardControls: document.getElementById('admin-homework-dashboard-controls'),
@@ -249,7 +267,7 @@ const AdminApp = {
             homeworkPagesInput: document.getElementById('admin-homework-pages'),
             homeworkDueDateInput: document.getElementById('admin-homework-due-date'),
 
-            // QnA 영상 (classVideoManager config와 동일)
+            // 동영상 / QnA
             qnaClassSelect: document.getElementById('admin-qna-class-select'),
             qnaVideoDateInput: document.getElementById('admin-qna-video-date'),
             qnaVideoTitleInput: document.getElementById('admin-qna-video-title'),
@@ -257,29 +275,43 @@ const AdminApp = {
             saveQnaVideoBtn: document.getElementById('admin-save-qna-video-btn'),
             qnaVideosList: document.getElementById('admin-qna-videos-list'),
 
-            // 수업 영상 (classVideoManager config와 동일)
             lectureClassSelect: document.getElementById('admin-class-video-class-select'),
             lectureVideoDateInput: document.getElementById('admin-class-video-date'),
             lectureVideoListContainer: document.getElementById('admin-class-video-list-container'),
             saveLectureVideoBtn: document.getElementById('admin-save-class-video-btn'),
             lectureVideoTitleInput: document.getElementById('admin-class-video-title'),
             lectureVideoUrlInput: document.getElementById('admin-class-video-url'),
-            // addLectureVideoFieldBtn은 관리자 앱에 현재 없음
 
-            // 시험 결과 리포트 관리 (추가)
-            reportDateInput: document.getElementById('admin-report-date'),
+            // 시험 결과 리포트 관리
+            reportMgmtView: document.getElementById('admin-report-mgmt-view'),
             reportClassSelect: document.getElementById('admin-report-class-select'),
+            reportDateInput: document.getElementById('admin-report-date'),
             reportFilesInput: document.getElementById('admin-report-files-input'),
             uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
             reportUploadStatus: document.getElementById('admin-report-upload-status'),
-            // ✨ 추가: 업로드된 리포트 목록 컨테이너
             uploadedReportsList: document.getElementById('admin-uploaded-reports-list'),
         };
     },
 
+    /* --------------------------
+       class 목록 동기화
+    ---------------------------*/
+    syncClassesFromManager() {
+        // classManager 내부에서 들고 있는 classes 배열을 복사해온다
+        if (classManager?.state?.classes && Array.isArray(classManager.state.classes)) {
+            this.state.classes = classManager.state.classes;
+        } else if (Array.isArray(classManager?.classes)) {
+            this.state.classes = classManager.classes;
+        }
+    },
+
+    /* --------------------------
+       이벤트 바인딩
+    ---------------------------*/
     addEventListeners() {
         console.log("[adminApp] Adding event listeners...");
-        // 메뉴 버튼 이벤트
+
+        // 섹션 전환 버튼들
         this.elements.gotoSubjectMgmtBtn?.addEventListener('click', () => this.showAdminSection('subject-mgmt'));
         this.elements.gotoTextbookMgmtBtn?.addEventListener('click', () => this.showAdminSection('textbook-mgmt'));
         this.elements.gotoClassMgmtBtn?.addEventListener('click', () => this.showAdminSection('class-mgmt'));
@@ -290,76 +322,111 @@ const AdminApp = {
         this.elements.gotoQnaVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('qna-video-mgmt'));
         this.elements.gotoClassVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('class-video-mgmt'));
         this.elements.gotoHomeworkMgmtBtn?.addEventListener('click', () => this.showAdminSection('homework-mgmt'));
-        this.elements.gotoReportMgmtBtn?.addEventListener('click', () => this.showAdminSection('report-mgmt')); // 추가
+        this.elements.gotoReportMgmtBtn?.addEventListener('click', () => this.showAdminSection('report-mgmt'));
 
-        // 뒤로가기 버튼 이벤트
+        // 공통 뒤로가기 ("← 관리자 메뉴로")
         document.querySelectorAll('.back-to-admin-dashboard-btn').forEach(btn => {
             btn.addEventListener('click', () => this.showAdminSection('dashboard'));
         });
 
-        // 시험 결과 리포트 업로드 버튼
-        this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload()); // 추가
+        // 리포트 업로드 버튼
+        this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload());
 
-        // ✨ 추가: 시험 결과 리포트 날짜 또는 반 변경 시 목록 업데이트
+        // 날짜/반 바뀔 때마다 목록 새로고침
         this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
         this.elements.reportClassSelect?.addEventListener('change', () => this.loadAndRenderUploadedReports());
 
-        // ✨ 추가: 업로드된 리포트 목록에서 삭제 버튼 클릭 처리 (이벤트 위임)
-        this.elements.uploadedReportsList?.addEventListener('click', (e) => {
-            if (e.target.classList.contains('delete-report-btn') && e.target.dataset.path) {
-                this.handleDeleteReport(e.target.dataset.path, e.target.dataset.filename);
+        // 업로드된 리포트 목록에서 보기 / 삭제 (이벤트 위임)
+        this.elements.uploadedReportsList?.addEventListener('click', async (e) => {
+            const viewBtn = e.target.closest('.view-report-btn');
+            const deleteBtn = e.target.closest('.delete-report-btn');
+
+            if (viewBtn && viewBtn.dataset.url) {
+                const fileUrl = viewBtn.dataset.url;
+                if (fileUrl) {
+                    window.open(fileUrl, '_blank');
+                } else {
+                    showToast("리포트를 열 수 없습니다.", true);
+                }
+            }
+
+            if (deleteBtn && deleteBtn.dataset.path) {
+                // reportManager.deleteReport(storagePath)를 호출
+                this.handleDeleteReport(deleteBtn.dataset.path, deleteBtn.dataset.filename);
             }
         });
 
-        // 사용자 정의 이벤트 리스너
+        // 과목 갱신 이벤트
         document.addEventListener('subjectsUpdated', () => {
             console.log("[adminApp] 'subjectsUpdated' event received.");
             this.renderSubjectOptionsForTextbook();
             this.renderSubjectOptionsForLesson();
-            if (adminHomeworkDashboard.managerInstance?.populateSubjectsForHomeworkModal) {
-                if (this.elements.assignHomeworkModal?.style.display === 'flex') {
-                    adminHomeworkDashboard.managerInstance.populateSubjectsForHomeworkModal();
-                }
+
+            // 숙제 모달 떠있으면 안에서 과목 셀렉트도 갱신
+            const modalEl = document.getElementById('admin-assign-homework-modal');
+            if (
+                modalEl?.style.display === 'flex' &&
+                adminHomeworkDashboard.managerInstance?.populateSubjectsForHomeworkModal
+            ) {
+                adminHomeworkDashboard.managerInstance.populateSubjectsForHomeworkModal();
             }
         });
+
+        // 반 목록 갱신 이벤트
         document.addEventListener('classesUpdated', () => {
             console.log("[adminApp] 'classesUpdated' event received.");
+
+            // 최신 반 목록 복사
+            this.syncClassesFromManager();
+
+            // 기존 다른 화면들용 로직 (학생배정, 동영상 등)
             if (adminClassVideoManager.managerInstance) {
-                 if (this.elements.qnaVideoMgmtView?.style.display === 'block') {
-                     adminClassVideoManager.managerInstance.populateClassSelect(this.elements.qnaClassSelect.id, 'selectedClassIdForQnaVideo');
-                 }
-                 if (this.elements.classVideoMgmtView?.style.display === 'block') {
-                     adminClassVideoManager.managerInstance.populateClassSelect(this.elements.lectureClassSelect.id, 'selectedClassIdForClassVideo');
-                 }
+                if (this.elements.qnaVideoMgmtView?.style.display === 'block') {
+                    adminClassVideoManager.managerInstance.populateClassSelect(
+                        this.elements.qnaClassSelect.id,
+                        'selectedClassIdForQnaVideo'
+                    );
+                }
+                if (this.elements.classVideoMgmtView?.style.display === 'block') {
+                    adminClassVideoManager.managerInstance.populateClassSelect(
+                        this.elements.lectureClassSelect.id,
+                        'selectedClassIdForClassVideo'
+                    );
+                }
             }
+
             if (adminHomeworkDashboard.managerInstance?.populateClassSelect) {
                 adminHomeworkDashboard.managerInstance.populateClassSelect();
             }
+
             if (studentAssignmentManager?.populateClassSelects) {
-                console.log("[adminApp] Populating student assignment class selects.");
+                console.log("[adminApp] Updating class selects in assignment view...");
                 studentAssignmentManager.populateClassSelects();
-            } else {
-                console.warn("[adminApp] studentAssignmentManager or populateClassSelects function not found.");
             }
-            // 리포트 관리 뷰가 활성화 상태이면 반 목록 업데이트 (추가)
+
+            // 지금 화면이 리포트 관리면 즉시 드롭다운/리스트 최신화
             if (this.elements.reportMgmtView?.style.display === 'block') {
-                this.initReportUploadView(); // 반 목록만 업데이트
-                this.loadAndRenderUploadedReports(); // 목록 다시 로드
+                this.initReportUploadView();
+                this.loadAndRenderUploadedReports();
             }
         });
+
         console.log("[adminApp] Event listeners added.");
     },
 
+    /* --------------------------
+       섹션 전환
+    ---------------------------*/
     showAdminSection(sectionName) {
         console.log(`[adminApp] Attempting to show section: ${sectionName}`);
-        // 모든 뷰 숨기기
+
+        // 모든 섹션 숨김
         Object.keys(this.elements).forEach(key => {
             if (key.endsWith('View') && this.elements[key] instanceof HTMLElement) {
                 this.elements[key].style.display = 'none';
             }
         });
 
-        // 보여줄 뷰 매핑
         const viewMap = {
             'dashboard': this.elements.dashboardView,
             'subject-mgmt': this.elements.subjectMgmtView,
@@ -372,116 +439,180 @@ const AdminApp = {
             'qna-video-mgmt': this.elements.qnaVideoMgmtView,
             'class-video-mgmt': this.elements.classVideoMgmtView,
             'homework-mgmt': this.elements.homeworkMgmtView,
-            'report-mgmt': this.elements.reportMgmtView, // 추가
+            'report-mgmt': this.elements.reportMgmtView,
         };
 
-        // 해당 뷰 표시
         const viewToShow = viewMap[sectionName];
         if (viewToShow instanceof HTMLElement) {
             console.log(`[adminApp] Showing element: ${viewToShow.id}`);
             viewToShow.style.display = 'block';
         } else {
-             console.warn(`[adminApp] View element for "${sectionName}" not found or invalid. Showing dashboard.`);
-             if(this.elements.dashboardView instanceof HTMLElement) {
-                 this.elements.dashboardView.style.display = 'block';
-             }
+            console.warn(`[adminApp] View "${sectionName}" not found. Showing dashboard instead.`);
+            if (this.elements.dashboardView instanceof HTMLElement) {
+                this.elements.dashboardView.style.display = 'block';
+            }
         }
 
-        // 섹션별 초기화 로직
         switch (sectionName) {
-            case 'textbook-mgmt': this.renderSubjectOptionsForTextbook(); break;
+            case 'textbook-mgmt':
+                this.renderSubjectOptionsForTextbook();
+                break;
+
             case 'lesson-mgmt':
                 this.renderSubjectOptionsForLesson();
-                if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'none';
-                if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block';
-                if (this.elements.lessonsList) this.elements.lessonsList.innerHTML = '';
+                if (this.elements.lessonsManagementContent)
+                    this.elements.lessonsManagementContent.style.display = 'none';
+                if (this.elements.lessonPrompt)
+                    this.elements.lessonPrompt.style.display = 'block';
+                if (this.elements.lessonsList)
+                    this.elements.lessonsList.innerHTML = '';
                 break;
-            case 'qna-video-mgmt': adminClassVideoManager.initQnaView(); break;
-            case 'class-video-mgmt': adminClassVideoManager.initLectureView(); break;
+
+            case 'qna-video-mgmt':
+                adminClassVideoManager.initQnaView();
+                break;
+
+            case 'class-video-mgmt':
+                adminClassVideoManager.initLectureView();
+                break;
+
             case 'student-assignment':
-                 if (studentAssignmentManager?.populateClassSelects) {
+                if (studentAssignmentManager?.populateClassSelects) {
                     studentAssignmentManager.populateClassSelects();
                     studentAssignmentManager.resetView();
-                 }
+                }
                 break;
+
             case 'homework-mgmt':
                 if (adminHomeworkDashboard.managerInstance?.initView) {
                     adminHomeworkDashboard.managerInstance.initView();
                 }
                 break;
+
             case 'student-mgmt':
-                 if (studentManager?.renderStudentListView) {
-                     studentManager.renderStudentListView();
-                 }
+                if (studentManager?.renderStudentListView) {
+                    studentManager.renderStudentListView();
+                }
                 break;
-            case 'report-mgmt': // 추가
-                this.initReportUploadView(); // 반 목록 채우기 및 상태 초기화
-                this.loadAndRenderUploadedReports(); // 파일 목록 로드
+
+            case 'report-mgmt':
+                // 리포트 관리 화면 들어올 때마다 최신 반 목록 싱크 → 드롭다운 구성 → 목록 뿌리기
+                this.syncClassesFromManager();
+                this.initReportUploadView();
+                this.loadAndRenderUploadedReports();
                 break;
         }
     },
 
-    // 과목 옵션 렌더링 (교재 관리용)
+    /* --------------------------
+       과목 선택 드롭다운 (교재 관리 / 학습 관리)
+    ---------------------------*/
     renderSubjectOptionsForTextbook() {
-        const select = this.elements.subjectSelectForTextbook; if (!select) return;
-        const currentSelection = select.value || this.state.selectedSubjectIdForTextbook; select.innerHTML = '<option value="">-- 과목 선택 --</option>';
-        if (!this.state.subjects || this.state.subjects.length === 0) { select.innerHTML += '<option value="" disabled>등록된 과목 없음</option>'; if(this.elements.textbookManagementContent) this.elements.textbookManagementContent.style.display = 'none'; return; }
-        this.state.subjects.forEach(sub => { select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`; });
-        if (this.state.subjects.some(s => s.id === currentSelection)) {
-            select.value = currentSelection; this.state.selectedSubjectIdForTextbook = currentSelection; if (textbookManager?.handleSubjectSelectForTextbook) { textbookManager.handleSubjectSelectForTextbook(currentSelection); }
-        } else { select.value = ''; this.state.selectedSubjectIdForTextbook = null; if (textbookManager?.handleSubjectSelectForTextbook) { textbookManager.handleSubjectSelectForTextbook(''); } }
+        const select = this.elements.subjectSelectForTextbook;
+        if (!select) return;
+
+        const current = select.value || this.state.selectedSubjectIdForTextbook;
+        select.innerHTML = '<option value="">-- 과목 선택 --</option>';
+
+        if (!this.state.subjects || this.state.subjects.length === 0) {
+            select.innerHTML += '<option value="" disabled>등록된 과목 없음</option>';
+            if (this.elements.textbookManagementContent)
+                this.elements.textbookManagementContent.style.display = 'none';
+            return;
+        }
+
+        this.state.subjects.forEach(sub => {
+            select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`;
+        });
+
+        if (this.state.subjects.some(s => s.id === current)) {
+            select.value = current;
+            this.state.selectedSubjectIdForTextbook = current;
+            if (textbookManager?.handleSubjectSelectForTextbook) {
+                textbookManager.handleSubjectSelectForTextbook(current);
+            }
+        } else {
+            select.value = '';
+            this.state.selectedSubjectIdForTextbook = null;
+            if (textbookManager?.handleSubjectSelectForTextbook) {
+                textbookManager.handleSubjectSelectForTextbook('');
+            }
+        }
     },
 
-    // 과목 옵션 렌더링 (학습 관리용)
     renderSubjectOptionsForLesson() {
-        const select = this.elements.subjectSelectForLesson; if (!select) return;
-        const currentSelection = select.value || this.state.selectedSubjectIdForLesson; select.innerHTML = '<option value="">-- 과목 선택 --</option>';
-        if (!this.state.subjects || this.state.subjects.length === 0) { select.innerHTML += '<option value="" disabled>등록된 과목 없음</option>'; if(this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'none'; if(this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block'; return; }
-        this.state.subjects.forEach(sub => { select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`; });
-        if (this.state.subjects.some(s => s.id === currentSelection)) {
-            select.value = currentSelection; this.state.selectedSubjectIdForLesson = currentSelection;
-            // lessonManager 인스턴스의 함수 직접 호출
+        const select = this.elements.subjectSelectForLesson;
+        if (!select) return;
+
+        const current = select.value || this.state.selectedSubjectIdForLesson;
+        select.innerHTML = '<option value="">-- 과목 선택 --</option>';
+
+        if (!this.state.subjects || this.state.subjects.length === 0) {
+            select.innerHTML += '<option value="" disabled>등록된 과목 없음</option>';
+            if (this.elements.lessonsManagementContent)
+                this.elements.lessonsManagementContent.style.display = 'none';
+            if (this.elements.lessonPrompt)
+                this.elements.lessonPrompt.style.display = 'block';
+            return;
+        }
+
+        this.state.subjects.forEach(sub => {
+            select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`;
+        });
+
+        if (this.state.subjects.some(s => s.id === current)) {
+            select.value = current;
+            this.state.selectedSubjectIdForLesson = current;
             if (lessonManager?.managerInstance?.handleLessonFilterChange) {
                 lessonManager.managerInstance.handleLessonFilterChange();
             }
         } else {
-            select.value = ''; this.state.selectedSubjectIdForLesson = null;
+            select.value = '';
+            this.state.selectedSubjectIdForLesson = null;
             if (lessonManager?.managerInstance?.handleLessonFilterChange) {
                 lessonManager.managerInstance.handleLessonFilterChange();
             }
         }
     },
 
-    // 리포트 업로드 뷰 초기화 (반 목록 채우기)
+    /* --------------------------
+       리포트 화면 초기화 (드롭다운 채우기 등)
+    ---------------------------*/
     initReportUploadView() {
-        const select = this.elements.reportClassSelect;
-        if (!select) return;
+        const classSelect = this.elements.reportClassSelect;
+        if (!classSelect) return;
 
-        // 상태 초기화
+        classSelect.innerHTML = '<option value="">-- 반 선택 --</option>';
+
+        if (!this.state.classes || this.state.classes.length === 0) {
+            classSelect.innerHTML += '<option value="" disabled>등록된 반 없음</option>';
+        } else {
+            const sorted = [...this.state.classes].sort((a, b) => {
+                const an = a.name || '';
+                const bn = b.name || '';
+                return an.localeCompare(bn);
+            });
+
+            sorted.forEach(cls => {
+                // value에 Firestore 문서 ID를 넣는 게 제일 안정적
+                classSelect.innerHTML += `<option value="${cls.id}">${cls.name || '(이름 없음)'}</option>`;
+            });
+        }
+
+        // 초기화
         this.state.selectedReportClassId = null;
         this.state.selectedReportDate = null;
         this.state.uploadedReports = [];
 
-        select.innerHTML = '<option value="">-- 반 선택 --</option>';
-        if (!this.state.classes || this.state.classes.length === 0) {
-            select.innerHTML += '<option value="" disabled>등록된 반 없음</option>';
-            return;
-        }
-        // 클래스 목록을 이름순으로 정렬하여 표시
-        const sortedClasses = [...this.state.classes].sort((a, b) => a.name.localeCompare(b.name));
-        sortedClasses.forEach(cls => {
-            select.innerHTML += `<option value="${cls.id}">${cls.name}</option>`;
-        });
+        if (this.elements.reportFilesInput) this.elements.reportFilesInput.value = '';
+        if (this.elements.reportUploadStatus) this.elements.reportUploadStatus.textContent = '';
 
-        // 입력 필드 및 상태 초기화
-        if(this.elements.reportDateInput) this.elements.reportDateInput.value = '';
-        if(this.elements.reportFilesInput) this.elements.reportFilesInput.value = '';
-        if(this.elements.reportUploadStatus) this.elements.reportUploadStatus.textContent = '';
-        // ✨ 목록 영역 초기화
         this.renderReportFileList([]);
     },
 
-    // 리포트 업로드 처리
+    /* --------------------------
+       리포트 파일 업로드
+    ---------------------------*/
     async handleReportUpload() {
         const dateInput = this.elements.reportDateInput;
         const classSelect = this.elements.reportClassSelect;
@@ -491,153 +622,213 @@ const AdminApp = {
 
         if (!dateInput || !classSelect || !filesInput || !statusEl || !uploadBtn) return;
 
-        const testDateRaw = dateInput.value; // YYYY-MM-DD
-        const classId = classSelect.value;
+        const testDateRaw = dateInput.value; // "YYYY-MM-DD"
+        let classId = classSelect.value;     // 보통은 문서 ID여야 하는데, 혹시 반 이름일 수도 있으므로 아래에서 보정
         const files = filesInput.files;
+
+        // value가 "중3화목" 같은 이름일 수도 있으므로 문서ID로 다시 찾아줌
+        const optText = classSelect.options[classSelect.selectedIndex]?.text?.trim();
+        const byName = (nm) =>
+            this.state.classes?.find(c => (c.name || '').trim() === (nm || '').trim());
+        if (!classId || classId.length < 10) { // Firestore 랜덤 ID는 보통 꽤 김
+            const hit = byName(classId) || byName(optText);
+            if (hit?.id) classId = hit.id;
+        }
 
         if (!testDateRaw || !classId || !files || files.length === 0) {
             showToast("시험 날짜, 반, 파일을 모두 선택해주세요.");
             return;
         }
 
-        // 날짜 형식을 YYYYMMDD로 변환
-        const testDate = testDateRaw.replace(/-/g, '');
+        const testDate = testDateRaw.replace(/-/g, ''); // "YYYYMMDD"
 
         uploadBtn.disabled = true;
         statusEl.textContent = `파일 ${files.length}개 업로드 시작 중...`;
         let successCount = 0;
         let failCount = 0;
 
-        // Promise.all을 사용하여 병렬 업로드 시도 (Storage는 병렬 처리 가능)
-        const uploadPromises = [];
+        const jobs = [];
         for (const file of files) {
-            uploadPromises.push(
-                reportManager.uploadReport(file, classId, testDate)
-                    .then(success => {
-                        if (success) successCount++;
+            jobs.push(
+                reportManager
+                    .uploadReport(file, classId, testDate)
+                    .then(ok => {
+                        if (ok) successCount++;
                         else failCount++;
-                        statusEl.textContent = `업로드 진행 중... (${successCount + failCount}/${files.length}, 성공: ${successCount}, 실패: ${failCount})`;
+                        statusEl.textContent =
+                            `업로드 진행 중... (${successCount + failCount}/${files.length}, 성공:${successCount}, 실패:${failCount})`;
                     })
             );
         }
 
         try {
-            await Promise.all(uploadPromises);
-            statusEl.textContent = `업로드 완료: 총 ${files.length}개 중 ${successCount}개 성공, ${failCount}개 실패.`;
-            showToast(`리포트 업로드 완료 (성공: ${successCount}, 실패: ${failCount})`, failCount > 0);
-            filesInput.value = ''; // 파일 입력 초기화
-            // ✨ 업로드 성공 후 파일 목록 새로고침
+            await Promise.all(jobs);
+
+            statusEl.textContent =
+                `업로드 완료: 총 ${files.length}개 중 ${successCount}개 성공, ${failCount}개 실패.`;
+            showToast(
+                `리포트 업로드 완료 (성공:${successCount}, 실패:${failCount})`,
+                failCount > 0
+            );
+
+            filesInput.value = '';
+
             await this.loadAndRenderUploadedReports();
-        } catch (error) {
-            // 개별 업로드 실패는 이미 처리되었으므로 여기서는 최종 상태만 업데이트
-            console.error("Error during parallel upload:", error); // 전체 실패 시 추가 로그
-            statusEl.textContent = `업로드 중 오류 발생. 일부 파일 실패 가능성 있음. (성공: ${successCount}, 실패: ${failCount})`;
+        } catch (e) {
+            console.error(e);
+            statusEl.textContent =
+                `업로드 중 오류. (성공:${successCount}, 실패:${failCount})`;
             showToast("리포트 업로드 중 오류 발생", true);
         } finally {
             uploadBtn.disabled = false;
         }
     },
 
-    // --- ✨ 추가된 함수들 시작 ---
-
-    /**
-     * 선택된 날짜와 반의 업로드된 리포트 파일 목록을 로드하고 화면에 표시합니다.
-     */
+    /* --------------------------
+       리포트 목록 불러오기
+    ---------------------------*/
     async loadAndRenderUploadedReports() {
         const dateInput = this.elements.reportDateInput;
         const classSelect = this.elements.reportClassSelect;
         const listContainer = this.elements.uploadedReportsList;
-
         if (!dateInput || !classSelect || !listContainer) return;
 
-        const testDateRaw = dateInput.value;
-        const classId = classSelect.value;
-
-        // 날짜나 반이 선택되지 않았으면 목록 초기화
-        if (!testDateRaw || !classId) {
+        const testDateRaw = dateInput.value; // "YYYY-MM-DD"
+        let classId = classSelect.value;     // 문서 ID ideally. 아니면 아래에서 이름→ID 보정
+        if (!testDateRaw) {
             this.state.selectedReportClassId = null;
             this.state.selectedReportDate = null;
             this.state.uploadedReports = [];
-            this.renderReportFileList([]); // 빈 목록으로 렌더링
+            this.renderReportFileList([]);
             return;
         }
 
-        const testDate = testDateRaw.replace(/-/g, ''); // YYYYMMDD
+        const optText = classSelect.options[classSelect.selectedIndex]?.text?.trim();
+        const byName = (nm) =>
+            this.state.classes?.find(c => (c.name || '').trim() === (nm || '').trim());
+        if (!classId || classId.length < 10) {
+            const hit = byName(classId) || byName(optText);
+            if (hit?.id) classId = hit.id;
+        }
+
+        if (!classId) {
+            this.state.selectedReportClassId = null;
+            this.state.selectedReportDate = null;
+            this.state.uploadedReports = [];
+            this.renderReportFileList([]);
+            return;
+        }
+
+        const testDate = testDateRaw.replace(/-/g, ''); // "YYYYMMDD"
         this.state.selectedReportClassId = classId;
         this.state.selectedReportDate = testDate;
 
-        listContainer.innerHTML = '<p class="text-sm text-slate-400">파일 목록 로딩 중...</p>'; // 로딩 표시
+        listContainer.innerHTML =
+            '<p class="text-sm text-slate-400">파일 목록 로딩 중...</p>';
 
-        const reports = await reportManager.listReportsForDateAndClass(classId, testDate);
+        // reportManager.listReportsForDateAndClass(classId, testDate)
+        // -> [{ fileName, url }, ...] 형태 기대
+        const rawReports = await reportManager.listReportsForDateAndClass(
+            classId,
+            testDate
+        );
 
-        if (reports === null) { // 오류 발생 시
-            listContainer.innerHTML = '<p class="text-sm text-red-500">파일 목록 로딩 실패</p>';
+        if (!rawReports) {
+            listContainer.innerHTML =
+                '<p class="text-sm text-red-500">파일 목록 로딩 실패</p>';
             this.state.uploadedReports = [];
-        } else {
-            this.state.uploadedReports = reports;
-            this.renderReportFileList(reports); // 목록 렌더링
+            return;
         }
+
+        // 삭제용 storagePath 붙여서 가공
+        const mapped = rawReports.map(r => ({
+            fileName: r.fileName,
+            url: r.url || '',
+            // listReportsForDateAndClass가 찾은 폴더 이름을 사용해야 함
+            // 하지만 listReportsForDateAndClass의 내부 구현에서 어떤 폴더를 사용했는지 알 수 없으므로,
+            // 안전하게 현재 selectedReportDate(testDate)를 사용하고,
+            // getReportDownloadUrl/deleteReport가 후보 폴더를 순회하도록 설계했으므로
+            // 여기서는 정규화된 testDate를 사용함.
+            storagePath: `reports/${classId}/${testDate}/${r.fileName}`,
+        }));
+
+        this.state.uploadedReports = mapped;
+        this.renderReportFileList(mapped);
     },
 
-    /**
-     * 가져온 리포트 파일 목록을 HTML로 렌더링합니다.
-     * @param {Array<{fileName: string, storagePath: string}>} reports - 표시할 리포트 파일 정보 배열
-     */
+    /* --------------------------
+       리포트 목록 렌더링
+    ---------------------------*/
     renderReportFileList(reports) {
         const listContainer = this.elements.uploadedReportsList;
         if (!listContainer) return;
 
-        listContainer.innerHTML = ''; // 기존 내용 지우기
+        listContainer.innerHTML = '';
 
         if (!reports || reports.length === 0) {
-            listContainer.innerHTML = '<p class="text-sm text-slate-400">해당 날짜와 반에 업로드된 리포트가 없습니다.</p>';
+            listContainer.innerHTML =
+                '<p class="text-sm text-slate-400 mt-6">해당 날짜와 반에 업로드된 리포트가 없습니다.</p>';
             return;
         }
 
-        const listTitle = document.createElement('h3');
-        listTitle.className = 'text-lg font-semibold text-slate-700 mb-2 mt-4 border-t pt-4';
-        listTitle.textContent = `업로드된 리포트 (${reports.length}개)`;
-        listContainer.appendChild(listTitle);
+        const header = document.createElement('h3');
+        header.className =
+            'text-lg font-semibold text-slate-700 mb-2 mt-8 border-t pt-4';
+        header.textContent = `업로드된 리포트 (${reports.length}개)`;
+        listContainer.appendChild(header);
 
         const ul = document.createElement('ul');
         ul.className = 'space-y-2';
+
         reports.forEach(report => {
             const li = document.createElement('li');
-            li.className = 'p-2 border rounded-md flex justify-between items-center text-sm bg-white';
+            li.className =
+                'p-2 border rounded-md flex justify-between items-center text-sm bg-white';
+
             li.innerHTML = `
-                <span>${report.fileName}</span>
-                <button
-                    class="delete-report-btn text-red-500 hover:text-red-700 text-xs font-bold"
-                    data-path="${report.storagePath}"
-                    data-filename="${report.fileName}"
-                >삭제</button>
+                <span class="truncate mr-2">${report.fileName}</span>
+                <div class="flex-shrink-0 flex gap-2">
+                    <button
+                        class="view-report-btn text-blue-500 hover:text-blue-700 text-xs font-bold"
+                        data-url="${report.url}"
+                    >보기/다운로드</button>
+                    <button
+                        class="delete-report-btn text-red-500 hover:text-red-700 text-xs font-bold"
+                        data-path="${report.storagePath}"
+                        data-filename="${report.fileName}"
+                    >삭제</button>
+                </div>
             `;
+
             ul.appendChild(li);
         });
+
         listContainer.appendChild(ul);
     },
 
-    /**
-     * 삭제 버튼 클릭 시 확인 후 reportManager의 삭제 함수를 호출하고 목록을 새로고침합니다.
-     * @param {string} storagePath - 삭제할 파일의 Storage 경로
-     * @param {string} fileName - 삭제할 파일 이름 (확인 메시지용)
-     */
+    /* --------------------------
+       리포트 삭제
+    ---------------------------*/
     async handleDeleteReport(storagePath, fileName) {
-        if (confirm(`'${fileName}' 리포트 파일을 정말 삭제하시겠습니까?`)) {
-            const success = await reportManager.deleteReport(storagePath);
-            if (success) {
-                // 삭제 성공 시 현재 목록에서 해당 항목 제거 또는 목록 새로고침
-                // 여기서는 목록 새로고침 선택
-                await this.loadAndRenderUploadedReports();
-            }
+        if (!storagePath) return;
+        const ok = confirm(`'${fileName}' 리포트 파일을 정말 삭제하시겠습니까?`);
+        if (!ok) return;
+
+        // reportManager.deleteReport 호출하여 파일 삭제
+        const success = await reportManager.deleteReport(storagePath);
+        if (success) {
+            showToast("삭제 완료.", false);
+            // 삭제 후 목록 새로고침
+            this.loadAndRenderUploadedReports();
+        } else {
+            showToast("삭제 중 오류가 발생했습니다. (파일이 없거나 권한 부족)", true);
         }
-    }
-    // --- ✨ 추가된 함수들 끝 ---
+    },
+};
 
-}; // AdminApp 객체 끝
-
+/* 앱 부트 */
 document.addEventListener('DOMContentLoaded', () => {
     AdminApp.init();
 });
 
-export default AdminApp;
+export { AdminApp };

@@ -1,256 +1,445 @@
-// src/shared/reportManager.js
-import { ref, uploadBytes, getDownloadURL, listAll, deleteObject } from "firebase/storage"; // deleteObject 추가
-import { storage } from './firebase.js';
-import { showToast } from './utils.js';
+// shared/reportManager.js
+//
+// 공통 보고서(리포트) 관리 유틸
+//
+// 학생 화면:
+//   await reportManager.listStudentReports(classId, studentName)
+//   -> {
+//        "20251025": [
+//          { title: "...", fileName: "...pdf", url: "https://..." },
+//          ...
+//        ],
+//      }
+//
+// 선생님/관리자 화면 (teacherApp):
+//   await reportManager.listReportsForDateAndClass(classId, dateStr)
+//   -> [
+//        { title: "...", fileName: "...pdf", url: "https://..." },
+//        ...
+//      ]
+//
+//   await reportManager.getReportDownloadUrl(classId, dateStr, fileName)
+//   -> "https://...." (해당 파일의 직접 다운로드/보기 URL)
+//
+// Storage 구조 가정:
+//   reports/{classId}/{dateStr}/파일.pdf
+// 예:
+//   reports/khfCgNHgcWGg9ahNhrRn/20251025/중3화목_10월18일_김가은_리포트.pdf
+//
+// storage.rules 에서는 reports/{classId}/ 이하 read 허용돼 있어야 한다
+// (우리가 rules에서 로그인한 사용자 read 허용으로 열어둔 상태)
 
-// 파일 이름 형식: "{자유형식}_{학생이름}_리포트.pdf"
-// 예: "고1월수_정희진_리포트.pdf", "중3A_박진제_리포트.pdf"
-// 날짜 정보는 더 이상 파일명에서 추출하지 않음
-const reportFilenameRegex = /.*_([^_]+)_리포트\.pdf$/;
+import { listAll, getDownloadURL, ref, uploadBytes, deleteObject } from "firebase/storage";
+import { storage } from "./firebase.js";
+
+// --------------------------------------------------
+// 유틸: 학생 이름 비교용 (공백 제거해서 비교 편하게)
+// --------------------------------------------------
+function normalizeName(str) {
+  if (!str) return "";
+  return str.replace(/\s+/g, "").trim();
+}
+
+// --------------------------------------------------
+// 유틸: 날짜 문자열 정규화
+// "2025-10-25" -> "20251025"
+// "20251025"   -> "20251025"
+// null/빈값    -> ""
+// --------------------------------------------------
+function normalizeDateFolderName(dateStr) {
+  if (!dateStr) return "";
+  return dateStr.replace(/[^0-9]/g, ""); // 숫자만 남김
+}
+
+// --------------------------------------------------
+// 내부 유틸: 특정 storage 경로(folderRef) 아래 pdf 파일들을
+// [{ title, fileName, url }, ...] 로 변환.
+// 각 항목의 url은 getDownloadURL()로 만든 실제 접근 URL.
+// --------------------------------------------------
+async function listFilesInFolder(folderRef) {
+  const results = [];
+  try {
+    const listRes = await listAll(folderRef);
+
+    for (const itemRef of listRes.items) {
+      const fileName = itemRef.name;
+
+      let url = "";
+      try {
+        url = await getDownloadURL(itemRef);
+      } catch (err) {
+        console.warn(
+          "[ReportManager] getDownloadURL failed for",
+          fileName,
+          err
+        );
+      }
+
+      const title =
+        fileName
+          .replace(/\.pdf$/i, "")
+          .replace(/_/g, " ") || fileName;
+
+      results.push({
+        title,
+        fileName,
+        url,
+      });
+    }
+  } catch (err) {
+    console.warn("[ReportManager] listFilesInFolder error:", err);
+  }
+  return results;
+}
 
 export const reportManager = {
+  /**
+   * [학생 화면용]
+   * 특정 반(classId), 특정 학생 이름(studentName)에 해당하는
+   * 모든 리포트를 날짜별로 묶어서 반환.
+   *
+   * return 예:
+   * {
+   * "20251025": [
+   * {
+   * title: "중3화목 10월18일 김가은 리포트",
+   * fileName: "중3화목_10월18일_김가은_리포트.pdf",
+   * url: "https://..."
+   * }
+   * ],
+   * "기타": [...]
+   * }
+   */
+  async listStudentReports(classId, studentName) {
+    const groupedByDate = {};
+    const basePath = `reports/${classId}`;
+    const normStudent = normalizeName(studentName);
 
-    /**
-     * 파일 이름에서 학생 이름을 추출합니다.
-     * @param {string} fileName - 원본 파일 이름
-     * @returns {string|null} - 학생 이름 또는 null
-     */
-    parseReportFilenameForStudentName(fileName) {
-        const match = fileName.match(reportFilenameRegex);
-        if (match && match.length >= 2) {
-            const studentName = match[1];
-            return studentName;
-        }
-        console.warn(`[ReportManager] Failed to parse student name from filename: ${fileName}`);
-        return null;
-    },
+    console.log(
+      "[ReportManager] Listing reports for student:",
+      studentName,
+      "in class:",
+      classId
+    );
 
-    /**
-     * Firebase Storage 경로를 생성합니다.
-     * @param {string} classId - 반 ID
-     * @param {string} testDate - 시험 날짜 (YYYYMMDD)
-     * @param {string} fileName - 원본 파일 이름
-     * @returns {string|null} - Storage 경로
-     */
-    getReportStoragePath(classId, testDate, fileName) {
-        if (!classId || !testDate || !fileName) {
-            console.error("[ReportManager] Missing required info for storage path generation.");
-            return null;
-        }
-        // 날짜 형식 검증 (YYYYMMDD) - 간단하게 길이만 체크
-        if (testDate.length !== 8 || !/^\d+$/.test(testDate)) {
-             console.error(`[ReportManager] Invalid testDate format: ${testDate}. Expected YYYYMMDD.`);
-             return null;
-        }
-        return `reports/${classId}/${testDate}/${fileName}`;
-    },
+    try {
+      // /reports/{classId} 아래 하위(날짜 폴더) + 루트 파일들 스캔
+      const classRef = ref(storage, basePath);
+      const classList = await listAll(classRef);
 
-    /**
-     * 시험 결과 리포트 PDF 파일을 업로드합니다.
-     * @param {File} file - 업로드할 파일 객체
-     * @param {string} classId - 대상 반 ID
-     * @param {string} testDate - 시험 날짜 (YYYYMMDD 형식)
-     * @returns {Promise<boolean>} - 업로드 성공 여부
-     */
-    async uploadReport(file, classId, testDate) {
-        if (!file || !classId || !testDate) {
-            showToast("업로드 정보(파일, 반, 날짜)가 부족합니다.", true);
-            return false;
-        }
+      //
+      // 1) 날짜 폴더들 순회
+      //
+      for (const datePrefixRef of classList.prefixes) {
+        // ex) "20251025" 또는 "2025-10-25"
+        const rawDateFolderName = datePrefixRef.name;
+        // 화면에 묶을 key는 숫자만 버전(없으면 원본)
+        const normalizedDateKey =
+          normalizeDateFolderName(rawDateFolderName) || rawDateFolderName;
 
-        // 파일 이름 유효성 검사 (학생 이름 추출 가능한지)
-        const studentName = this.parseReportFilenameForStudentName(file.name);
-        if (!studentName) {
-            showToast(`파일 이름 형식이 올바르지 않습니다: ${file.name}. (_이름_리포트.pdf 형식 필요)`, true);
-            return false;
-        }
+        const dateList = await listAll(datePrefixRef);
 
-        const storagePath = this.getReportStoragePath(classId, testDate, file.name);
-        if (!storagePath) {
-             showToast(`업로드 경로 생성 실패 (날짜 형식: ${testDate})`, true);
-             return false;
-        }
+        for (const itemRef of dateList.items) {
+          const fileName = itemRef.name; // "중3화목_10월18일_김가은_리포트.pdf"
+          const normFile = normalizeName(fileName);
 
-        const fileRef = ref(storage, storagePath);
-
-        try {
-            console.log(`[ReportManager] Uploading ${file.name} to ${storagePath}`);
-            await uploadBytes(fileRef, file);
-            console.log(`[ReportManager] Successfully uploaded ${file.name}`);
-            return true;
-        } catch (error) {
-            console.error(`[ReportManager] Error uploading ${file.name}:`, error);
-            showToast(`파일 업로드 실패 (${file.name}): ${error.message}`, true);
-            if (error.code === 'storage/unauthorized') {
-                 showToast("업로드 권한이 없습니다. Storage 규칙을 확인하세요.", true);
+          // 파일명에 학생 이름이 들어가 있는지 (공백 제거 버전 포함)
+          if (
+            normFile.includes(normStudent) ||
+            fileName.includes(studentName)
+          ) {
+            let url = "";
+            try {
+              url = await getDownloadURL(itemRef);
+            } catch (err) {
+              console.warn(
+                "[ReportManager] getDownloadURL failed for",
+                fileName,
+                err
+              );
             }
-            return false;
-        }
-    },
 
-    /**
-     * 특정 학생의 모든 리포트 목록을 가져옵니다. (날짜별 그룹화)
-     * @param {string} classId - 학생의 반 ID
-     * @param {string} studentName - 학생 이름
-     * @returns {Promise<object|null>} - { 'YYYYMMDD': [{ fileName: string, storagePath: string, downloadUrl?: string }], ... } 또는 null
-     */
-    async listStudentReports(classId, studentName) {
-        if (!classId || !studentName) {
-            console.warn("[ReportManager] Cannot list reports: Missing classId or studentName.");
-            return null;
-        }
-        console.log(`[ReportManager] Listing reports for student: ${studentName} in class: ${classId}`);
+            const title =
+              fileName
+                .replace(/\.pdf$/i, "")
+                .replace(/_/g, " ") || fileName;
 
-        const reportsByDate = {};
-        const classReportBaseRef = ref(storage, `reports/${classId}`);
+            console.log(
+              "[ReportManager] Found report:",
+              fileName,
+              "for date folder:",
+              rawDateFolderName
+            );
 
-        try {
-            const dateFolders = await listAll(classReportBaseRef);
-
-            // 각 날짜 폴더 순회 (날짜 폴더 이름이 YYYYMMDD 형식이라고 가정)
-            for (const dateFolderRef of dateFolders.prefixes) {
-                const testDate = dateFolderRef.name; // YYYYMMDD
-                if (testDate.length !== 8 || !/^\d+$/.test(testDate)) {
-                    console.warn(`[ReportManager] Skipping invalid date folder: ${testDate}`);
-                    continue; // 유효하지 않은 날짜 폴더는 건너뜀
-                }
-
-                const dateFiles = await listAll(dateFolderRef);
-
-                // 해당 날짜 폴더 내 파일들 검사
-                for (const fileRef of dateFiles.items) {
-                    const fileName = fileRef.name;
-                    // 파일 이름에서 학생 이름 파싱 시도
-                    const parsedStudentName = this.parseReportFilenameForStudentName(fileName);
-                    if (parsedStudentName === studentName) {
-                        if (!reportsByDate[testDate]) {
-                             reportsByDate[testDate] = [];
-                        }
-                        reportsByDate[testDate].push({
-                            fileName: fileName,
-                            storagePath: fileRef.fullPath,
-                            // downloadUrl은 필요 시점에 가져오도록 변경 (성능)
-                        });
-                         console.log(`[ReportManager] Found report: ${fileName} for date: ${testDate}`);
-                    }
-                }
+            if (!groupedByDate[normalizedDateKey]) {
+              groupedByDate[normalizedDateKey] = [];
             }
-             console.log(`[ReportManager] Found reports grouped by date:`, reportsByDate);
-            return reportsByDate;
-
-        } catch (error) {
-            console.error(`[ReportManager] Error listing reports for ${studentName}:`, error);
-            if (error.code === 'storage/unauthorized') {
-                showToast("리포트 목록을 볼 권한이 없습니다. Storage 규칙을 확인하세요.", true);
-            } else if (error.code === 'storage/object-not-found') {
-                console.log(`[ReportManager] No reports found for class ${classId}.`); // 폴더가 없을 수 있음
-                return {}; // 빈 객체 반환
-            } else {
-                showToast("리포트 목록 로딩 중 오류 발생", true);
-            }
-            return null;
-        }
-    },
-
-     /**
-     * Storage 경로를 사용하여 다운로드 URL을 가져옵니다.
-     * @param {string} storagePath - Firebase Storage 전체 경로
-     * @returns {Promise<string|null>} - 다운로드 URL 또는 null
-     */
-     async getReportDownloadUrl(storagePath) {
-        if (!storagePath) return null;
-        try {
-            const fileRef = ref(storage, storagePath);
-            const url = await getDownloadURL(fileRef);
-            return url;
-        } catch (error) {
-            console.error(`[ReportManager] Error getting download URL for ${storagePath}:`, error);
-            if (error.code === 'storage/object-not-found') {
-                showToast("리포트 파일을 찾을 수 없습니다.", true);
-            } else if (error.code === 'storage/unauthorized') {
-                showToast("리포트 파일 접근 권한이 없습니다.", true);
-            } else {
-                showToast("리포트 URL을 가져오는 데 실패했습니다.", true);
-            }
-            return null;
-        }
-    },
-
-    // --- ✨ 추가된 함수 시작 ---
-
-    /**
-     * 특정 반과 날짜의 모든 리포트 파일 목록을 가져옵니다. (관리자/교사용)
-     * @param {string} classId - 반 ID
-     * @param {string} testDate - 시험 날짜 (YYYYMMDD)
-     * @returns {Promise<Array<{fileName: string, storagePath: string}>|null>} - 파일 정보 배열 또는 오류 시 null
-     */
-    async listReportsForDateAndClass(classId, testDate) {
-        if (!classId || !testDate) {
-            console.warn("[ReportManager] Cannot list reports: Missing classId or testDate.");
-            return []; // 빈 배열 반환
-        }
-        // 날짜 형식 검증
-        if (testDate.length !== 8 || !/^\d+$/.test(testDate)) {
-             console.error(`[ReportManager] Invalid testDate format: ${testDate}. Expected YYYYMMDD.`);
-             return null; // 오류 표시
-        }
-        console.log(`[ReportManager] Listing all reports for class: ${classId}, date: ${testDate}`);
-
-        const dateFolderRef = ref(storage, `reports/${classId}/${testDate}`);
-        const reportList = [];
-
-        try {
-            const listResult = await listAll(dateFolderRef);
-            listResult.items.forEach((itemRef) => {
-                reportList.push({
-                    fileName: itemRef.name,
-                    storagePath: itemRef.fullPath,
-                });
+            groupedByDate[normalizedDateKey].push({
+              title,
+              fileName,
+              url,
             });
-            console.log(`[ReportManager] Found ${reportList.length} reports.`);
-            return reportList;
-        } catch (error) {
-            console.error(`[ReportManager] Error listing reports for ${classId}/${testDate}:`, error);
-            if (error.code === 'storage/object-not-found') {
-                console.log(`[ReportManager] No reports folder found for ${classId}/${testDate}.`);
-                return []; // 폴더 없으면 빈 배열 반환
-            } else if (error.code === 'storage/unauthorized') {
-                 showToast("리포트 목록 조회 권한이 없습니다. Storage 규칙을 확인하세요.", true);
-            } else {
-                 showToast("리포트 목록 조회 중 오류 발생", true);
-            }
-            return null; // 그 외 오류는 null 반환
+          }
         }
-    },
+      }
 
-    /**
-     * Storage 경로를 사용하여 리포트 파일을 삭제합니다.
-     * @param {string} storagePath - Firebase Storage 전체 경로
-     * @returns {Promise<boolean>} - 삭제 성공 여부
-     */
-    async deleteReport(storagePath) {
-        if (!storagePath) {
-            showToast("삭제할 파일 경로가 없습니다.", true);
-            return false;
+      //
+      // 2) /reports/{classId} 루트 바로 아래 파일도 커버 (날짜 폴더 없이 올린 경우)
+      //
+      if (classList.items && classList.items.length > 0) {
+        for (const itemRef of classList.items) {
+          const fileName = itemRef.name;
+          const normFile = normalizeName(fileName);
+
+          if (
+            normFile.includes(normStudent) ||
+            fileName.includes(studentName)
+          ) {
+            let url = "";
+            try {
+              url = await getDownloadURL(itemRef);
+            } catch (err) {
+              console.warn(
+                "[ReportManager] getDownloadURL failed (root)",
+                fileName,
+                err
+              );
+            }
+
+            const title =
+              fileName
+                .replace(/\.pdf$/i, "")
+                .replace(/_/g, " ") || fileName;
+
+            const fallbackDate = "기타";
+
+            console.log(
+              "[ReportManager] Found report (no subfolder):",
+              fileName,
+              "as date:",
+              fallbackDate
+            );
+
+            if (!groupedByDate[fallbackDate]) {
+              groupedByDate[fallbackDate] = [];
+            }
+            groupedByDate[fallbackDate].push({
+              title,
+              fileName,
+              url,
+            });
+          }
         }
-        console.log(`[ReportManager] Attempting to delete report: ${storagePath}`);
-        const fileRef = ref(storage, storagePath);
-        try {
-            await deleteObject(fileRef);
-            console.log(`[ReportManager] Successfully deleted ${storagePath}`);
-            showToast("리포트 파일 삭제 완료.", false);
-            return true;
-        } catch (error) {
-            console.error(`[ReportManager] Error deleting ${storagePath}:`, error);
-             if (error.code === 'storage/object-not-found') {
-                 showToast("삭제할 파일을 찾을 수 없습니다.", true);
-             } else if (error.code === 'storage/unauthorized') {
-                 showToast("파일 삭제 권한이 없습니다. Storage 규칙을 확인하세요.", true);
-             } else {
-                 showToast(`파일 삭제 실패: ${error.message}`, true);
-             }
-            return false;
-        }
+      }
+
+      console.log(
+        "[ReportManager] Final groupedByDate:",
+        groupedByDate
+      );
+    } catch (err) {
+      console.error(
+        "[ReportManager] Error listing reports for",
+        studentName,
+        ":",
+        err
+      );
+      return {};
     }
-    // --- ✨ 추가된 함수 끝 ---
+
+    return groupedByDate;
+  },
+
+  /**
+   * [교사/관리자 화면용 - 목록 불러오기]
+   *
+   * teacherApp에서 이렇게 부르고 있음:
+   * reportManager.listReportsForDateAndClass(classId, dateStr)
+   *
+   * classId 예: "khfCgNHgcWGg9ahNhrRn"
+   * dateStr  예: "2025-10-25" (input[type="date"]) 또는 "20251025"
+   *
+   * 실제 Storage 폴더명은 하이픈이 없을 수도 있고 있을 수도 있으므로
+   * - 원본 dateStr
+   * - 숫자만 남긴 dateStr
+   * 두 후보를 순서대로 시도해서
+   * 첫 번째로 실제 파일이 존재하는 폴더의 파일 리스트를 반환.
+   *
+   * return 예:
+   * [
+   * {
+   * title: "중3화목 10월18일 김가은 리포트",
+   * fileName: "중3화목_10월18일_김가은_리포트.pdf",
+   * url: "https://..."
+   * },
+   * ...
+   * ]
+   */
+  async listReportsForDateAndClass(classId, dateStr) {
+    console.log(
+      "[ReportManager] listReportsForDateAndClass called with:",
+      classId,
+      dateStr
+    );
+
+    // dateStr 후보들:
+    //   - 원본 그대로 (예: "2025-10-25")
+    //   - 숫자만 남긴 버전 (예: "20251025")
+    const candidates = [];
+    if (dateStr) {
+      candidates.push(dateStr);
+      const normalized = normalizeDateFolderName(dateStr);
+      if (normalized && normalized !== dateStr) {
+        candidates.push(normalized);
+      }
+    }
+
+    // 중복 제거
+    const uniqueFolders = [...new Set(candidates)].filter(Boolean);
+
+    for (const folderName of uniqueFolders) {
+      const folderPath = `reports/${classId}/${folderName}`;
+      const folderRef = ref(storage, folderPath);
+
+      const files = await listFilesInFolder(folderRef);
+
+      if (files.length > 0) {
+        console.log(
+          "[ReportManager] Found reports in folder:",
+          folderName,
+          files
+        );
+        return files;
+      } else {
+        console.log(
+          "[ReportManager] No reports found in folder:",
+          folderName
+        );
+      }
+    }
+
+    console.log(
+      "[ReportManager] No reports found for any candidate folders:",
+      uniqueFolders
+    );
+    return [];
+  },
+
+  /**
+   * [교사/관리자 화면용 - 단일 파일 URL 얻기]
+   *
+   * teacherApp 쪽 "보기/다운로드" 버튼은 예전 코드대로
+   * reportManager.getReportDownloadUrl(classId, dateStr, fileName)
+   * 이런 식으로 부르고 있을 가능성이 높다.
+   *
+   * 이 함수는 위와 같은 인자를 받아서
+   * Storage 경로를 찾아 getDownloadURL()로 실제 열 수 있는 URL을 리턴한다.
+   *
+   * - dateStr: "2025-10-25" 또는 "20251025"
+   * => 여기서도 위와 동일하게 원본 / normalize 둘 다 시도
+   *
+   * resolve 성공 시: URL(string)
+   * 못 찾으면: null
+   */
+  async getReportDownloadUrl(classId, dateStr, fileName) {
+    console.log(
+      "[ReportManager] getReportDownloadUrl called with:",
+      classId,
+      dateStr,
+      fileName
+    );
+
+    if (!classId || !dateStr || !fileName) {
+      console.warn(
+        "[ReportManager] getReportDownloadUrl missing args",
+        classId,
+        dateStr,
+        fileName
+      );
+      return null;
+    }
+
+    // date 후보들
+    const candidates = [];
+    candidates.push(dateStr);
+    const normalized = normalizeDateFolderName(dateStr);
+    if (normalized && normalized !== dateStr) {
+      candidates.push(normalized);
+    }
+
+    const uniqueFolders = [...new Set(candidates)].filter(Boolean);
+
+    for (const folderName of uniqueFolders) {
+      const filePath = `reports/${classId}/${folderName}/${fileName}`;
+      const fileRef = ref(storage, filePath);
+
+      try {
+        const url = await getDownloadURL(fileRef);
+        console.log(
+          "[ReportManager] getReportDownloadUrl resolved:",
+          filePath,
+          url
+        );
+        return url;
+      } catch (err) {
+        // 못 찾으면 다음 후보 폴더로 계속 시도
+        console.warn(
+          "[ReportManager] getReportDownloadUrl failed for",
+          filePath,
+          err
+        );
+      }
+    }
+
+    console.warn(
+      "[ReportManager] getReportDownloadUrl: no matching file found for any candidate folders"
+    );
+    return null;
+  },
+
+  /**
+   * [관리자 화면용 - 리포트 업로드]
+   *
+   * @param {File} file 업로드할 파일 객체
+   * @param {string} classId 반 문서 ID
+   * @param {string} dateStr 날짜 문자열 ("YYYYMMDD")
+   * @returns {Promise<boolean>} 성공 여부
+   */
+  async uploadReport(file, classId, dateStr) {
+    const filePath = `reports/${classId}/${dateStr}/${file.name}`;
+    const fileRef = ref(storage, filePath);
+
+    console.log(`[ReportManager] Attempting to upload: ${filePath}`);
+
+    try {
+      await uploadBytes(fileRef, file);
+      console.log(`[ReportManager] Upload successful: ${filePath}`);
+      return true;
+    } catch (err) {
+      console.error(`[ReportManager] Upload failed for ${filePath}:`, err);
+      return false;
+    }
+  },
+
+  /**
+   * [관리자 화면용 - 리포트 삭제]
+   *
+   * @param {string} storagePath 삭제할 파일의 전체 Storage 경로 (예: reports/classId/dateStr/fileName.pdf)
+   * @returns {Promise<boolean>} 성공 여부
+   */
+  async deleteReport(storagePath) {
+    if (!storagePath) return false;
+
+    console.log(`[ReportManager] Attempting to delete: ${storagePath}`);
+    const fileRef = ref(storage, storagePath);
+
+    try {
+      await deleteObject(fileRef); // Cloud Storage에서 파일 삭제
+      console.log(`[ReportManager] Delete successful: ${storagePath}`);
+      return true;
+    } catch (err) {
+      // 파일이 없거나(not-found) 권한 오류(permission-denied) 등 발생 가능
+      console.error(`[ReportManager] Delete failed for ${storagePath}:`, err);
+      return false;
+    }
+  },
 };

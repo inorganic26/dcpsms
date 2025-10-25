@@ -5,14 +5,15 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { db, storage } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
-export const studentHomework = {
+// 🚨 수정된 부분: export 키워드를 제거하고 const로 선언합니다.
+const studentHomework = { 
     unsubscribe: null,
 
     init(app) {
         this.app = app;
 
         // 숙제 관련 이벤트 리스너 설정
-        this.app.elements.gotoHomeworkBtn?.addEventListener('click', () => this.showHomeworkScreen());
+        this.app.elements.gotoHomeworkCard?.addEventListener('click', () => this.showHomeworkScreen());
         this.app.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
         this.app.elements.closeUploadModalBtn?.addEventListener('click', () => this.closeUploadModal());
         this.app.elements.cancelUploadBtn?.addEventListener('click', () => this.closeUploadModal());
@@ -317,3 +318,6 @@ export const studentHomework = {
         if (uploadBtn) uploadBtn.disabled = isLoading;
     }
 };
+
+// 🚨 수정된 부분: Default Export로 변경하여 모듈 로딩 오류 해결
+export default studentHomework;
