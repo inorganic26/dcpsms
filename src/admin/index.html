@@ -67,6 +67,9 @@
                         <div id="goto-homework-mgmt-btn" class="admin-menu-item content-card">
                             <h3 class="text-lg font-bold text-slate-800">숙제 현황 관리</h3>
                         </div>
+                        <div id="goto-report-mgmt-btn" class="admin-menu-item content-card">
+                            <h3 class="text-lg font-bold text-slate-800">시험 결과 관리</h3>
+                        </div>
                         </div>
                     <style>
                         /* 인라인/스코프드 CSS의 @apply 사용 시 Tailwind v4 요구사항 */
@@ -359,6 +362,35 @@
                     </div>
                 </div>
             </div>
+
+            <div id="admin-report-mgmt-view" class="admin-section-view" style="display: none;">
+                <button class="back-to-admin-dashboard-btn btn btn-secondary mb-6">&larr; 관리자 메뉴로</button>
+                <div class="content-card">
+                    <h2 class="text-2xl font-bold text-slate-800 border-b pb-4 mb-6">시험 결과 리포트 업로드</h2>
+                    <div class="space-y-4 max-w-lg mx-auto">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="admin-report-date" class="block text-sm font-medium text-slate-600 mb-1">시험 날짜</label>
+                                <input type="date" id="admin-report-date" class="form-input">
+                            </div>
+                            <div>
+                                <label for="admin-report-class-select" class="block text-sm font-medium text-slate-600 mb-1">대상 반</label>
+                                <select id="admin-report-class-select" class="form-select"></select>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="admin-report-files-input" class="block text-sm font-medium text-slate-600 mb-1">리포트 PDF 파일 선택</label>
+                            <input type="file" id="admin-report-files-input" class="form-input" accept=".pdf" multiple>
+                            <p class="text-xs text-slate-500 mt-1">파일 이름은 '..._이름_리포트.pdf' 형식이어야 합니다.</p>
+                        </div>
+                        <div class="text-right">
+                            <button id="admin-upload-reports-btn" class="btn-primary">선택한 파일 업로드</button>
+                        </div>
+                        <div id="admin-report-upload-status" class="mt-4 text-sm"></div>
+                    </div>
+                </div>
+            </div>
+
             </div>
     </div>
 

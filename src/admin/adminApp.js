@@ -1,8 +1,6 @@
 // src/admin/adminApp.js
 
-import { auth, onAuthStateChanged, signInAnonymously, db } from '../shared/firebase.js';
-// Firestore 모듈 추가
-import { collection, addDoc, serverTimestamp, doc, deleteDoc, updateDoc, getDoc, query, getDocs, where, writeBatch, setDoc, orderBy } from "firebase/firestore"; // orderBy 추가
+import { auth, signInAnonymously } from '../shared/firebase.js'; // db 관련 import 제거 (여기선 불필요)
 import { showToast } from '../shared/utils.js';
 
 // 기존 관리자 모듈 import
@@ -13,43 +11,34 @@ import { studentManager } from './studentManager.js';
 import { teacherManager } from './teacherManager.js';
 import { lessonManager } from './lessonManager.js';
 import { studentAssignmentManager } from './studentAssignmentManager.js';
-// ======[ 공통 숙제 관리 모듈 import ]======
 import { adminHomeworkDashboard } from './adminHomeworkDashboard.js';
-// ===================================
-// ======[ 비디오 관리 래퍼 모듈 import ]======
-import { adminClassVideoManager } from './adminClassVideoManager.js'; // 새로 추가
-// ===================================
-
+import { adminClassVideoManager } from './adminClassVideoManager.js';
+import { reportManager } from '../shared/reportManager.js'; // reportManager import 추가
 
 const AdminApp = {
     isInitialized: false,
     elements: {},
     state: {
         subjects: [],
-        classes: [], // 반 목록 데이터 저장
-        students: [], // 전체 학생 목록 (숙제 현황에서 사용될 수 있음)
-        studentsInClass: new Map(), // 특정 반 학생 목록 (숙제 현황에서 사용)
+        classes: [],
+        students: [],
+        studentsInClass: new Map(),
         teachers: [],
         lessons: [],
         editingClass: null,
-        selectedSubjectIdForLesson: null,
-        editingLesson: null,
-        generatedQuiz: null,
+        selectedSubjectIdForLesson: null, // lessonManager에서 사용
+        editingLesson: null,        // lessonManager에서 사용
+        generatedQuiz: null,        // lessonManager에서 사용
         selectedClassIdForStudent: null,
         selectedSubjectIdForTextbook: null,
-        // ======[ 비디오 관련 상태: 공통 모듈로 이동 ]======
-        editingQnaVideoId: null, // adminClassVideoManager 내부 editingQnaVideoId 사용 (공통 모듈에서 접근)
-        // ===================================
-        // ======[ 숙제 관련 상태 추가 ]======
-        selectedClassIdForHomework: null, // 숙제 관리용 반 ID
-        selectedHomeworkId: null,       // 현재 선택된 숙제 ID
-        editingHomeworkId: null,        // 수정 중인 숙제 ID
-        textbooksBySubject: {}, // 공통 숙제 관리 모듈을 위한 교재 캐시
-        // ===================================
+        editingQnaVideoId: null,
+        selectedClassIdForHomework: null,
+        selectedHomeworkId: null,
+        editingHomeworkId: null,
+        textbooksBySubject: {},
     },
 
     init() {
-        // ... (init 내용은 변경 없음) ...
         const initialLogin = document.getElementById('admin-initial-login');
         const mainDashboard = document.getElementById('admin-main-dashboard');
         if (initialLogin) initialLogin.style.display = 'flex';
@@ -67,22 +56,21 @@ const AdminApp = {
     },
 
     async handleSecretLogin() {
-        // ... (handleSecretLogin 내용은 변경 없음) ...
         const inputPasswordEl = document.getElementById('admin-secret-password');
         if (!inputPasswordEl) return;
         const inputPassword = inputPasswordEl.value;
 
         // 실제 비밀번호 대신 환경 변수나 다른 안전한 방법 사용 권장
         // TODO: 비밀번호를 안전한 방식으로 확인하도록 변경
-        if (inputPassword !== 'qkraudtls0626^^') {
+        if (inputPassword !== 'qkraudtls0626^^') { // 비밀번호 확인
             showToast('비밀번호가 올바르지 않습니다.');
             return;
         }
 
         try {
-            await signInAnonymously(auth);
+            await signInAnonymously(auth); // 익명 로그인 시도
             showToast("인증 성공!", false);
-            this.showDashboard();
+            this.showDashboard(); // 성공 시 대시보드 표시
         } catch (error) {
             console.error("익명 로그인 실패:", error);
             showToast("관리자 인증 실패. 인터넷 연결을 확인해주세요.");
@@ -90,7 +78,6 @@ const AdminApp = {
     },
 
     showDashboard() {
-        // ... (showDashboard 내용은 변경 없음) ...
         const initialLogin = document.getElementById('admin-initial-login');
         const mainDashboard = document.getElementById('admin-main-dashboard');
         if (initialLogin) initialLogin.style.display = 'none';
@@ -107,6 +94,7 @@ const AdminApp = {
         console.log("[adminApp] Initializing dashboard...");
 
         this.cacheElements();
+        // 각 매니저 초기화
         subjectManager.init(this);
         textbookManager.init(this);
         classManager.init(this);
@@ -115,16 +103,14 @@ const AdminApp = {
         lessonManager.init(this);
         studentAssignmentManager.init(this);
         adminHomeworkDashboard.init(this);
-        adminClassVideoManager.init(this); // ✨ 비디오 매니저 초기화 추가
+        adminClassVideoManager.init(this);
         this.addEventListeners(); // 이벤트 리스너 추가 먼저
         this.showAdminSection('dashboard'); // 대시보드 메뉴부터 표시
         console.log("[adminApp] Dashboard initialized.");
     },
 
-
     cacheElements() {
         this.elements = {
-            // ... (기존 요소 캐싱 유지) ...
             dashboardView: document.getElementById('admin-dashboard-view'),
             gotoSubjectMgmtBtn: document.getElementById('goto-subject-mgmt-btn'),
             gotoTextbookMgmtBtn: document.getElementById('goto-textbook-mgmt-btn'),
@@ -136,26 +122,9 @@ const AdminApp = {
             gotoQnaVideoMgmtBtn: document.getElementById('goto-qna-video-mgmt-btn'),
             gotoClassVideoMgmtBtn: document.getElementById('goto-class-video-mgmt-btn'),
             gotoHomeworkMgmtBtn: document.getElementById('goto-homework-mgmt-btn'),
+            gotoReportMgmtBtn: document.getElementById('goto-report-mgmt-btn'), // 추가
 
-            // --- 비디오 관련 요소 ID 확인 및 필요시 수정 ---
-            qnaVideoMgmtView: document.getElementById('admin-qna-video-mgmt-view'),
-            qnaClassSelect: document.getElementById('admin-qna-class-select'), // 공통 모듈 config와 일치
-            qnaVideoDateInput: document.getElementById('admin-qna-video-date'), // 공통 모듈 config와 일치
-            qnaVideoTitleInput: document.getElementById('admin-qna-video-title'), // 공통 모듈 config와 일치
-            qnaVideoUrlInput: document.getElementById('admin-qna-video-url'), // 공통 모듈 config와 일치
-            saveQnaVideoBtn: document.getElementById('admin-save-qna-video-btn'), // 공통 모듈 config와 일치
-            qnaVideosList: document.getElementById('admin-qna-videos-list'), // 공통 모듈 config와 일치
-
-            classVideoMgmtView: document.getElementById('admin-class-video-mgmt-view'),
-            lectureClassSelect: document.getElementById('admin-class-video-class-select'), // 공통 모듈 config와 일치
-            lectureVideoDateInput: document.getElementById('admin-class-video-date'), // 공통 모듈 config와 일치
-            lectureVideoListContainer: document.getElementById('admin-class-video-list-container'), // 공통 모듈 config와 일치
-            saveLectureVideoBtn: document.getElementById('admin-save-class-video-btn'), // 공통 모듈 config와 일치
-            lectureVideoTitleInput: document.getElementById('admin-class-video-title'), // 공통 모듈 config와 일치
-            lectureVideoUrlInput: document.getElementById('admin-class-video-url'), // 공통 모듈 config와 일치
-            // addLectureVideoFieldBtn: null, // 관리자 앱은 현재 동적 추가 버튼 없음 (공통 모듈 config와 일치)
-            // ------------------------------------------
-
+            // 뷰 컨테이너
             subjectMgmtView: document.getElementById('admin-subject-mgmt-view'),
             textbookMgmtView: document.getElementById('admin-textbook-mgmt-view'),
             classMgmtView: document.getElementById('admin-class-mgmt-view'),
@@ -163,36 +132,43 @@ const AdminApp = {
             teacherMgmtView: document.getElementById('admin-teacher-mgmt-view'),
             lessonMgmtView: document.getElementById('admin-lesson-mgmt-view'),
             studentAssignmentView: document.getElementById('admin-student-assignment-view'),
-            // classVideoMgmtView: document.getElementById('admin-class-video-mgmt-view'), // 위에서 이미 캐싱됨
+            qnaVideoMgmtView: document.getElementById('admin-qna-video-mgmt-view'),
+            classVideoMgmtView: document.getElementById('admin-class-video-mgmt-view'),
             homeworkMgmtView: document.getElementById('admin-homework-mgmt-view'),
+            reportMgmtView: document.getElementById('admin-report-mgmt-view'), // 추가
 
-            // ... (나머지 요소 캐싱 유지) ...
+            // 과목 관리
             newSubjectNameInput: document.getElementById('admin-new-subject-name'),
             addSubjectBtn: document.getElementById('admin-add-subject-btn'),
             subjectsList: document.getElementById('admin-subjects-list'),
 
+            // 교재 관리
             subjectSelectForTextbook: document.getElementById('admin-subject-select-for-textbook'),
             textbookManagementContent: document.getElementById('admin-textbook-management-content'),
             newTextbookNameInput: document.getElementById('admin-new-textbook-name'),
             addTextbookBtn: document.getElementById('admin-add-textbook-btn'),
             textbooksList: document.getElementById('admin-textbooks-list'),
 
+            // 반 관리
             newClassNameInput: document.getElementById('admin-new-class-name'),
             addClassBtn: document.getElementById('admin-add-class-btn'),
             classesList: document.getElementById('admin-classes-list'),
 
+            // 학생 관리
             newStudentNameInput: document.getElementById('admin-new-student-name'),
             newStudentPhoneInput: document.getElementById('admin-new-student-phone'),
             newParentPhoneInput: document.getElementById('admin-new-parent-phone'),
             addStudentBtn: document.getElementById('admin-add-student-btn'),
-            studentsList: document.getElementById('admin-students-list'), // 학생 명단 관리 뷰의 목록
+            studentsList: document.getElementById('admin-students-list'),
 
+            // 교사 관리
             newTeacherNameInput: document.getElementById('admin-new-teacher-name'),
             newTeacherEmailInput: document.getElementById('admin-new-teacher-email'),
             newTeacherPhoneInput: document.getElementById('admin-new-teacher-phone'),
             addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
             teachersList: document.getElementById('admin-teachers-list'),
 
+            // 교사 수정 모달
             editTeacherModal: document.getElementById('admin-edit-teacher-modal'),
             closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
             cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
@@ -201,6 +177,7 @@ const AdminApp = {
             editTeacherEmailInput: document.getElementById('admin-edit-teacher-email'),
             editTeacherPhoneInput: document.getElementById('admin-edit-teacher-phone'),
 
+            // 학습 관리
             subjectSelectForLesson: document.getElementById('admin-subject-select-for-lesson'),
             lessonsManagementContent: document.getElementById('admin-lessons-management-content'),
             lessonPrompt: document.getElementById('admin-lesson-prompt'),
@@ -208,6 +185,7 @@ const AdminApp = {
             saveOrderBtn: document.getElementById('admin-save-lesson-order-btn'),
             showNewLessonModalBtn: document.getElementById('admin-show-new-lesson-modal-btn'),
 
+            // 학습 생성/수정 모달 (lessonManager config와 동일)
             modal: document.getElementById('admin-new-lesson-modal'),
             modalTitle: document.getElementById('admin-lesson-modal-title'),
             closeModalBtn: document.getElementById('admin-close-modal-btn'),
@@ -227,13 +205,16 @@ const AdminApp = {
             saveBtnText: document.getElementById('admin-save-btn-text'),
             saveLoader: document.getElementById('admin-save-loader'),
 
+             // 반 설정 수정 모달 (classEditor config와 동일)
             editClassModal: document.getElementById('admin-edit-class-modal'),
             editClassName: document.getElementById('admin-edit-class-name'),
             closeEditClassModalBtn: document.getElementById('admin-close-edit-class-modal-btn'),
             cancelEditClassBtn: document.getElementById('admin-cancel-edit-class-btn'),
             saveClassEditBtn: document.getElementById('admin-save-class-edit-btn'),
             editClassTypeSelect: document.getElementById('admin-edit-class-type'),
+            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'), // 추가
 
+            // 학생 수정 모달
             editStudentModal: document.getElementById('admin-edit-student-modal'),
             closeEditStudentModalBtn: document.getElementById('admin-close-edit-student-modal-btn'),
             cancelEditStudentBtn: document.getElementById('admin-cancel-edit-student-btn'),
@@ -242,7 +223,7 @@ const AdminApp = {
             editStudentPhoneInput: document.getElementById('admin-edit-student-phone'),
             editParentPhoneInput: document.getElementById('admin-edit-parent-phone'),
 
-            // ======[ 숙제 관련 요소 캐싱 유지 ]======
+            // 숙제 관리 (homeworkManager config와 동일)
             homeworkClassSelect: document.getElementById('admin-homework-class-select'),
             homeworkMainContent: document.getElementById('admin-homework-main-content'),
             homeworkDashboardControls: document.getElementById('admin-homework-dashboard-controls'),
@@ -263,13 +244,36 @@ const AdminApp = {
             homeworkTextbookSelect: document.getElementById('admin-homework-textbook-select'),
             homeworkPagesInput: document.getElementById('admin-homework-pages'),
             homeworkDueDateInput: document.getElementById('admin-homework-due-date'),
-            // ===================================
+
+            // QnA 영상 (classVideoManager config와 동일)
+            qnaClassSelect: document.getElementById('admin-qna-class-select'),
+            qnaVideoDateInput: document.getElementById('admin-qna-video-date'),
+            qnaVideoTitleInput: document.getElementById('admin-qna-video-title'),
+            qnaVideoUrlInput: document.getElementById('admin-qna-video-url'),
+            saveQnaVideoBtn: document.getElementById('admin-save-qna-video-btn'),
+            qnaVideosList: document.getElementById('admin-qna-videos-list'),
+
+            // 수업 영상 (classVideoManager config와 동일)
+            lectureClassSelect: document.getElementById('admin-class-video-class-select'),
+            lectureVideoDateInput: document.getElementById('admin-class-video-date'),
+            lectureVideoListContainer: document.getElementById('admin-class-video-list-container'),
+            saveLectureVideoBtn: document.getElementById('admin-save-class-video-btn'),
+            lectureVideoTitleInput: document.getElementById('admin-class-video-title'),
+            lectureVideoUrlInput: document.getElementById('admin-class-video-url'),
+            // addLectureVideoFieldBtn은 관리자 앱에 현재 없음
+
+            // 시험 결과 리포트 관리 (추가)
+            reportDateInput: document.getElementById('admin-report-date'),
+            reportClassSelect: document.getElementById('admin-report-class-select'),
+            reportFilesInput: document.getElementById('admin-report-files-input'),
+            uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
+            reportUploadStatus: document.getElementById('admin-report-upload-status'),
         };
     },
 
     addEventListeners() {
         console.log("[adminApp] Adding event listeners...");
-        // 메뉴 버튼 이벤트 (유지)
+        // 메뉴 버튼 이벤트
         this.elements.gotoSubjectMgmtBtn?.addEventListener('click', () => this.showAdminSection('subject-mgmt'));
         this.elements.gotoTextbookMgmtBtn?.addEventListener('click', () => this.showAdminSection('textbook-mgmt'));
         this.elements.gotoClassMgmtBtn?.addEventListener('click', () => this.showAdminSection('class-mgmt'));
@@ -280,69 +284,64 @@ const AdminApp = {
         this.elements.gotoQnaVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('qna-video-mgmt'));
         this.elements.gotoClassVideoMgmtBtn?.addEventListener('click', () => this.showAdminSection('class-video-mgmt'));
         this.elements.gotoHomeworkMgmtBtn?.addEventListener('click', () => this.showAdminSection('homework-mgmt'));
+        this.elements.gotoReportMgmtBtn?.addEventListener('click', () => this.showAdminSection('report-mgmt')); // 추가
 
-        // 뒤로가기 버튼 이벤트 (유지)
+        // 뒤로가기 버튼 이벤트
         document.querySelectorAll('.back-to-admin-dashboard-btn').forEach(btn => {
             btn.addEventListener('click', () => this.showAdminSection('dashboard'));
         });
 
-        // ✨ 질문 영상/수업 영상 관련 이벤트 리스너 제거 (공통 모듈로 이동)
+        // 시험 결과 리포트 업로드 버튼
+        this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload()); // 추가
 
-        // 사용자 정의 이벤트 리스너 (유지)
+        // 사용자 정의 이벤트 리스너
         document.addEventListener('subjectsUpdated', () => {
             console.log("[adminApp] 'subjectsUpdated' event received.");
             this.renderSubjectOptionsForTextbook();
             this.renderSubjectOptionsForLesson();
-            // 공통 숙제 관리 모듈의 함수 호출 (유지)
             if (adminHomeworkDashboard.managerInstance?.populateSubjectsForHomeworkModal) {
                 if (this.elements.assignHomeworkModal?.style.display === 'flex') {
                     adminHomeworkDashboard.managerInstance.populateSubjectsForHomeworkModal();
                 }
             }
-            // ✨ 비디오 관리 모듈의 드롭다운 업데이트 호출 (필요시 추가) - 필요 없음 (initView에서 처리)
         });
         document.addEventListener('classesUpdated', () => {
             console.log("[adminApp] 'classesUpdated' event received.");
-            // ✨ 비디오 관리 모듈의 populateClassSelect 호출
             if (adminClassVideoManager.managerInstance) {
-                 // QnA 뷰가 현재 활성화되어 있으면 드롭다운 업데이트
                  if (this.elements.qnaVideoMgmtView?.style.display === 'block') {
                      adminClassVideoManager.managerInstance.populateClassSelect(this.elements.qnaClassSelect.id, 'selectedClassIdForQnaVideo');
                  }
-                 // 수업 영상 뷰가 현재 활성화되어 있으면 드롭다운 업데이트
                  if (this.elements.classVideoMgmtView?.style.display === 'block') {
                      adminClassVideoManager.managerInstance.populateClassSelect(this.elements.lectureClassSelect.id, 'selectedClassIdForClassVideo');
                  }
             }
-
-            // 공통 숙제 관리 모듈의 함수 호출 (유지)
             if (adminHomeworkDashboard.managerInstance?.populateClassSelect) {
                 adminHomeworkDashboard.managerInstance.populateClassSelect();
             }
-            // 학생 배정 관리 모듈 호출 (유지)
             if (studentAssignmentManager?.populateClassSelects) {
                 console.log("[adminApp] Populating student assignment class selects.");
                 studentAssignmentManager.populateClassSelects();
             } else {
                 console.warn("[adminApp] studentAssignmentManager or populateClassSelects function not found.");
             }
+            // 리포트 관리 뷰가 활성화 상태이면 반 목록 업데이트 (추가)
+            if (this.elements.reportMgmtView?.style.display === 'block') {
+                this.initReportUploadView();
+            }
         });
-
         console.log("[adminApp] Event listeners added.");
     },
 
-
     showAdminSection(sectionName) {
         console.log(`[adminApp] Attempting to show section: ${sectionName}`);
-
-        // 모든 뷰 숨기기 (유지)
+        // 모든 뷰 숨기기
         Object.keys(this.elements).forEach(key => {
             if (key.endsWith('View') && this.elements[key] instanceof HTMLElement) {
                 this.elements[key].style.display = 'none';
             }
         });
 
-        // 보여줄 뷰 매핑 (유지)
+        // 보여줄 뷰 매핑
         const viewMap = {
             'dashboard': this.elements.dashboardView,
             'subject-mgmt': this.elements.subjectMgmtView,
@@ -355,9 +354,10 @@ const AdminApp = {
             'qna-video-mgmt': this.elements.qnaVideoMgmtView,
             'class-video-mgmt': this.elements.classVideoMgmtView,
             'homework-mgmt': this.elements.homeworkMgmtView,
+            'report-mgmt': this.elements.reportMgmtView, // 추가
         };
 
-        // 해당 뷰 표시 (유지)
+        // 해당 뷰 표시
         const viewToShow = viewMap[sectionName];
         if (viewToShow instanceof HTMLElement) {
             console.log(`[adminApp] Showing element: ${viewToShow.id}`);
@@ -371,43 +371,38 @@ const AdminApp = {
 
         // 섹션별 초기화 로직
         switch (sectionName) {
-            case 'textbook-mgmt':
-                this.renderSubjectOptionsForTextbook(); // 유지
-                break;
+            case 'textbook-mgmt': this.renderSubjectOptionsForTextbook(); break;
             case 'lesson-mgmt':
-                this.renderSubjectOptionsForLesson(); // 유지
+                this.renderSubjectOptionsForLesson();
                 if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'none';
                 if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block';
                 if (this.elements.lessonsList) this.elements.lessonsList.innerHTML = '';
                 break;
-            case 'qna-video-mgmt':
-                adminClassVideoManager.initQnaView(); // ✨ 변경: 공통 래퍼 호출
-                break;
-            case 'class-video-mgmt':
-                adminClassVideoManager.initLectureView(); // ✨ 변경: 공통 래퍼 호출
-                break;
+            case 'qna-video-mgmt': adminClassVideoManager.initQnaView(); break;
+            case 'class-video-mgmt': adminClassVideoManager.initLectureView(); break;
             case 'student-assignment':
-                 if (studentAssignmentManager?.populateClassSelects) { // 유지
+                 if (studentAssignmentManager?.populateClassSelects) {
                     studentAssignmentManager.populateClassSelects();
                     studentAssignmentManager.resetView();
                  }
                 break;
             case 'homework-mgmt':
-                if (adminHomeworkDashboard.managerInstance?.initView) { // 유지
+                if (adminHomeworkDashboard.managerInstance?.initView) {
                     adminHomeworkDashboard.managerInstance.initView();
                 }
                 break;
             case 'student-mgmt':
-                 if (studentManager?.renderStudentListView) { // 유지
+                 if (studentManager?.renderStudentListView) {
                      studentManager.renderStudentListView();
                  }
+                break;
+            case 'report-mgmt': // 추가
+                this.initReportUploadView();
                 break;
         }
     },
 
-    // --- ✨ 비디오 관련 함수들 모두 제거 ---
-
-    // --- 과목 옵션 관련 함수 (유지) ---
+    // 과목 옵션 렌더링 (교재 관리용)
     renderSubjectOptionsForTextbook() {
         const select = this.elements.subjectSelectForTextbook; if (!select) return;
         const currentSelection = select.value || this.state.selectedSubjectIdForTextbook; select.innerHTML = '<option value="">-- 과목 선택 --</option>';
@@ -417,6 +412,8 @@ const AdminApp = {
             select.value = currentSelection; this.state.selectedSubjectIdForTextbook = currentSelection; if (textbookManager?.handleSubjectSelectForTextbook) { textbookManager.handleSubjectSelectForTextbook(currentSelection); }
         } else { select.value = ''; this.state.selectedSubjectIdForTextbook = null; if (textbookManager?.handleSubjectSelectForTextbook) { textbookManager.handleSubjectSelectForTextbook(''); } }
     },
+
+    // 과목 옵션 렌더링 (학습 관리용)
     renderSubjectOptionsForLesson() {
         const select = this.elements.subjectSelectForLesson; if (!select) return;
         const currentSelection = select.value || this.state.selectedSubjectIdForLesson; select.innerHTML = '<option value="">-- 과목 선택 --</option>';
@@ -424,9 +421,90 @@ const AdminApp = {
         this.state.subjects.forEach(sub => { select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`; });
         if (this.state.subjects.some(s => s.id === currentSelection)) {
             select.value = currentSelection; this.state.selectedSubjectIdForLesson = currentSelection;
-            if (lessonManager?.managerInstance?.handleLessonFilterChange) { lessonManager.managerInstance.handleLessonFilterChange(); }
-        } else { select.value = ''; this.state.selectedSubjectIdForLesson = null;
-            if (lessonManager?.managerInstance?.handleLessonFilterChange) { lessonManager.managerInstance.handleLessonFilterChange(); }
+            // lessonManager 인스턴스의 함수 직접 호출
+            if (lessonManager?.managerInstance?.handleLessonFilterChange) {
+                lessonManager.managerInstance.handleLessonFilterChange();
+            }
+        } else {
+            select.value = ''; this.state.selectedSubjectIdForLesson = null;
+            if (lessonManager?.managerInstance?.handleLessonFilterChange) {
+                lessonManager.managerInstance.handleLessonFilterChange();
+            }
+        }
+    },
+
+    // 리포트 업로드 뷰 초기화 (반 목록 채우기)
+    initReportUploadView() {
+        const select = this.elements.reportClassSelect;
+        if (!select) return;
+        select.innerHTML = '<option value="">-- 반 선택 --</option>';
+        if (!this.state.classes || this.state.classes.length === 0) {
+            select.innerHTML += '<option value="" disabled>등록된 반 없음</option>';
+            return;
+        }
+        // 클래스 목록을 이름순으로 정렬하여 표시 (classManager에서 이미 정렬했을 수 있음)
+        const sortedClasses = [...this.state.classes].sort((a, b) => a.name.localeCompare(b.name));
+        sortedClasses.forEach(cls => {
+            select.innerHTML += `<option value="${cls.id}">${cls.name}</option>`;
+        });
+        // 상태 초기화
+        if(this.elements.reportDateInput) this.elements.reportDateInput.value = '';
+        if(this.elements.reportFilesInput) this.elements.reportFilesInput.value = '';
+        if(this.elements.reportUploadStatus) this.elements.reportUploadStatus.textContent = '';
+    },
+
+    // 리포트 업로드 처리
+    async handleReportUpload() {
+        const dateInput = this.elements.reportDateInput;
+        const classSelect = this.elements.reportClassSelect;
+        const filesInput = this.elements.reportFilesInput;
+        const statusEl = this.elements.reportUploadStatus;
+        const uploadBtn = this.elements.uploadReportsBtn;
+
+        if (!dateInput || !classSelect || !filesInput || !statusEl || !uploadBtn) return;
+
+        const testDateRaw = dateInput.value; // YYYY-MM-DD
+        const classId = classSelect.value;
+        const files = filesInput.files;
+
+        if (!testDateRaw || !classId || !files || files.length === 0) {
+            showToast("시험 날짜, 반, 파일을 모두 선택해주세요.");
+            return;
+        }
+
+        // 날짜 형식을 YYYYMMDD로 변환
+        const testDate = testDateRaw.replace(/-/g, '');
+
+        uploadBtn.disabled = true;
+        statusEl.textContent = `파일 ${files.length}개 업로드 시작 중...`;
+        let successCount = 0;
+        let failCount = 0;
+
+        // Promise.all을 사용하여 병렬 업로드 시도 (Storage는 병렬 처리 가능)
+        const uploadPromises = [];
+        for (const file of files) {
+            uploadPromises.push(
+                reportManager.uploadReport(file, classId, testDate)
+                    .then(success => {
+                        if (success) successCount++;
+                        else failCount++;
+                        statusEl.textContent = `업로드 진행 중... (${successCount + failCount}/${files.length}, 성공: ${successCount}, 실패: ${failCount})`;
+                    })
+            );
+        }
+
+        try {
+            await Promise.all(uploadPromises);
+            statusEl.textContent = `업로드 완료: 총 ${files.length}개 중 ${successCount}개 성공, ${failCount}개 실패.`;
+            showToast(`리포트 업로드 완료 (성공: ${successCount}, 실패: ${failCount})`, failCount > 0);
+            filesInput.value = ''; // 파일 입력 초기화
+        } catch (error) {
+            // 개별 업로드 실패는 이미 처리되었으므로 여기서는 최종 상태만 업데이트
+            console.error("Error during parallel upload:", error); // 전체 실패 시 추가 로그
+            statusEl.textContent = `업로드 중 오류 발생. 일부 파일 실패 가능성 있음. (성공: ${successCount}, 실패: ${failCount})`;
+            showToast("리포트 업로드 중 오류 발생", true);
+        } finally {
+            uploadBtn.disabled = false;
         }
     },
 

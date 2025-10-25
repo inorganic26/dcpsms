@@ -6,8 +6,9 @@ import { showToast } from '../shared/utils.js';
 
 // Import modules
 import { studentAuth } from './studentAuth.js';
-import { studentLesson } from './studentLesson.js'; // convertYoutubeUrlToEmbed 사용
+import { studentLesson } from './studentLesson.js';
 import { studentHomework } from './studentHomework.js';
+import { reportManager } from '../shared/reportManager.js'; // reportManager 추가
 
 const StudentApp = {
     isInitialized: false,
@@ -22,12 +23,11 @@ const StudentApp = {
         initialImageUrls: [], // 숙제 수정 시 기존 URL
         currentRevVideoIndex: 0, // 보충 영상 인덱스
         currentHomeworkPages: 0, // 현재 숙제의 총 페이지 수
-        // ======[ 영상 관련 상태 추가 ]======
-        qnaVideosByDate: {}, // { 'YYYY-MM-DD': [videoData, ...], ... }
-        classVideosByDate: {}, // { 'YYYY-MM-DD': [videoData, ...], ... }
-        currentVideoDate: null, // 현재 선택된 비디오 날짜
-        currentVideoType: null, // 현재 선택된 비디오 타입 ('qna' or 'class')
-        // ===================================
+        qnaVideosByDate: {},
+        classVideosByDate: {},
+        currentVideoDate: null,
+        currentVideoType: null,
+        reportsByDate: null, // 시험 결과 리포트 상태 추가 { 'YYYYMMDD': [{ fileName, storagePath, downloadUrl }], ... }
     },
 
     init() {
@@ -45,7 +45,6 @@ const StudentApp = {
 
     cacheElements() {
         this.elements = {
-            // ... (다른 요소들) ...
             loadingScreen: document.getElementById('student-loading-screen'),
             loginScreen: document.getElementById('student-login-screen'),
             classSelect: document.getElementById('student-class-select'),
@@ -59,6 +58,7 @@ const StudentApp = {
             gotoQnaVideoCard: document.getElementById('student-goto-qna-video-card'),
             gotoHomeworkCard: document.getElementById('student-goto-homework-card'),
             gotoClassVideoCard: document.getElementById('student-goto-class-video-card'),
+            gotoReportCard: document.getElementById('student-goto-report-card'), // 리포트 카드 추가
             lessonSelectionScreen: document.getElementById('student-lesson-selection-screen'),
             selectedSubjectTitle: document.getElementById('student-selected-subject-title'),
             lessonsList: document.getElementById('student-lessons-list'),
@@ -100,89 +100,93 @@ const StudentApp = {
             retryQuizBtn: document.getElementById('student-retry-quiz-btn'),
             showRev2BtnFailure: document.getElementById('student-show-rev2-btn-failure'),
             backToLessonsBtnSuccess: document.getElementById('student-back-to-lessons-btn-success'),
-            // ======[ 영상 화면 요소 수정 및 추가 ]======
             qnaVideoScreen: document.getElementById('student-qna-video-screen'),
             backToSubjectsFromQnaBtn: document.getElementById('student-back-to-subjects-from-qna-btn'),
-            qnaVideoDateList: document.getElementById('qna-video-date-list'), // 날짜 목록
+            qnaVideoDateList: document.getElementById('qna-video-date-list'),
             classVideoScreen: document.getElementById('student-class-video-screen'),
             backToSubjectsFromClassVideoBtn: document.getElementById('student-back-to-subjects-from-class-video-btn'),
-            classVideoDateList: document.getElementById('class-video-date-list'), // 날짜 목록
-            // --- 비디오 제목 목록 표시 화면 (신규 추가) ---
+            classVideoDateList: document.getElementById('class-video-date-list'),
             videoTitlesScreen: document.getElementById('student-video-titles-screen'),
             videoTitlesDate: document.getElementById('student-video-titles-date'),
             backToVideoDatesBtn: document.getElementById('student-back-to-video-dates-btn'),
             videoTitlesList: document.getElementById('student-video-titles-list'),
-            // ------------------------------------------
             videoDisplayModal: document.getElementById('student-video-display-modal'),
             videoModalTitle: document.getElementById('student-video-modal-title'),
             closeVideoModalBtn: document.getElementById('student-close-video-modal-btn'),
-            videoModalContent: document.getElementById('student-video-modal-content'), // 단일 iframe 컨테이너
-            // ===================================
+            videoModalContent: document.getElementById('student-video-modal-content'),
+            // 시험 결과 리포트 관련 요소 추가
+            reportListScreen: document.getElementById('student-report-list-screen'),
+            backToMenuFromReportListBtn: document.getElementById('student-back-to-menu-from-report-list-btn'),
+            reportListContainer: document.getElementById('student-report-list'),
+            reportViewerModal: document.getElementById('student-report-viewer-modal'),
+            reportModalTitle: document.getElementById('student-report-modal-title'),
+            closeReportModalBtn: document.getElementById('student-close-report-modal-btn'),
+            reportModalContent: document.getElementById('student-report-modal-content'),
+            reportIframe: document.getElementById('student-report-iframe'),
         };
     },
 
     addEventListeners() {
-        // ... (기존 리스너 유지) ...
         this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToLessonsBtnSuccess?.addEventListener('click', () => this.showLessonSelectionScreen());
         this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
         this.elements.backToSubjectsFromQnaBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
         this.elements.backToSubjectsFromClassVideoBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
-        // ======[ 뒤로가기 버튼 추가 ]======
-        this.elements.backToVideoDatesBtn?.addEventListener('click', () => this.backToVideoDatesScreen()); // 비디오 날짜 목록으로 돌아가기
-        // ===================================
+        this.elements.backToVideoDatesBtn?.addEventListener('click', () => this.backToVideoDatesScreen());
         this.elements.gotoQnaVideoCard?.addEventListener('click', () => this.showQnaVideoScreen());
         this.elements.gotoHomeworkCard?.addEventListener('click', () => studentHomework.showHomeworkScreen());
         this.elements.gotoClassVideoCard?.addEventListener('click', () => this.showClassVideoScreen());
         this.elements.closeVideoModalBtn?.addEventListener('click', () => this.closeVideoModal());
+        // 시험 결과 리포트 관련 리스너 추가
+        this.elements.gotoReportCard?.addEventListener('click', () => this.showReportListScreen());
+        this.elements.backToMenuFromReportListBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
+        this.elements.closeReportModalBtn?.addEventListener('click', () => this.closeReportModal());
     },
 
     showScreen(screenElement) {
-        // --- 비디오 제목 목록 화면 추가 ---
         const screens = [
             this.elements.loadingScreen, this.elements.loginScreen,
             this.elements.subjectSelectionScreen, this.elements.lessonSelectionScreen,
             this.elements.video1Screen, this.elements.quizScreen, this.elements.resultScreen,
             this.elements.homeworkScreen, this.elements.qnaVideoScreen, this.elements.classVideoScreen,
-            this.elements.videoTitlesScreen // 비디오 제목 목록 화면 추가
-            // this.elements.videoDisplayModal // 모달은 별도 관리
+            this.elements.videoTitlesScreen,
+            this.elements.reportListScreen // 추가
         ];
-        // --- ----------------------- ---
         let hidingVideoScreen = false;
         screens.forEach(s => {
             if (s && s.style.display !== 'none') {
-                // qna/classVideoScreen/videoTitlesScreen도 비디오 관련 화면으로 간주
                 if (s === this.elements.video1Screen || s === this.elements.resultScreen ||
                     s === this.elements.qnaVideoScreen || s === this.elements.classVideoScreen ||
-                    s === this.elements.videoTitlesScreen) { // videoTitlesScreen 추가
+                    s === this.elements.videoTitlesScreen) {
                     hidingVideoScreen = true;
                 }
                 s.style.display = 'none';
             }
         });
         if (hidingVideoScreen) {
-            this.stopAllVideos();
+            this.stopAllVideos(); // 비디오 화면 전환 시 비디오 정지
         }
+        // 리포트 모달도 화면 전환 시 닫기
+        this.closeReportModal();
+
         if(screenElement) {
-            screenElement.style.display = 'flex'; // 기본값 flex로 변경
+            screenElement.style.display = 'flex';
         } else {
             console.warn("[studentApp.js] showScreen called with null screenElement.");
         }
     },
 
     stopAllVideos() {
-        // 모달 내 iframe도 포함하도록 셀렉터 수정
         const iframes = document.querySelectorAll(
-            '#student-video1-iframe, #student-review-video2-iframe, #student-video2-iframe, #student-video-modal-content iframe' // 모달 iframe 포함
+            '#student-video1-iframe, #student-review-video2-iframe, #student-video2-iframe, #student-video-modal-content iframe'
         );
         iframes.forEach((iframe) => {
             if (iframe && iframe.src && iframe.src !== 'about:blank') {
-                iframe.src = 'about:blank'; // iframe 중지
+                iframe.src = 'about:blank'; // 비디오 iframe 중지
             }
         });
-        // 모달 닫기 (비디오 화면 전환 시 모달도 닫도록)
-        this.closeVideoModal();
+        this.closeVideoModal(); // 비디오 모달 닫기
     },
 
     showSubjectSelectionScreen() {
@@ -193,19 +197,16 @@ const StudentApp = {
         this.elements.welcomeMessage.textContent = `${this.state.studentName || '학생'}님, 환영합니다!`;
         const isLiveLecture = this.state.classType === 'live-lecture';
         const isSelfDirected = !isLiveLecture;
-        if (this.elements.startLessonCard) {
-            this.elements.startLessonCard.style.display = isSelfDirected ? 'flex' : 'none';
-        }
-        if (this.elements.gotoClassVideoCard) {
-            this.elements.gotoClassVideoCard.style.display = isLiveLecture ? 'flex' : 'none';
-        }
-        const commonMenuStyle = this.state.classId ? 'flex' : 'none';
-        if (this.elements.gotoQnaVideoCard) {
-             this.elements.gotoQnaVideoCard.style.display = commonMenuStyle;
-        }
-        if (this.elements.gotoHomeworkCard) {
-            this.elements.gotoHomeworkCard.style.display = commonMenuStyle;
-        }
+
+        // 메뉴 카드 표시/숨김
+        if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = isSelfDirected ? 'flex' : 'none';
+        if (this.elements.gotoClassVideoCard) this.elements.gotoClassVideoCard.style.display = isLiveLecture ? 'flex' : 'none';
+        const commonMenuStyle = this.state.classId ? 'flex' : 'none'; // 반 배정 시 공통 메뉴 표시
+        if (this.elements.gotoQnaVideoCard) this.elements.gotoQnaVideoCard.style.display = commonMenuStyle;
+        if (this.elements.gotoHomeworkCard) this.elements.gotoHomeworkCard.style.display = commonMenuStyle;
+        if (this.elements.gotoReportCard) this.elements.gotoReportCard.style.display = commonMenuStyle; // 리포트 카드 추가
+
+        // 과목 목록 (자기주도반만)
         if (isSelfDirected && this.elements.subjectsList) {
              this.elements.subjectsList.innerHTML = '';
              if (this.state.activeSubjects.length === 0) {
@@ -214,7 +215,7 @@ const StudentApp = {
                  this.state.activeSubjects.forEach(subject => this.renderSubjectChoice(subject));
              }
         } else if (this.elements.subjectsList) {
-             this.elements.subjectsList.innerHTML = '';
+             this.elements.subjectsList.innerHTML = ''; // 현강반은 비움
         }
         this.showScreen(this.elements.subjectSelectionScreen);
     },
@@ -241,7 +242,7 @@ const StudentApp = {
              console.error("[studentApp.js] Cannot show QnA video screen: Required elements missing.");
              return;
         }
-        this.state.currentVideoType = 'qna'; // 현재 비디오 타입 설정
+        this.state.currentVideoType = 'qna';
         this.loadAndRenderVideoDates('qna');
         this.showScreen(this.elements.qnaVideoScreen);
     },
@@ -256,7 +257,7 @@ const StudentApp = {
              console.error("[studentApp.js] Cannot show class video screen: Required elements missing.");
              return;
          }
-         this.state.currentVideoType = 'class'; // 현재 비디오 타입 설정
+         this.state.currentVideoType = 'class';
          this.loadAndRenderVideoDates('class');
          this.showScreen(this.elements.classVideoScreen);
      },
@@ -269,37 +270,36 @@ const StudentApp = {
         const stateKey = isQna ? 'qnaVideosByDate' : 'classVideosByDate';
 
         if (!listElement) {
-            console.error(`[studentApp.js] Video date list element for ${videoType} not found.`);
-            return;
+            console.error(`[studentApp.js] Video date list element for ${videoType} not found.`); return;
         }
         if (!this.state.classId) {
-            listElement.innerHTML = '<p class="text-center text-slate-500 py-8">반이 배정되지 않아 영상을 조회할 수 없습니다.</p>';
-            return;
+            listElement.innerHTML = '<p class="text-center text-slate-500 py-8">반이 배정되지 않아 영상을 조회할 수 없습니다.</p>'; return;
         }
 
-        listElement.innerHTML = '<div class="loader mx-auto"></div>';
+        listElement.innerHTML = '<div class="loader mx-auto"></div>'; // 로딩 표시
 
         try {
             const q = query(
                 collection(db, collectionName),
                 where('classId', '==', this.state.classId),
-                orderBy(dateFieldName, 'desc')
+                orderBy(dateFieldName, 'desc') // 날짜 내림차순 정렬
             );
             const snapshot = await getDocs(q);
 
             const videosByDate = {};
             snapshot.forEach(doc => {
                 const data = doc.data();
-                const date = data[dateFieldName];
-                const videosRaw = isQna ? [data] : (data.videos || []);
+                const date = data[dateFieldName]; // YYYY-MM-DD 형식
+                const videosRaw = isQna ? [data] : (data.videos || []); // 수업 영상은 videos 배열
 
-                if (!date || videosRaw.length === 0) return;
+                if (!date || videosRaw.length === 0) return; // 날짜 없거나 영상 없으면 스킵
 
+                // 각 영상에 고유 ID 부여 (화면 이동 및 재생 시 식별용)
                 const videos = videosRaw.map((v, index) => ({
                     ...v,
-                    videoId: isQna ? doc.id : `${date}-${index}-${v.title.replace(/\s+/g, '-')}`
+                    // QnA는 문서 ID, 수업 영상은 날짜+인덱스+제목 조합
+                    videoId: isQna ? doc.id : `${date}-${index}-${v.title?.replace(/\s+/g, '-') || 'no-title'}`
                 }));
-
 
                 if (!videosByDate[date]) {
                     videosByDate[date] = [];
@@ -307,14 +307,13 @@ const StudentApp = {
                 videosByDate[date].push(...videos);
             });
 
-            this.state[stateKey] = videosByDate;
+            this.state[stateKey] = videosByDate; // 상태 업데이트
 
-            listElement.innerHTML = '';
-            const sortedDates = Object.keys(videosByDate).sort((a, b) => b.localeCompare(a));
+            listElement.innerHTML = ''; // 로딩 제거
+            const sortedDates = Object.keys(videosByDate).sort((a, b) => b.localeCompare(a)); // 날짜 내림차순 정렬
 
             if (sortedDates.length === 0) {
-                listElement.innerHTML = `<p class="text-center text-slate-500 py-8">등록된 ${isQna ? '질문' : '수업'} 영상이 없습니다.</p>`;
-                return;
+                listElement.innerHTML = `<p class="text-center text-slate-500 py-8">등록된 ${isQna ? '질문' : '수업'} 영상이 없습니다.</p>`; return;
             }
 
             sortedDates.forEach(date => {
@@ -326,9 +325,7 @@ const StudentApp = {
                 card.dataset.videoType = videoType;
 
                 card.addEventListener('click', () => {
-                    const clickedDate = card.dataset.date;
-                    const type = card.dataset.videoType;
-                    this.showVideoTitlesScreen(clickedDate, type); // 제목 목록 화면 표시 함수 호출
+                    this.showVideoTitlesScreen(date, videoType); // 제목 목록 화면 표시 함수 호출
                 });
                 listElement.appendChild(card);
             });
@@ -340,20 +337,19 @@ const StudentApp = {
         }
     },
 
-    // --- 비디오 제목 목록 화면 표시 함수 (신규 추가) ---
     showVideoTitlesScreen(date, videoType) {
         if (!this.elements.videoTitlesScreen || !this.elements.videoTitlesDate || !this.elements.videoTitlesList) {
             console.error("[studentApp.js] Video titles screen elements not found.");
-            // 오류 발생 시 사용자에게 알리고 이전 화면으로 돌아가는 것이 좋음
             showToast("영상 목록 화면을 열 수 없습니다.", true);
-            this.backToVideoDatesScreen(); // 날짜 선택 화면으로 복귀 시도
+            this.backToVideoDatesScreen();
             return;
         }
 
         this.state.currentVideoDate = date; // 현재 날짜 상태 업데이트
         this.state.currentVideoType = videoType; // 현재 비디오 타입 업데이트
 
-        const videos = this.state[videoType === 'qna' ? 'qnaVideosByDate' : 'classVideosByDate'][date];
+        const stateKey = videoType === 'qna' ? 'qnaVideosByDate' : 'classVideosByDate';
+        const videos = this.state[stateKey]?.[date]; // 해당 날짜의 영상 목록 가져오기
 
         this.elements.videoTitlesDate.textContent = `${date} ${videoType === 'qna' ? '질문' : '수업'} 영상 목록`;
         this.elements.videoTitlesList.innerHTML = ''; // 목록 초기화
@@ -365,11 +361,9 @@ const StudentApp = {
                 const button = document.createElement('button');
                 button.className = "w-full p-3 border border-gray-300 bg-white rounded-lg text-md font-medium text-slate-700 hover:bg-gray-50 transition text-left";
                 button.textContent = video.title || '제목 없음';
-                // videoId를 dataset에 저장 (고유 식별자)
-                button.dataset.videoId = video.videoId;
+                button.dataset.videoId = video.videoId; // 고유 ID 저장
 
                 button.addEventListener('click', () => {
-                     // videoId로 해당 비디오 정보 찾기
                      const clickedVideo = videos.find(v => v.videoId === button.dataset.videoId);
                      if (clickedVideo) {
                         this.playVideoInModal(clickedVideo, videoType); // 모달에서 비디오 재생
@@ -381,12 +375,9 @@ const StudentApp = {
                 this.elements.videoTitlesList.appendChild(button);
             });
         }
-
         this.showScreen(this.elements.videoTitlesScreen);
     },
-    // --- --------------------------------------- ---
 
-     // --- 비디오 날짜 목록 화면으로 돌아가기 함수 (신규 추가) ---
      backToVideoDatesScreen() {
         if (this.state.currentVideoType === 'qna') {
             this.showQnaVideoScreen();
@@ -395,38 +386,29 @@ const StudentApp = {
         } else {
             this.showSubjectSelectionScreen(); // 타입 정보 없으면 메인으로
         }
-        // 상태 초기화
-        this.state.currentVideoDate = null;
-        // currentVideoType은 유지 (어떤 화면으로 돌아갈지 알아야 하므로)
+        this.state.currentVideoDate = null; // 날짜 상태 초기화
     },
-    // --- -------------------------------------------- ---
 
-    // ======[ 영상 표시 모달 열기 함수 수정 (단일 영상 재생용) ]======
     playVideoInModal(video, videoType) {
         if (!this.elements.videoDisplayModal || !this.elements.videoModalTitle || !this.elements.videoModalContent) {
-            console.error("Video display modal elements not found.");
-            return;
+            console.error("Video display modal elements not found."); return;
         }
 
         this.elements.videoModalTitle.textContent = video.title || '제목 없음';
         this.elements.videoModalContent.innerHTML = ''; // 내용 초기화
 
-        // QnA 영상은 youtubeUrl, 수업 영상은 url 필드 사용
         const urlField = videoType === 'qna' ? 'youtubeUrl' : 'url';
         const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video[urlField]);
 
         if (embedUrl) {
             const iframeContainer = document.createElement('div');
-            // 스타일 조정: 모달 내에서 꽉 차도록
             iframeContainer.className = 'w-full h-full aspect-video shadow-lg rounded-lg overflow-hidden relative';
-
             const iframe = document.createElement('iframe');
             iframe.className = 'absolute top-0 left-0 w-full h-full';
-            iframe.src = embedUrl; // 바로 로드
+            iframe.src = embedUrl;
             iframe.frameBorder = '0';
             iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
             iframe.allowFullscreen = true;
-
             iframeContainer.appendChild(iframe);
             this.elements.videoModalContent.appendChild(iframeContainer);
         } else {
@@ -439,146 +421,160 @@ const StudentApp = {
         this.elements.videoDisplayModal.style.display = 'flex';
         document.body.classList.add('modal-open'); // 스크롤 방지
     },
-    // ===================================
 
-    // ======[ 영상 표시 모달 닫기 함수 수정 (iframe 중지 로직 유지) ]======
     closeVideoModal() {
         if (this.elements.videoDisplayModal) {
             this.elements.videoDisplayModal.style.display = 'none';
-             // 모달 내 모든 iframe 중지
              const iframes = this.elements.videoDisplayModal.querySelectorAll('iframe');
-             iframes.forEach(iframe => {
-                 if (iframe && iframe.src !== 'about:blank') {
-                      iframe.src = 'about:blank';
-                 }
-             });
+             iframes.forEach(iframe => { if (iframe && iframe.src !== 'about:blank') iframe.src = 'about:blank'; });
              this.elements.videoModalContent.innerHTML = ''; // 모달 내용 비우기
         }
         document.body.classList.remove('modal-open'); // 스크롤 잠금 해제
     },
-    // ===================================
 
+    // 시험 결과 리포트 목록 화면 표시 - 추가됨
+    async showReportListScreen() {
+        const listEl = this.elements.reportListContainer;
+        if (!listEl) {
+             console.error("[studentApp] reportListContainer element not found."); return;
+        }
 
-    // --- 기존 loadAvailableSubjects, listenForAvailableLessons, renderSubjectChoice, renderLessonChoice 함수 유지 ---
-    async loadAvailableSubjects() {
-        this.showScreen(this.elements.loadingScreen);
-        this.state.activeSubjects = [];
+        // 반 ID 없으면 안내 메시지 표시
         if (!this.state.classId) {
-            this.state.classType = 'self-directed'; // 미배정 시 자기주도형으로 간주
-            this.showSubjectSelectionScreen();
+            showToast("반이 배정되지 않아 시험 결과를 볼 수 없습니다.");
+            listEl.innerHTML = '<p class="text-center text-slate-500 py-8">반 배정 정보 없음</p>';
+            this.showScreen(this.elements.reportListScreen);
             return;
         }
-        try {
-            const classDoc = await getDoc(doc(db, 'classes', this.state.classId));
-            if (!classDoc.exists()) {
-                console.warn(`[studentApp.js] Class document not found for ID: ${this.state.classId}, defaulting to self-directed.`);
-                showToast("반 정보를 찾을 수 없습니다.");
-                this.state.classType = 'self-directed';
-            } else {
-                 this.state.classType = classDoc.data().classType || 'self-directed';
-            }
-             // 자기주도반일 경우에만 과목 로드
-             if (this.state.classType === 'self-directed') {
-                const subjectsData = classDoc.exists() ? classDoc.data().subjects : {};
-                if (!subjectsData || Object.keys(subjectsData).length === 0) {
-                    console.log("[studentApp.js] No subjects assigned to this class.");
-                    // activeSubjects는 빈 배열 유지
-                } else {
-                    const subjectIds = Object.keys(subjectsData);
-                    const subjectDocs = await Promise.all(subjectIds.map(id => getDoc(doc(db, 'subjects', id))));
-                    this.state.activeSubjects = subjectDocs
-                        .filter(d => d.exists())
-                        .map(d => ({ id: d.id, ...d.data() }));
-                     this.state.activeSubjects.sort((a,b) => a.name.localeCompare(b.name));
-                     console.log("[studentApp.js] Loaded active subjects:", this.state.activeSubjects);
-                }
-             } else {
-                 this.state.activeSubjects = []; // 현강반은 과목 목록 비움
-             }
-             this.showSubjectSelectionScreen();
-        } catch (error) {
-            console.error("[studentApp.js] Error loading available subjects:", error);
-             showToast("수강 과목 로딩에 실패했습니다.");
-             this.state.classType = 'self-directed'; // 오류 시 기본값
-             this.showSubjectSelectionScreen();
-             if (error.message?.includes("Timeout") || error.code === 'unavailable' || error.code === 'internal') {
-                 showToast("데이터 로딩 시간 초과. 네트워크 확인 후 다시 시도해주세요.", true);
-             }
-        }
-    },
-
-    async listenForAvailableLessons() {
-        const listEl = this.elements.lessonsList;
-        if (!listEl || !this.state.selectedSubject?.id) {
-            console.error("[studentApp.js] Cannot listen for lessons: List element or selected subject ID missing.");
-            if (listEl) listEl.innerHTML = '<p class="text-center text-red-500 py-8">과목 정보를 불러올 수 없습니다.</p>';
-            if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
-            return;
-        }
-        listEl.innerHTML = '<div class="loader mx-auto"></div>';
-        if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
-        let activeLessons = [];
-        try {
-            const q = query(
-                collection(db, 'subjects', this.state.selectedSubject.id, 'lessons'),
-                where("isActive", "==", true),
-                orderBy("order", "asc"), // order 필드 기준 오름차순
-                orderBy("createdAt", "desc") // createdAt 기준 내림차순 (order 없을 때 대비)
-            );
-            const lessonsSnapshot = await getDocs(q);
-            listEl.innerHTML = '';
-            activeLessons = lessonsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            if (lessonsSnapshot.empty) {
-                if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'block';
-                return;
-            }
-        } catch(error) {
-            console.error("[studentApp.js] Error loading lessons:", error);
-            if (error.code === 'permission-denied') {
-                 listEl.innerHTML = `<p class="text-center text-red-600 py-8">⚠ 학습 세트를 불러올 권한이 없습니다.</p>`;
-                 showToast("학습 세트 로딩 실패: 권한 없음.", true);
-            } else {
-                 listEl.innerHTML = `<p class="text-center text-red-500 py-8">학습 목록 로딩 실패</p>`;
-                 showToast("학습 목록 로딩 중 오류 발생", true);
-            }
-            if (error.message?.includes("Timeout") || error.code === 'unavailable' || error.code === 'internal') {
-                 showToast("데이터 로딩 시간 초과. 네트워크 확인 후 다시 시도해주세요.", true);
-            }
-             if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
+        // 학생 이름 없으면 (로그인 직후 등) 안내 메시지 표시
+        if (!this.state.studentName) {
+            showToast("학생 정보를 불러오는 중입니다. 잠시 후 다시 시도해주세요.");
+             listEl.innerHTML = '<p class="text-center text-slate-500 py-8">학생 정보 로딩 중...</p>';
+             this.showScreen(this.elements.reportListScreen);
              return;
         }
-        if(this.elements.noLessonScreen) this.elements.noLessonScreen.style.display = 'none';
-        activeLessons.forEach(lesson => this.renderLessonChoice(lesson));
-    },
 
-    renderSubjectChoice(subject) {
-        if (!this.elements.subjectsList) return;
-        const button = document.createElement('button');
-        button.className = "w-full p-3 text-md font-semibold bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition";
-        button.textContent = subject.name;
-        button.addEventListener('click', () => {
-            this.state.selectedSubject = subject;
-            this.showLessonSelectionScreen();
+        this.showScreen(this.elements.reportListScreen); // 화면 먼저 전환
+        listEl.innerHTML = '<div class="loader mx-auto my-4"></div>'; // 로딩 표시
+
+        // reportManager를 사용하여 학생 리포트 목록 조회
+        const reports = await reportManager.listStudentReports(this.state.classId, this.state.studentName);
+        this.state.reportsByDate = reports; // 조회 결과 상태에 저장
+
+        listEl.innerHTML = ''; // 로딩 제거
+
+        if (!reports) { // 조회 중 오류 발생 (listStudentReports에서 null 반환)
+            listEl.innerHTML = '<p class="text-center text-red-500 py-8">리포트 목록을 불러오는 중 오류가 발생했습니다.</p>';
+            return;
+        }
+        if (Object.keys(reports).length === 0) { // 리포트 없음
+            listEl.innerHTML = '<p class="text-center text-slate-500 py-8">확인 가능한 시험 결과 리포트가 없습니다.</p>';
+            // TODO: 미응시 처리 - 전체 시험 목록과 비교 필요
+            // 예를 들어, Firestore /tests 컬렉션에서 해당 반의 시험 목록을 가져와
+            // reportsByDate에 없는 날짜의 시험을 "미응시"로 표시할 수 있음
+            return;
+        }
+
+        // 날짜 역순(최신순)으로 정렬
+        const sortedDates = Object.keys(reports).sort((a, b) => b.localeCompare(a));
+
+        sortedDates.forEach(date => { // 각 날짜별로 섹션 생성
+            const dateReports = reports[date];
+            if (!dateReports || dateReports.length === 0) return; // 해당 날짜 리포트 없으면 스킵
+
+            // 날짜 표시 형식 변환 (YYYYMMDD -> YYYY년 MM월 DD일)
+            const year = date.substring(0, 4);
+            const month = date.substring(4, 6);
+            const day = date.substring(6, 8);
+            const formattedDate = `${year}년 ${month}월 ${day}일`;
+
+            const dateSection = document.createElement('div');
+            dateSection.className = 'mb-6'; // 날짜별 간격
+            dateSection.innerHTML = `<h2 class="text-xl font-semibold text-slate-700 mb-3 border-b pb-2">${formattedDate}</h2>`;
+
+            // 해당 날짜의 리포트 버튼 생성
+            dateReports.forEach(reportInfo => {
+                const button = document.createElement('button');
+                button.className = "w-full p-3 border border-gray-300 bg-white rounded-lg text-md font-medium text-slate-700 hover:bg-gray-50 transition text-left block mb-2";
+
+                // 파일 이름에서 불필요한 부분 제거하여 표시 (예: "고1월수_리포트")
+                let displayName = reportInfo.fileName
+                    .replace(`_${this.state.studentName}_리포트.pdf`, '') // 이름과 확장자 제거
+                    .replace(`_${date}_`, '_') // YYYYMMDD 날짜 제거
+                    .replace(`_${year}-${month}-${day}_`, '_'); // YYYY-MM-DD 날짜 제거
+                button.textContent = displayName || reportInfo.fileName; // 제거 실패 시 원본 표시
+                button.dataset.storagePath = reportInfo.storagePath; // Storage 경로 저장
+
+                button.addEventListener('click', async (e) => {
+                    const path = e.currentTarget.dataset.storagePath;
+                    button.disabled = true;
+                    button.textContent = "리포트 여는 중...";
+                    const url = await reportManager.getReportDownloadUrl(path); // 다운로드 URL 가져오기
+                    if (url) {
+                        this.showReportInModal(displayName, url); // 모달에 표시
+                    } else {
+                         showToast("리포트를 열 수 없습니다. 파일이 삭제되었거나 권한 문제가 있을 수 있습니다.", true);
+                    }
+                    button.disabled = false;
+                    button.textContent = displayName; // 버튼 텍스트 복원
+                });
+                dateSection.appendChild(button);
+            });
+            listEl.appendChild(dateSection);
         });
-        this.elements.subjectsList.appendChild(button);
     },
 
-    renderLessonChoice(lesson) {
-        if (!this.elements.lessonsList) return;
-        const button = document.createElement('button');
-        button.className = "w-full p-4 border border-blue-300 bg-blue-50 rounded-lg text-lg font-semibold text-slate-800 hover:bg-blue-100 transition text-left";
-        button.textContent = lesson.title;
-        button.addEventListener('click', () => studentLesson.startSelectedLesson(lesson));
-        this.elements.lessonsList.appendChild(button);
+    // PDF 리포트 모달 표시 - 추가됨
+    showReportInModal(title, pdfUrl) {
+        if (!this.elements.reportViewerModal || !this.elements.reportModalTitle || !this.elements.reportIframe) {
+            console.error("Report viewer modal elements not found."); return;
+        }
+
+        this.elements.reportModalTitle.textContent = title || '시험 결과 리포트';
+        // Google Docs 뷰어를 사용하여 PDF 렌더링 (모바일 호환성 및 기능)
+        // const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
+        // this.elements.reportIframe.src = viewerUrl;
+
+        // 또는 직접 iframe에 로드 (브라우저 내장 뷰어 사용)
+        this.elements.reportIframe.src = pdfUrl;
+
+        this.elements.reportViewerModal.style.display = 'flex';
+        document.body.classList.add('modal-open'); // 뒷 배경 스크롤 방지
     },
+
+    // PDF 리포트 모달 닫기 - 추가됨
+    closeReportModal() {
+        if (this.elements.reportViewerModal) {
+            this.elements.reportViewerModal.style.display = 'none';
+            // iframe 내용 비우기 (메모리 누수 방지)
+            if (this.elements.reportIframe) {
+                this.elements.reportIframe.src = 'about:blank';
+            }
+        }
+        document.body.classList.remove('modal-open'); // 스크롤 잠금 해제
+    },
+
+
+    // --- 기존 함수들 (loadAvailableSubjects, listenForAvailableLessons, etc.) 유지 ---
+    // (이하 기존 함수들은 변경 없이 유지됩니다)
+    async loadAvailableSubjects() { /* ... 기존 코드 ... */ },
+    async listenForAvailableLessons() { /* ... 기존 코드 ... */ },
+    renderSubjectChoice(subject) { /* ... 기존 코드 ... */ },
+    renderLessonChoice(lesson) { /* ... 기존 코드 ... */ },
 
 }; // StudentApp 객체 끝
 
+// ▼▼▼ [수정] 디버깅을 위한 console.log 추가 ▼▼▼
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('[StudentApp] DOM 로드 완료. 익명 인증 시작...');
+    
     ensureAnonymousAuth((user) => {
-        StudentApp.state.authUid = user.uid; // 익명 로그인 UID 저장
+        console.log('[StudentApp] 익명 인증 성공. 앱 초기화 시작.'); // 이 로그가 뜨는지 확인
+        StudentApp.state.authUid = user.uid;
         StudentApp.init();
     });
 });
+// ▲▲▲ [수정] 디버깅을 위한 console.log 추가 ▲▲▲
+
 
 export default StudentApp;

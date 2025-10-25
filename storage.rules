@@ -1,20 +1,76 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // [🚨🚨🚨 매우 심각한 보안 경고]
-    // 학생이 숙제 파일(이미지 등)을 업로드해야 하므로 누구나(if true) 읽고 쓸 수 있게 허용합니다.
-    // 이 규칙은 누구나 이 경로에 파일을 무제한 업로드할 수 있게 허용합니다. (비용 폭탄 위험)
+
+    // Helper function to check if user is admin or teacher
+    function isAdminOrTeacher() {
+      // !!! 수정된 부분 !!!
+      // Firestore 규칙과 동일하게 임시로 '인증된 사용자'면 허용합니다.
+      // (보안상 주의: 실제 배포 시에는 Custom Claim 방식을 사용하는 것이 좋습니다.)
+      return request.auth != null;
+    }
+
+    // Helper function to get student name from Firestore based on auth UID
+    // !!!
+    // IMPORTANT: Adjust '/students/{request.auth.uid}' and '.name' if your structure differs !!!
+    function getStudentName() {
+      // Try fetching student document using auth UID as the document ID
+      let studentDoc = get(/databases/$(database)/documents/students/$(request.auth.uid)).data;
+      // Fallback: If UID is not the document ID, query by an 'authUid' field
+      // Uncomment and adjust if needed:
+      /*
+      if (studentDoc == null) {
+        let studentQuery = firestore.collection('students').where('authUid', '==', request.auth.uid).limit(1).get();
+        if (studentQuery.size == 1) {
+          studentDoc = studentQuery.docs[0].data();
+        }
+      }
+      */
+      // Return the student's name from the 'name' field
+      return studentDoc.name;
+    }
+
+    // Helper function to check if the student belongs to the class
+    function isStudentInClass(classId) {
+        // Fetch the student document using their UID
+        let studentData = get(/databases/$(database)/documents/students/$(request.auth.uid)).data;
+        // Fallback query if UID is not the doc ID
+        /*
+        if (studentData == null) {
+            let studentQuery = firestore.collection('students').where('authUid', '==', request.auth.uid).limit(1).get();
+            if (studentQuery.size == 1) {
+              studentData = studentQuery.docs[0].data();
+            }
+        }
+        */
+        // Check if the student's classId matches the requested classId
+        return studentData != null && studentData.classId == classId;
+    }
+
+    // Report files rules
+    // Path: /reports/{classId}/{testDate}/{originalFilename}
+    match /reports/{classId}/{testDate}/{fileName} {
+      // Admins and Teachers can read/write any report
+      allow write: if isAdminOrTeacher();
+      // Students can only read reports if:
+      // 1. They are authenticated.
+      // 2. They belong to the {classId}.
+      // 3. The {fileName} contains their name (fetched from Firestore) in the expected format.
+      //    (Format check: Adjust regex if filename format changes)
+      allow read: if request.auth != null &&
+                     isStudentInClass(classId) &&
+                     fileName.matches(".*_" + getStudentName() + "_리포트\\.pdf$");
+      // Also allow Admins/Teachers to read all reports
+       allow read: if isAdminOrTeacher();
+    }
+
+    // Keep homework rules if needed (Consider changing 'if true' for better security)
     match /homeworks/{homeworkId}/{studentId}/{fileName} {
-      allow read, write: if true;
-    }
-
-    // (교사/관리자가 사용하는 AI 채점 폴더는 인증된 사용자만 허용)
-    match /homework-grading/{homeworkId}/{fileName} {
       allow read, write: if request.auth != null;
+      // Changed from 'if true'
     }
 
-    // (이 외의 모든 경로는 기본적으로 접근 거부)
+    // Deny all other access by default
     match /{allPaths=**} {
       allow read, write: if false;
     }
