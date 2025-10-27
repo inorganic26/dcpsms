@@ -1,6 +1,6 @@
 // src/student/studentAuth.js
 
-import { collection, getDocs, where, query, getDoc, doc } from "firebase/firestore";
+import { collection, getDocs, where, query, getDoc, doc, orderBy } from "firebase/firestore"; // orderBy import 확인
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
@@ -34,12 +34,9 @@ export const studentAuth = {
     classSelect.innerHTML = `<option value="">-- 반을 선택하세요 --</option>`;
 
     try {
-      const q = query(collection(db, "classes"));
+      const q = query(collection(db, "classes"), orderBy("name"));
       const snapshot = await getDocs(q);
-
       const classes = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // 이름순 정렬
-      classes.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ko"));
 
       classes.forEach((cls) => {
         const opt = document.createElement("option");
@@ -64,11 +61,13 @@ export const studentAuth = {
     if (!classId) return;
 
     try {
-      const q = query(collection(db, "students"), where("classId", "==", classId));
+      const q = query(
+        collection(db, "students"),
+        where("classId", "==", classId),
+        orderBy("name")
+      );
       const snapshot = await getDocs(q);
-
       const students = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      students.sort((a, b) => (a.name || "").localeCompare(b.name || "", "ko"));
 
       students.forEach((s) => {
         const opt = document.createElement("option");
@@ -86,7 +85,7 @@ export const studentAuth = {
     }
   },
 
-  // 로그인 처리 (무한 로딩 방지: 성공/실패 모든 경로에서 다음 화면 보장)
+  // 로그인 처리
   async handleLogin() {
     const { classSelect, nameSelect, passwordInput } = this.app.elements;
     const classId = classSelect?.value || "";
@@ -98,51 +97,73 @@ export const studentAuth = {
       return;
     }
 
-    // 로딩 화면
     this.app.showScreen(this.app.elements.loadingScreen);
 
     try {
-      // 학생 검색
       const q = query(
         collection(db, "students"),
         where("classId", "==", classId),
-        where("name", "==", name),
-        where("password", "==", password) // 실제 서비스에서는 해시 비교 필요
+        where("name", "==", name)
       );
       const snap = await getDocs(q);
 
-      if (snap.empty) {
-        showToast("입력한 정보와 일치하는 학생이 없습니다.", true);
+      let studentDoc = null;
+      let student = null;
+      if (!snap.empty) {
+          for (const docSnapshot of snap.docs) {
+              const data = docSnapshot.data();
+              if (data.password === password) {
+                  studentDoc = docSnapshot;
+                  student = { id: studentDoc.id, ...data };
+                  break;
+              }
+          }
+      }
+
+      if (!studentDoc || !student) {
+        showToast("입력한 정보와 일치하는 학생이 없거나 비밀번호가 틀립니다.", true);
         this.showLoginScreen();
         return;
       }
 
-      const studentDoc = snap.docs[0];
-      const student = { id: studentDoc.id, ...studentDoc.data() };
-
-      // 반 정보 읽기 (타입)
       let className = "";
       let classType = "self-directed";
+      let classData = null;
+
       try {
-        const c = await getDoc(doc(db, "classes", classId));
-        if (c.exists()) {
-          const cd = c.data();
-          className = cd.name || "";
-          classType = cd.type || "self-directed"; // 'live-lecture' | 'self-directed'
+        const classDocRef = doc(db, "classes", classId);
+        const classDocSnap = await getDoc(classDocRef);
+        if (classDocSnap.exists()) {
+          classData = { id: classDocSnap.id, ...classDocSnap.data() };
+          className = classData.name || "";
+          classType = classData.classType || "self-directed";
+          console.log("[studentAuth] Class data loaded:", classData);
+        } else {
+            console.warn("[studentAuth] Class document not found for ID:", classId);
+            showToast("반 정보를 찾을 수 없습니다. 관리자에게 문의하세요.", true);
+            this.showLoginScreen();
+            return;
         }
       } catch (e) {
-        console.warn("[studentAuth] class doc read warning:", e);
+        console.error("[studentAuth] Failed to load class data:", e);
+        showToast("반 정보를 불러오는 중 오류 발생.", true);
+        this.showLoginScreen();
+        return;
       }
 
-      // 상태 세팅
       this.app.state.studentName = student.name || name;
       this.app.state.classId = classId;
       this.app.state.className = className;
       this.app.state.classType = classType;
-      // authUid는 app 초기화 시 ensureAnonymousAuth에서 들어옴
+      this.app.state.selectedClassData = classData;
 
-      // 과목 목록 로드 → 메뉴 표시
-      await this.app.loadAvailableSubjects(); // 내부에서 showSubjectSelectionScreen 호출
+      console.log("[studentAuth] Login successful. Loading available subjects..."); // 메시지 수정
+
+      // --- 👇 수정된 부분: loadAvailableSubjects 완료 후 화면 표시 👇 ---
+      await this.app.loadAvailableSubjects(); // await 추가
+      console.log("[studentAuth] Available subjects loaded. Navigating to subject selection."); // 메시지 수정
+      this.app.showSubjectSelectionScreen(); // loadAvailableSubjects 완료 후 호출
+      // --- 👆 ---
 
     } catch (e) {
       console.error("[studentAuth] handleLogin error:", e);

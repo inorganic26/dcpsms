@@ -7,12 +7,12 @@ import { getStorage } from "firebase/storage";
 
 // 🔹 Firebase 프로젝트 설정값
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
+  apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY", // 👈 여기에 키를 넣었습니다!
   authDomain: "svcm-v2.firebaseapp.com",
   projectId: "svcm-v2",
   storageBucket: "svcm-v2.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  messagingSenderId: "YOUR_SENDER_ID", // 필요하다면 이것도 실제 값으로 변경하세요
+  appId: "YOUR_APP_ID"             // 필요하다면 이것도 실제 값으로 변경하세요
 };
 
 // 🔹 이미 초기화된 앱이 있으면 재사용
