@@ -71,7 +71,8 @@ export const studentAuth = {
 
       students.forEach((s) => {
         const opt = document.createElement("option");
-        opt.value = s.name || s.id;
+        // 👇 수정: value에 학생 문서 ID 저장
+        opt.value = s.id;
         opt.textContent = s.name || "(이름 없음)";
         nameSelect.appendChild(opt);
       });
@@ -89,10 +90,12 @@ export const studentAuth = {
   async handleLogin() {
     const { classSelect, nameSelect, passwordInput } = this.app.elements;
     const classId = classSelect?.value || "";
-    const name = nameSelect?.value || "";
+    // 👇 수정: 이름 대신 학생 문서 ID 가져오기
+    const studentDocId = nameSelect?.value || "";
     const password = passwordInput?.value?.trim() || "";
 
-    if (!classId || !name || !password) {
+    // 👇 수정: studentDocId 확인
+    if (!classId || !studentDocId || !password) {
       showToast("반, 이름, 비밀번호를 모두 입력해주세요.");
       return;
     }
@@ -100,27 +103,20 @@ export const studentAuth = {
     this.app.showScreen(this.app.elements.loadingScreen);
 
     try {
-      const q = query(
-        collection(db, "students"),
-        where("classId", "==", classId),
-        where("name", "==", name)
-      );
-      const snap = await getDocs(q);
+      // 👇 수정: studentDocId로 학생 문서 직접 조회
+      const studentDocRef = doc(db, "students", studentDocId);
+      const studentDocSnap = await getDoc(studentDocRef);
 
-      let studentDoc = null;
       let student = null;
-      if (!snap.empty) {
-          for (const docSnapshot of snap.docs) {
-              const data = docSnapshot.data();
-              if (data.password === password) {
-                  studentDoc = docSnapshot;
-                  student = { id: studentDoc.id, ...data };
-                  break;
-              }
+      if (studentDocSnap.exists()) {
+          const data = studentDocSnap.data();
+          // classId 일치 및 비밀번호 확인
+          if (data.classId === classId && data.password === password) {
+              student = { id: studentDocSnap.id, ...data };
           }
       }
 
-      if (!studentDoc || !student) {
+      if (!student) {
         showToast("입력한 정보와 일치하는 학생이 없거나 비밀번호가 틀립니다.", true);
         this.showLoginScreen();
         return;
@@ -151,19 +147,20 @@ export const studentAuth = {
         return;
       }
 
-      this.app.state.studentName = student.name || name;
+      this.app.state.studentName = student.name;
+      // 👇 수정: studentDocId 상태에 저장
+      this.app.state.studentDocId = student.id; // Firestore 문서 ID 저장
       this.app.state.classId = classId;
       this.app.state.className = className;
       this.app.state.classType = classType;
       this.app.state.selectedClassData = classData;
 
-      console.log("[studentAuth] Login successful. Loading available subjects..."); // 메시지 수정
+      console.log(`[studentAuth] Login successful. Student Doc ID: ${this.app.state.studentDocId}, Name: ${this.app.state.studentName}`);
 
-      // --- 👇 수정된 부분: loadAvailableSubjects 완료 후 화면 표시 👇 ---
-      await this.app.loadAvailableSubjects(); // await 추가
-      console.log("[studentAuth] Available subjects loaded. Navigating to subject selection."); // 메시지 수정
-      this.app.showSubjectSelectionScreen(); // loadAvailableSubjects 완료 후 호출
-      // --- 👆 ---
+      // 사용 가능 과목 로드 후 화면 전환
+      await this.app.loadAvailableSubjects();
+      console.log("[studentAuth] Available subjects loaded. Navigating to subject selection.");
+      this.app.showSubjectSelectionScreen();
 
     } catch (e) {
       console.error("[studentAuth] handleLogin error:", e);

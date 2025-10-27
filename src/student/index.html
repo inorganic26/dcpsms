@@ -10,15 +10,12 @@
 </head>
 <body class="bg-slate-50">
 
-  <!-- ✅ 공통 토스트 -->
   <div id="toast-notification" style="transition: opacity 0.3s, transform 0.3s;" class="fixed top-8 right-8 z-[100] p-4 rounded-lg shadow-lg text-white transform translate-x-[120%] opacity-0">
     <p id="toast-message"></p>
   </div>
 
-  <!-- ✅ 로딩 화면 -->
   <div id="student-loading-screen" class="student-screen items-center justify-center" style="display: none;"><div class="loader"></div></div>
 
-  <!-- ✅ 로그인 화면 -->
   <div id="student-login-screen" class="student-screen items-center justify-center" style="display: flex;">
     <div class="w-full max-w-xs mx-auto p-4">
       <div class="content-card text-center">
@@ -46,7 +43,6 @@
     </div>
   </div>
 
-  <!-- ✅ 메뉴 선택 화면 -->
   <div id="student-subject-selection-screen" class="student-screen items-center justify-center p-4" style="display:none;">
     <div class="w-full max-w-4xl mx-auto">
       <header class="text-center mb-10">
@@ -79,7 +75,137 @@
     </div>
   </div>
 
-  <!-- ✅ 수업 영상 날짜 선택 화면 -->
+   <div id="student-lesson-selection-screen" class="student-screen items-start justify-center pt-10" style="display:none;">
+    <div class="w-full max-w-2xl mx-auto p-4">
+        <button id="student-back-to-subjects-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 과목 선택으로</button>
+        <header class="text-center mb-8">
+            <h1 id="student-selected-subject-title" class="text-3xl font-bold text-slate-800">학습 목록</h1>
+        </header>
+        <main>
+            <div id="student-lessons-list" class="space-y-4"></div>
+        </main>
+    </div>
+  </div>
+
+  <div id="student-video1-screen" class="student-screen items-start justify-center pt-10" style="display:none;">
+    <div class="w-full max-w-2xl mx-auto p-4">
+      <button id="student-back-to-lessons-from-video-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 학습 목록으로</button>
+      <h1 id="student-video1-title" class="text-2xl font-bold text-slate-800 mb-4"></h1>
+      <div class="aspect-video bg-black rounded-lg overflow-hidden mb-4">
+          <iframe id="student-video1-iframe" class="w-full h-full" allow="autoplay; encrypted-media" allowfullscreen style="display: none;"></iframe>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-4">
+        <button id="student-goto-rev1-btn" class="btn-secondary flex-1" style="display: none;">보충 영상 보기</button>
+        <button id="student-start-quiz-btn" class="btn-primary flex-1" style="display: none;">퀴즈 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="student-quiz-screen" class="student-screen items-start justify-center pt-10 p-4" style="display:none;">
+      <div class="w-full max-w-xl mx-auto">
+          <div class="mb-4">
+              <div class="flex justify-between items-center text-sm text-slate-500 mb-1">
+                  <span id="student-progress-text">문제 1 / 5</span>
+                  <span id="student-score-text">점수: 0</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-2.5">
+                  <div id="student-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+              </div>
+          </div>
+          <div class="content-card">
+              <p id="student-question-text" class="text-lg font-medium text-slate-800 mb-6 min-h-[3em]"></p>
+              <div id="student-options-container" class="space-y-3"></div>
+          </div>
+      </div>
+  </div>
+
+  <div id="student-homework-screen" class="student-screen items-start justify-center pt-10 p-4" style="display:none;">
+      <div class="w-full max-w-2xl mx-auto">
+          <button id="student-back-to-subjects-from-homework-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 메뉴로 돌아가기</button>
+          <header class="text-center mb-8">
+              <h1 class="text-3xl font-bold text-slate-800">숙제 제출</h1>
+          </header>
+          <main>
+              <div id="student-homework-list" class="space-y-4">
+                  <p class="text-center text-slate-400 py-8">숙제 목록을 불러오는 중...</p>
+              </div>
+          </main>
+      </div>
+  </div>
+
+  <div id="student-upload-modal" class="modal-backdrop" style="display: none;">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <header class="p-6 border-b flex justify-between items-center">
+          <h2 id="student-upload-modal-title" class="text-xl font-bold text-slate-800">숙제 업로드</h2>
+          <button id="student-close-upload-modal-btn" class="text-2xl font-light text-slate-500 hover:text-slate-800">&times;</button>
+      </header>
+      <main class="p-6 flex-grow overflow-y-auto custom-scrollbar">
+          <label for="student-files-input" class="block text-sm font-medium text-slate-700 mb-2">이미지 파일 선택 (여러 개 선택 가능)</label>
+          <input type="file" id="student-files-input" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" accept="image/*" multiple>
+          <div id="student-preview-container" class="mt-4 grid grid-cols-3 gap-2"></div>
+      </main>
+      <footer class="p-6 border-t flex justify-end gap-3">
+          <button id="student-cancel-upload-btn" class="btn-secondary">취소</button>
+          <button id="student-upload-btn" class="btn-primary flex items-center justify-center min-w-[150px]">
+              <span id="student-upload-btn-text">0 페이지 업로드</span>
+              <div id="student-upload-loader" class="loader-small hidden"></div>
+          </button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="student-result-screen" class="student-screen items-start justify-center pt-10 p-4" style="display:none;">
+      <div class="w-full max-w-2xl mx-auto">
+          <button id="student-back-to-lessons-from-result-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 학습 목록으로</button>
+
+          <div id="student-success-message" style="display: none;">
+              <header class="text-center mb-8">
+                  <h1 class="text-3xl font-bold text-green-600">🎉 퀴즈 통과! 🎉</h1>
+                  <p id="student-result-score-text-success" class="text-slate-500 mt-2"></p>
+              </header>
+              <main class="space-y-6">
+                  <div>
+                      <h2 class="text-xl font-semibold text-slate-700 mb-2">문제 풀이 영상 다시보기</h2>
+                      <div class="aspect-video bg-black rounded-lg overflow-hidden">
+                          <iframe id="student-review-video2-iframe" class="w-full h-full" allow="autoplay; encrypted-media" allowfullscreen style="display: none;"></iframe>
+                      </div>
+                       <button id="student-show-rev2-btn-success" class="btn-secondary w-full mt-4" style="display: none;">보충 풀이 보기</button>
+                  </div>
+                  <button id="student-rewatch-video1-btn" class="btn-secondary w-full">개념 영상 다시보기</button>
+              </main>
+          </div>
+
+          <div id="student-failure-message" style="display: none;">
+              <header class="text-center mb-8">
+                  <h1 class="text-3xl font-bold text-red-600">🤔 다시 학습해 보세요 🤔</h1>
+                  <p id="student-result-score-text-failure" class="text-slate-500 mt-2"></p>
+              </header>
+              <main class="space-y-6">
+                  <div>
+                      <h2 class="text-xl font-semibold text-slate-700 mb-2">문제 풀이 영상 보기</h2>
+                      <div class="aspect-video bg-black rounded-lg overflow-hidden">
+                          <iframe id="student-video2-iframe" class="w-full h-full" allow="autoplay; encrypted-media" allowfullscreen style="display: none;"></iframe>
+                      </div>
+                       <button id="student-show-rev2-btn-failure" class="btn-secondary w-full mt-4" style="display: none;">보충 풀이 보기</button>
+                  </div>
+                  <button id="student-retry-quiz-btn" class="btn-primary w-full">퀴즈 다시 풀기</button>
+              </main>
+          </div>
+      </div>
+  </div>
+
+  <div id="student-report-list-screen" class="student-screen items-start justify-center pt-10 p-4" style="display:none;">
+      <div class="w-full max-w-2xl mx-auto">
+          <button id="student-back-to-menu-from-report-list-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 메뉴로 돌아가기</button>
+          <header class="text-center mb-8">
+              <h1 class="text-3xl font-bold text-slate-800">시험 결과 리포트</h1>
+          </header>
+          <main id="student-report-list" class="space-y-6">
+              <p class="text-center text-slate-400 py-8">리포트 목록을 불러오는 중...</p>
+          </main>
+      </div>
+  </div>
+
   <div id="student-class-video-date-screen" class="student-screen items-start justify-center pt-10" style="display:none;">
     <div class="w-full max-w-2xl mx-auto p-4">
       <button id="student-back-to-subjects-from-class-video-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 메뉴로 돌아가기</button>
@@ -95,7 +221,6 @@
     </div>
   </div>
 
-  <!-- ✅ 질문 영상 날짜 선택 화면 -->
   <div id="student-qna-video-date-screen" class="student-screen items-start justify-center pt-10" style="display:none;">
     <div class="w-full max-w-2xl mx-auto p-4">
       <button id="student-back-to-subjects-from-qna-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 메뉴로 돌아가기</button>
@@ -111,7 +236,6 @@
     </div>
   </div>
 
-  <!-- ✅ 날짜별 영상 제목 화면 -->
   <div id="student-video-titles-screen" class="student-screen items-start justify-center pt-10" style="display:none;">
     <div class="w-full max-w-2xl mx-auto p-4">
       <button id="student-back-to-video-dates-btn" class="mb-6 text-sm text-slate-500 hover:underline">&larr; 날짜 선택으로</button>
@@ -124,7 +248,6 @@
     </div>
   </div>
 
-  <!-- ✅ 영상 모달 -->
   <div id="student-video-display-modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50">
     <div class="bg-white rounded-lg w-11/12 max-w-2xl p-4 relative">
       <h3 id="student-video-modal-title" class="text-lg font-semibold mb-3"></h3>
@@ -132,9 +255,6 @@
       <button id="student-close-video-modal-btn" class="absolute top-2 right-2 text-gray-600 hover:text-black text-xl">×</button>
     </div>
   </div>
-
-  <!-- ✅ 나머지 기존 화면들 (숙제, 퀴즈, 결과 등) -->
-  <!-- ⚠️ 그대로 두세요. 기존 파일 내용 유지 -->
 
   <script type="module" src="/src/student/studentApp.js"></script>
 </body>
