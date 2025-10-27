@@ -79,22 +79,28 @@ const StudentApp = {
         throw new Error("No class data found.");
       }
 
-      // Firestore 클래스 문서에서 subjectIds 배열과 subjects 맵 가져오기
-      const subjectIds = Array.isArray(classData.subjectIds) ? classData.subjectIds : [];
-      const subjectsMap = (typeof classData.subjects === 'object' && classData.subjects !== null) ? classData.subjects : {};
+      // Firestore 클래스 문서에서 subjects 맵 가져오기
+      const classSubjectsMap = classData.subjects || {};
+      const subjectIds = Object.keys(classSubjectsMap); // 클래스에 연결된 과목 ID 목록
+      
+      // ✨ [수정] Firestore의 subjects 컬렉션에서 과목 이름 정보를 가져와 사용합니다.
+      // (기존 코드는 classData 내부에 과목 이름이 있다고 가정했으나, 실제는 subjects 컬렉션에 있음)
+      const allSubjectsQuery = query(collection(db, 'subjects'));
+      const allSubjectsSnapshot = await getDocs(allSubjectsQuery);
+      const allSubjectsMap = new Map();
+      allSubjectsSnapshot.forEach(docSnap => {
+          allSubjectsMap.set(docSnap.id, docSnap.data().name);
+      });
 
       // subjectIds 배열을 기반으로 activeSubjects 배열 생성
       this.state.activeSubjects = subjectIds
         .map((id) => {
-          // subjects 맵에서 해당 ID의 데이터(이름 포함) 찾기
-          const subjectInfo = subjectsMap[id];
-          const subjectName = subjectInfo?.name; // 이름 가져오기 (Optional chaining)
-
-          if (subjectName) { // 이름이 있으면 객체 반환
+          const subjectName = allSubjectsMap.get(id); // subjects 컬렉션에서 이름 조회
+          
+          if (subjectName) { 
               return { id, name: subjectName };
-          } else { // 이름이 없으면 경고 로그 남기고 임시 이름 사용
-              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found in classData.subjects for ID: ${id}. Using ID as name.`);
-              // 👇 이름이 없으면 ID를 이름으로 사용 (임시 방편)
+          } else { 
+              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found for ID: ${id}. Using ID as name.`);
               return { id, name: `과목 ID: ${id}` };
           }
         })
@@ -264,7 +270,12 @@ const StudentApp = {
     if (!this.state.activeSubjects || this.state.activeSubjects.length === 0) { listEl.innerHTML = '<p class="text-center text-sm text-slate-400 py-4">수강 중인 과목이 없습니다.</p>'; if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = 'none'; return; }
     if (this.elements.startLessonCard && this.state.classType === 'self-directed') { this.elements.startLessonCard.style.display = 'flex'; }
     this.state.activeSubjects.forEach(subject => {
-      const button = document.createElement('button'); button.className = 'subject-btn w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left'; button.textContent = subject.name; button.dataset.id = subject.id; button.dataset.name = subject.name; listEl.appendChild(button);
+      const button = document.createElement('button'); 
+      button.className = 'subject-btn w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left'; 
+      button.textContent = subject.name; // ✨ [확인] 과목 이름 사용
+      button.dataset.id = subject.id; 
+      button.dataset.name = subject.name; 
+      listEl.appendChild(button);
     });
   },
 

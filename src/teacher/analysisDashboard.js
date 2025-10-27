@@ -3,32 +3,33 @@
 import { showToast } from '../shared/utils.js';
 // storage, db, ref, uploadBytes, doc, onSnapshot 제거 (AI 분석 관련 Firestore/Storage 사용 안함)
 
-// ✅ jsPDF와 html2canvas 불러오기 (CDN 환경)
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+// ❌ CDN으로 로드된 라이브러리는 import 할 수 없습니다. 제거합니다.
+// import jsPDF from "jspdf"; 
+// import html2canvas from "html2canvas"; 
 
 export const analysisDashboard = {
     studentData: null,
-    // pdfAnalysisResult, currentTestId, analysisUnsubscribe 제거
-    pdfAnalysisResult: null, // 임시: 수동으로 분석 결과를 넣을 수 있도록 유지 (추후 다른 방식으로 대체 가능)
+    pdfAnalysisResult: null,
     currentStudentName: null,
+    app: null, 
+    elements: {}, 
 
     init(app) {
-        this.app = app;
-        this.elements = {
-            // testPdfUploadInput, pdfAnalysisStatus 제거
-            studentDataUploadInput: document.getElementById('student-data-upload-input'),
-            testStudentListContainer: document.getElementById('test-analysis-student-list'),
+        this.app = app; 
 
-            analysisModal: document.getElementById('analysis-report-modal'),
-            analysisHeader: document.getElementById('analysis-report-header'),
-            analysisMain: document.getElementById('analysis-report-main'),
-            analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
-            analysisSaveBtn: document.getElementById('analysis-report-save-btn'),
-             // 임시: PDF 분석 결과 JSON 입력 필드 추가 (AI 대체용)
-             pdfAnalysisJsonInput: document.getElementById('pdf-analysis-json-input'),
-             loadAnalysisJsonBtn: document.getElementById('load-analysis-json-btn'),
-             pdfAnalysisStatus: document.getElementById('pdf-analysis-status'), // 상태 표시줄은 유지
+        // elements 캐싱 (기존 로직 유지)
+        this.elements = {
+            studentDataUploadInput: app.elements.studentDataUploadInput,
+            testStudentListContainer: app.elements.testStudentListContainer,
+
+            analysisModal: app.elements.analysisModal,
+            analysisHeader: app.elements.analysisHeader,
+            analysisMain: app.elements.analysisMain,
+            analysisCloseBtn: app.elements.analysisCloseBtn,
+            analysisSaveBtn: app.elements.analysisSaveBtn,
+            pdfAnalysisJsonInput: app.elements.pdfAnalysisJsonInput,
+            loadAnalysisJsonBtn: app.elements.loadAnalysisJsonBtn,
+            pdfAnalysisStatus: app.elements.pdfAnalysisStatus,
         };
 
         this.addEventListeners();
@@ -36,24 +37,18 @@ export const analysisDashboard = {
 
     addEventListeners() {
         document.addEventListener('class-changed', () => this.renderStudentLists());
-        // testPdfUploadInput 리스너 제거
         this.elements.studentDataUploadInput?.addEventListener('change', (e) => this.handleStudentDataUpload(e));
 
         this.elements.analysisCloseBtn?.addEventListener('click', () => {
             if (this.elements.analysisModal) this.elements.analysisModal.style.display = 'none';
         });
 
-        // ✅ PDF 저장 버튼 이벤트 추가
         this.elements.analysisSaveBtn?.addEventListener('click', () => {
             if (this.currentStudentName) this.saveReportAsPDF(this.currentStudentName);
         });
 
-        // 임시: JSON 분석 결과 로드 버튼 이벤트 추가
         this.elements.loadAnalysisJsonBtn?.addEventListener('click', () => this.handleAnalysisJsonLoad());
     },
-
-    // handlePdfUpload 함수 제거
-    // listenForPdfAnalysisResult 함수 제거
 
      // 임시: JSON 분석 결과 로드 핸들러 추가
      handleAnalysisJsonLoad() {
@@ -72,7 +67,6 @@ export const analysisDashboard = {
 
         try {
             const parsedJson = JSON.parse(jsonText);
-            // 간단한 유효성 검사 (객체 형태인지, 비어있지 않은지)
             if (typeof parsedJson !== 'object' || parsedJson === null || Object.keys(parsedJson).length === 0) {
                 throw new Error("유효한 JSON 객체 형식이 아닙니다.");
             }
@@ -80,17 +74,18 @@ export const analysisDashboard = {
             const qCount = Object.keys(this.pdfAnalysisResult).length;
             statusEl.innerHTML = `<span class="text-green-600">✅ 분석 완료 (${qCount}문항)</span>`;
             showToast("분석 결과를 성공적으로 불러왔습니다.", false);
-            this.renderStudentListForTest(); // 학생 목록 업데이트
+            this.renderStudentListForTest();
         } catch (error) {
             this.pdfAnalysisResult = null;
             statusEl.innerHTML = `<span class="text-red-600">❌ JSON 파싱 오류: ${error.message}</span>`;
             showToast(`JSON 형식이 올바르지 않습니다: ${error.message}`);
-            this.renderStudentListForTest(); // 학생 목록 업데이트 (리포트 보기 비활성화)
+            this.renderStudentListForTest();
         }
     },
 
 
     handleStudentDataUpload(event) {
+        // window.XLSX는 CDN 로드에 의존합니다.
         const XLSX = window.XLSX;
         if (typeof XLSX === 'undefined') {
             showToast("XLSX 라이브러리를 찾을 수 없습니다.");
@@ -113,12 +108,11 @@ export const analysisDashboard = {
             } catch (error) {
                 console.error("XLSX 오류:", error);
                 showToast("학생 성적 파일 처리 오류 발생.");
-                this.studentData = null; // 오류 시 데이터 초기화
-                this.renderStudentListForTest(); // 목록 다시 렌더링
+                this.studentData = null; 
+                this.renderStudentListForTest(); 
             }
         };
         reader.readAsArrayBuffer(file);
-        // 파일 입력 초기화 (같은 파일 다시 선택 가능)
         event.target.value = '';
     },
 
@@ -139,7 +133,11 @@ export const analysisDashboard = {
     showTestAnalysisReport(studentName) {
         this.currentStudentName = studentName;
 
-        // pdfAnalysisResult와 studentData 유효성 검사 강화
+        if (!this.elements.analysisHeader || !this.elements.analysisMain || !this.elements.analysisModal) {
+             showToast("리포트 UI 요소가 준비되지 않았습니다.", true);
+             return;
+        }
+
         if (!this.pdfAnalysisResult || typeof this.pdfAnalysisResult !== 'object' || Object.keys(this.pdfAnalysisResult).length === 0) {
              showToast("시험 분석 결과가 필요합니다. JSON을 입력하고 로드해주세요.");
              return;
@@ -218,6 +216,15 @@ export const analysisDashboard = {
 
     /** 💾 PDF 저장 기능 */
     async saveReportAsPDF(studentName) {
+        // 🚨 [수정] 전역 변수에서 라이브러리를 가져옵니다.
+        const jsPDF = window.jsPDF;
+        const html2canvas = window.html2canvas;
+
+        if (typeof jsPDF === 'undefined' || typeof html2canvas === 'undefined') {
+            showToast("PDF 저장 라이브러리(jsPDF/html2canvas)를 찾을 수 없습니다.", true);
+            return;
+        }
+
         try {
             const modalEl = this.elements.analysisModal;
             if (!modalEl || modalEl.style.display === 'none') return showToast("리포트가 표시되어야 PDF로 저장할 수 있습니다.");
@@ -239,6 +246,7 @@ export const analysisDashboard = {
                 backgroundColor: "#ffffff" // 배경색 명시
             });
 
+            // jsPDF 인스턴스 사용
             const imgData = canvas.toDataURL("image/png");
             const pdf = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
 

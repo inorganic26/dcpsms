@@ -20,6 +20,7 @@ import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js';
 import { classVideoManager } from './classVideoManager.js';
 import { reportManager } from '../shared/reportManager.js';
+import { analysisDashboard } from './analysisDashboard.js'; // ✨ analysisDashboard 모듈 import
 
 const TeacherApp = {
     isInitialized: false,
@@ -149,12 +150,16 @@ const TeacherApp = {
         this.lessonManager = lessonManager;
         this.classEditor = classEditor;
         this.classVideoManager = classVideoManager;
+        this.analysisDashboard = analysisDashboard; // ✨ analysisDashboard 모듈 초기화
 
         try {
+            // 모든 모듈의 init 함수 호출
             this.homeworkDashboard.init(this);
             this.lessonManager.init(this);
             this.classEditor.init(this);
             this.classVideoManager.init(this);
+            this.analysisDashboard.init(this); // ✨ analysisDashboard init 호출
+
         } catch (e) {
             console.error("Error initializing modules:", e);
             showToast("앱 초기화 중 오류 발생", true);
@@ -326,6 +331,18 @@ const TeacherApp = {
             uploadReportsBtn: document.getElementById('teacher-upload-reports-btn'),
             reportUploadStatus: document.getElementById('teacher-report-upload-status'),
             uploadedReportsList: document.getElementById('teacher-uploaded-reports-list'),
+            
+            // ✨ analysisDashboard 요소 (analysisDashboard.js에서 null 처리 필요)
+            studentDataUploadInput: document.getElementById('student-data-upload-input'),
+            testStudentListContainer: document.getElementById('test-analysis-student-list'),
+            analysisModal: document.getElementById('analysis-report-modal'),
+            analysisHeader: document.getElementById('analysis-report-header'),
+            analysisMain: document.getElementById('analysis-report-main'),
+            analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
+            analysisSaveBtn: document.getElementById('analysis-report-save-btn'),
+            pdfAnalysisJsonInput: document.getElementById('pdf-analysis-json-input'),
+            loadAnalysisJsonBtn: document.getElementById('load-analysis-json-btn'),
+            pdfAnalysisStatus: document.getElementById('pdf-analysis-status'),
         };
     },
 
@@ -420,6 +437,8 @@ const TeacherApp = {
     handleViewChange(viewName) {
         this.state.currentView = viewName;
         if (this.elements.navButtonsContainer) this.elements.navButtonsContainer.style.display = 'none';
+        
+        // 모든 뷰 숨기기
         Object.values(this.elements.views).forEach(view => { if (view) view.style.display = 'none'; });
 
         const viewToShow = this.elements.views[viewName];
@@ -432,19 +451,26 @@ const TeacherApp = {
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'block';
 
         // 전환 시 초기화 동작
+        // ⚠️ [수정] 모든 모듈 접근에 대해 철저한 Optional Chaining 적용
         switch (viewName) {
             case 'homework-dashboard': {
-                this.homeworkDashboard.managerInstance?.populateHomeworkSelect();
-                const mgmtButtons = document.getElementById(this.homeworkDashboard.managerInstance.config.elements.homeworkManagementButtons);
-                const content = document.getElementById(this.homeworkDashboard.managerInstance.config.elements.homeworkContent);
-                const select = document.getElementById(this.homeworkDashboard.managerInstance.config.elements.homeworkSelect);
-                if (mgmtButtons) mgmtButtons.style.display = 'none';
-                if (content) content.style.display = 'none';
-                if (select) select.value = '';
+                this.homeworkDashboard?.managerInstance?.populateHomeworkSelect();
+                
+                // homeworkDashboard 모듈의 elements 접근을 안전하게 보호
+                const elements = this.homeworkDashboard?.managerInstance?.config?.elements;
+                if (elements) {
+                    const mgmtButtons = document.getElementById(elements.homeworkManagementButtons);
+                    const content = document.getElementById(elements.homeworkContent);
+                    const select = document.getElementById(elements.homeworkSelect);
+                    
+                    if (mgmtButtons) mgmtButtons.style.display = 'none';
+                    if (content) content.style.display = 'none';
+                    if (select) select.value = '';
+                }
                 break;
             }
             case 'qna-video-mgmt':
-                this.classVideoManager.initQnaView();
+                this.classVideoManager?.initQnaView();
                 break;
             case 'lesson-mgmt':
                 this.populateSubjectSelectForMgmt();
@@ -459,7 +485,7 @@ const TeacherApp = {
                 this.displayCurrentClassInfo();
                 break;
             case 'class-video-mgmt':
-                this.classVideoManager.initLectureView();
+                this.classVideoManager?.initLectureView();
                 break;
             case 'report-mgmt':
                 this.initReportUploadView();
@@ -1000,7 +1026,10 @@ const TeacherApp = {
         if (confirm(`'${fileName}' 리포트 파일을 정말 삭제하시겠습니까?`)) {
             const success = await reportManager.deleteReport(storagePath);
             if (success) {
+                showToast("리포트 삭제 완료.", false);
                 await this.loadAndRenderUploadedReports();
+            } else {
+                 showToast("리포트 삭제에 실패했습니다.", true);
             }
         }
     }

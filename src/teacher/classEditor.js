@@ -87,9 +87,6 @@ export const classEditor = {
     },
     // ✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨✨
 
-    // ✨ openEditClassModal, closeEditClassModal, saveClassChanges, renderSubjectsForEditing 함수는
-    // 공통 모듈로 이동했으므로 여기서 삭제합니다.
-
     // --- (과목/교재 관리 모달 함수들은 TeacherApp 고유 기능이므로 그대로 유지) ---
     openSubjectTextbookMgmtModal() {
         if (!this.app.elements.subjectTextbookMgmtModal) return;
@@ -111,36 +108,61 @@ export const classEditor = {
         if (!input) return;
         const subjectName = input.value.trim();
         if (!subjectName) { showToast("과목 이름을 입력해주세요."); return; }
+        
         try {
-            await addDoc(collection(db, 'subjects'), { name: subjectName, createdAt: serverTimestamp() });
+            // Firestore에 문서 추가
+            const newDocRef = await addDoc(collection(db, 'subjects'), { name: subjectName, createdAt: serverTimestamp() });
+            
+            // ✨ [수정] Firestore 콜백을 기다리지 않고 로컬 상태 즉시 업데이트
+            const newSubject = { id: newDocRef.id, name: subjectName };
+            this.app.state.subjects.push(newSubject);
+            this.app.state.subjects.sort((a, b) => a.name.localeCompare(b.name));
+            
+            this.renderSubjectListForMgmt(); // 목록 UI 즉시 갱신
+            this.populateSubjectSelectForTextbookMgmt(); // 드롭다운 즉시 갱신
+            
             showToast("새 과목 추가 완료.", false);
             input.value = '';
-            // 과목 목록은 onSnapshot으로 자동 갱신됨
-        } catch (error) { showToast("과목 추가 실패."); }
+        } catch (error) { 
+            console.error("과목 추가 실패:", error);
+            showToast("과목 추가 실패."); 
+        }
     },
     async deleteSubject(subjectId) {
         if (!confirm("과목을 삭제하면 해당 과목의 학습 세트, 교재 정보도 모두 삭제됩니다. 계속하시겠습니까?")) return;
+        
         try {
             const batch = writeBatch(db);
-            // 학습 세트 삭제
+            
+            // 1. 학습 세트 삭제
             const lessonsRef = collection(db, 'subjects', subjectId, 'lessons');
             const lessonsSnapshot = await getDocs(lessonsRef);
             lessonsSnapshot.forEach(doc => batch.delete(doc.ref));
-            // 교재 삭제
+            
+            // 2. 교재 삭제
             const textbooksRef = collection(db, 'subjects', subjectId, 'textbooks');
             const textbooksSnapshot = await getDocs(textbooksRef);
             textbooksSnapshot.forEach(doc => batch.delete(doc.ref));
-            // 과목 삭제
+            
+            // 3. 과목 삭제
             batch.delete(doc(db, 'subjects', subjectId));
             await batch.commit();
+            
+            // ✨ [수정] Firestore 콜백을 기다리지 않고 로컬 상태 즉시 업데이트
+            this.app.state.subjects = this.app.state.subjects.filter(s => s.id !== subjectId);
+            this.renderSubjectListForMgmt(); // 목록 UI 즉시 갱신
+            this.populateSubjectSelectForTextbookMgmt(); // 드롭다운 즉시 갱신
+
             showToast("과목 및 관련 데이터 삭제 완료.", false);
-             // 교재용 과목 선택 드롭다운 갱신
-            this.populateSubjectSelectForTextbookMgmt();
-            // 현재 선택된 과목이 삭제된 것이면 교재 목록 초기화
+            
+             // 현재 선택된 과목이 삭제된 것이면 교재 목록 초기화
             if (this._selectedSubjectIdForMgmt === subjectId) {
                  this.handleSubjectSelectForTextbookMgmt('');
             }
-        } catch (error) { showToast("과목 삭제 실패."); }
+        } catch (error) { 
+            console.error("과목 삭제 실패:", error);
+            showToast("과목 삭제 실패."); 
+        }
     },
     renderSubjectListForMgmt() {
         const listEl = document.getElementById('teacher-subjects-list-mgmt');
@@ -228,7 +250,10 @@ export const classEditor = {
              showToast("새 교재 추가 완료.", false);
              input.value = '';
              // 목록은 onSnapshot으로 자동 갱신됨
-         } catch (error) { showToast("교재 추가 실패."); }
+         } catch (error) { 
+             console.error("교재 추가 실패:", error);
+             showToast("교재 추가 실패."); 
+         }
     },
     async deleteTextbook(subjectId, textbookId) {
          if (!confirm("교재를 삭제하시겠습니까?")) return;
@@ -236,7 +261,10 @@ export const classEditor = {
              await deleteDoc(doc(db, `subjects/${subjectId}/textbooks`, textbookId));
              showToast("교재 삭제 완료.", false);
              // 목록은 onSnapshot으로 자동 갱신됨
-         } catch (error) { showToast("교재 삭제 실패."); }
+         } catch (error) { 
+             console.error("교재 삭제 실패:", error);
+             showToast("교재 삭제 실패."); 
+         }
     },
 
 }; // classEditor 객체 끝
