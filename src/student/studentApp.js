@@ -79,28 +79,22 @@ const StudentApp = {
         throw new Error("No class data found.");
       }
 
-      // Firestore 클래스 문서에서 subjects 맵 가져오기
-      const classSubjectsMap = classData.subjects || {};
-      const subjectIds = Object.keys(classSubjectsMap); // 클래스에 연결된 과목 ID 목록
-      
-      // ✨ [수정] Firestore의 subjects 컬렉션에서 과목 이름 정보를 가져와 사용합니다.
-      // (기존 코드는 classData 내부에 과목 이름이 있다고 가정했으나, 실제는 subjects 컬렉션에 있음)
-      const allSubjectsQuery = query(collection(db, 'subjects'));
-      const allSubjectsSnapshot = await getDocs(allSubjectsQuery);
-      const allSubjectsMap = new Map();
-      allSubjectsSnapshot.forEach(docSnap => {
-          allSubjectsMap.set(docSnap.id, docSnap.data().name);
-      });
+      // Firestore 클래스 문서에서 subjectIds 배열과 subjects 맵 가져오기
+      const subjectIds = Array.isArray(classData.subjectIds) ? classData.subjectIds : [];
+      const subjectsMap = (typeof classData.subjects === 'object' && classData.subjects !== null) ? classData.subjects : {};
 
       // subjectIds 배열을 기반으로 activeSubjects 배열 생성
       this.state.activeSubjects = subjectIds
         .map((id) => {
-          const subjectName = allSubjectsMap.get(id); // subjects 컬렉션에서 이름 조회
-          
-          if (subjectName) { 
+          // subjects 맵에서 해당 ID의 데이터(이름 포함) 찾기
+          const subjectInfo = subjectsMap[id];
+          const subjectName = subjectInfo?.name; // 이름 가져오기 (Optional chaining)
+
+          if (subjectName) { // 이름이 있으면 객체 반환
               return { id, name: subjectName };
-          } else { 
-              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found for ID: ${id}. Using ID as name.`);
+          } else { // 이름이 없으면 경고 로그 남기고 임시 이름 사용
+              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found in classData.subjects for ID: ${id}. Using ID as name.`);
+              // 👇 이름이 없으면 ID를 이름으로 사용 (임시 방편)
               return { id, name: `과목 ID: ${id}` };
           }
         })
@@ -270,12 +264,7 @@ const StudentApp = {
     if (!this.state.activeSubjects || this.state.activeSubjects.length === 0) { listEl.innerHTML = '<p class="text-center text-sm text-slate-400 py-4">수강 중인 과목이 없습니다.</p>'; if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = 'none'; return; }
     if (this.elements.startLessonCard && this.state.classType === 'self-directed') { this.elements.startLessonCard.style.display = 'flex'; }
     this.state.activeSubjects.forEach(subject => {
-      const button = document.createElement('button'); 
-      button.className = 'subject-btn w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left'; 
-      button.textContent = subject.name; // ✨ [확인] 과목 이름 사용
-      button.dataset.id = subject.id; 
-      button.dataset.name = subject.name; 
-      listEl.appendChild(button);
+      const button = document.createElement('button'); button.className = 'subject-btn w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left'; button.textContent = subject.name; button.dataset.id = subject.id; button.dataset.name = subject.name; listEl.appendChild(button);
     });
   },
 
@@ -349,21 +338,76 @@ const StudentApp = {
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
-  // 모달에서 영상 재생 (변경 없음)
+  // 모달에서 영상 재생 (최종 수정 반영)
   playVideoInModal(video) {
-    const modal = this.elements.videoDisplayModal; const content = this.elements.videoModalContent; const titleEl = this.elements.videoModalTitle;
-    if (!modal || !content) return; content.innerHTML = ""; if (titleEl) titleEl.textContent = video.title || "영상 보기";
-    const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url); console.log(`[StudentApp] Trying to play video: ${video.title}, Original URL: ${video.url}, Embed URL: ${embedUrl}`);
+    const modal = this.elements.videoDisplayModal; 
+    const content = this.elements.videoModalContent; 
+    const titleEl = this.elements.videoModalTitle;
+    
+    // 필수 요소가 없으면 경고 후 함수 종료
+    if (!modal || !content) {
+        console.error("[StudentApp] Video modal elements not found.");
+        showToast("영상 모달을 여는 데 실패했습니다.", true);
+        return; 
+    }
+    
+    // 1. UI 초기화 및 로딩 표시
+    content.innerHTML = '<div class="w-full aspect-video flex items-center justify-center bg-black"><div class="loader"></div></div>'; // 로딩 표시
+    if (titleEl) titleEl.textContent = video.title || "영상 보기";
+    
+    const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url); 
+    console.log(`[StudentApp] Trying to play video: ${video.title}, Original URL: ${video.url}, Embed URL: ${embedUrl}`);
+    
+    modal.style.display = "flex"; // 모달 먼저 표시
+
     if (embedUrl) {
-      const iframe = document.createElement("iframe"); iframe.className = "w-full aspect-video"; iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"; iframe.allowFullscreen = true; iframe.src = embedUrl; content.appendChild(iframe);
-    } else { console.error("[StudentApp] Failed to get embed URL for video:", video); content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다.</p>`; }
-    modal.style.display = "flex";
+      // iframe을 DOM에 추가한 후 src를 설정하여 재생 시작 시점 분리
+      const iframe = document.createElement("iframe"); 
+      iframe.className = "w-full aspect-video"; 
+      iframe.style.border = "none"; // ✨ [보강] border: none 추가
+      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"; 
+      iframe.allowFullscreen = true; 
+      iframe.style.display = 'none'; // 로드 완료 시까지 숨김
+      
+      content.innerHTML = ""; // 로딩 인디케이터 제거
+      content.appendChild(iframe); // DOM에 추가
+
+      // 로드 핸들러
+      iframe.onload = () => {
+          console.log("[StudentApp] Iframe loaded successfully.");
+          iframe.style.display = 'block'; // 로드 성공 시 표시
+      };
+      
+      // 오류 핸들러 (유튜브가 로드를 거부했을 때 발생)
+      iframe.onerror = () => {
+          console.error("[StudentApp] Iframe failed to load.");
+          content.innerHTML = `<p class="text-red-500 p-4">영상 로드 실패: YouTube 임베드 정책 문제이거나 URL이 잘못되었습니다.</p>`;
+          showToast("영상 로드에 실패했습니다. (유튜브 정책 확인 필요)", true);
+      };
+
+      // SRC 설정 (즉시 실행)
+      iframe.src = embedUrl; 
+      console.log(`[StudentApp] Iframe SRC set to: ${embedUrl}`);
+      
+    } else { 
+      console.error("[StudentApp] Failed to get embed URL for video:", video); 
+      content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다. 관리자에게 문의하세요.</p>`; 
+      modal.style.display = "flex";
+    }
   },
 
   // 영상 모달 닫기 (변경 없음)
   closeVideoModal() {
-    const modal = this.elements.videoDisplayModal; const content = this.elements.videoModalContent;
-    if (modal) modal.style.display = "none"; if (content) content.innerHTML = "";
+    const modal = this.elements.videoDisplayModal; 
+    const content = this.elements.videoModalContent;
+    
+    if (modal) modal.style.display = "none"; 
+    
+    // 콘텐츠를 비우면 다음 재생 시 충돌 방지
+    if (content) content.innerHTML = ""; 
+    
+    // 모달이 닫히면 이전 화면으로 돌아가야 합니다.
+    this.showScreen(this.elements.videoTitlesScreen);
   },
 
   // 시험 결과 리포트 목록 화면 표시 (변경 없음)

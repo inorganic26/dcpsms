@@ -17,54 +17,113 @@ export const studentLesson = {
     this.app.elements.showRev2BtnFailure?.addEventListener("click", () => this.showNextRevisionVideo(2, false));
   },
 
-  // YouTube URL 변환 함수 (변경 없음)
+  // ✨ [최종 보강] YouTube URL 변환 함수: 모든 형태의 YouTube 링크에서 ID 추출 로직 강화
   convertYoutubeUrlToEmbed(url) {
     if (!url || typeof url !== "string") return "";
-    url = url.trim();
-    let videoId = null; let startTime = 0; let tempUrl = url;
-    if (!tempUrl.startsWith("http://") && !tempUrl.startsWith("https://")) { tempUrl = "https://" + tempUrl; }
-    const regex = /(?:youtu\.be\/|v=|embed\/|shorts\/)([a-zA-Z0-9_-]{11})(?:[?&]|$)/;
-    const match = tempUrl.match(regex);
-    if (match) videoId = match[1];
-    if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) { console.error("[studentLesson.js] Invalid YouTube Video ID extracted:", videoId, "from URL:", tempUrl); return ""; }
-    console.log("[studentLesson.js] Extracted Video ID:", videoId);
+    
+    let videoId = null; 
+    let startTime = 0; 
+    let tempUrl = url.trim();
+
+    // 1. YouTube ID 추출 정규식: watch?v=, youtu.be/, embed/, shorts/, Studio URL 등 모든 패턴 처리
+    const videoIdRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?&]|$)/;
+    const idMatch = tempUrl.match(videoIdRegex);
+    
+    if (idMatch && idMatch[1]) {
+        videoId = idMatch[1];
+    } else {
+         console.error("[studentLesson.js] Failed to extract video ID from URL:", url);
+         return "";
+    }
+    
+    // 2. Start Time ('t' 또는 'start' 매개변수) 추출
     try {
-      const urlObj = new URL(tempUrl); const tParam = urlObj.searchParams.get("t");
-      if (tParam) { const secondsMatch = tParam.match(/^(\d+)/); if (secondsMatch) startTime = parseInt(secondsMatch[1], 10); }
-    } catch (e) { console.error("[studentLesson.js] URL parsing error:", e, "Original URL:", tempUrl); }
+      // URL 객체로 파싱하여 쿼리에서 't' 또는 'start'를 찾습니다.
+      if (!tempUrl.startsWith("http")) tempUrl = "https://" + tempUrl;
+      const urlObj = new URL(tempUrl);
+      const tParam = urlObj.searchParams.get('t') || urlObj.searchParams.get('start');
+      
+      if (tParam) {
+          // 숫자(초)만 추출
+          const secondsMatch = tParam.match(/^(\d+)/); 
+          if (secondsMatch) startTime = parseInt(secondsMatch[1], 10);
+      }
+    } catch (e) { 
+        // URL 파싱 오류 무시
+    }
+
+    // 3. 최종 표준 임베드 URL 생성
     let embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
     if (startTime > 0) embedUrl += `&start=${startTime}`;
+    
+    console.log("[studentLesson.js] Extracted Video ID:", videoId);
     console.log("[studentLesson.js] Generated Embed URL:", embedUrl);
     return embedUrl;
   },
 
-  // 학습 시작 함수 (변경 없음)
+  // ✨ [수정] 학습 시작 함수: setTimeout 제거 및 에러 핸들링 보강
   startSelectedLesson(lesson) {
-    this.app.state.activeLesson = lesson; this.app.state.currentRevVideoIndex = 0;
-    const originalUrl = this.app.state.activeLesson.video1Url; const embedUrl = this.convertYoutubeUrlToEmbed(originalUrl);
-    console.log("[studentLesson.js] === Starting Lesson:", lesson.title, "==="); console.log("[studentLesson.js] Original URL:", originalUrl);
-    if (!embedUrl) { console.error("[studentLesson.js] Failed to generate embed URL."); showToast("비디오 URL 형식이 올바르지 않습니다. 관리자에게 문의하세요.", true); this.app.showLessonSelectionScreen(); return; }
-    console.log("[studentLesson.js] Generated Embed URL:", embedUrl);
-    const titleElement = this.app.elements.video1Title;
-    if (titleElement) { titleElement.textContent = this.app.state.activeLesson.title; console.log("[studentLesson.js] Title set:", titleElement.textContent); }
-    else { console.error("[studentLesson.js] video1Title element not found."); return; }
-    const iframe = this.app.elements.video1Iframe;
-    if (!iframe) { console.error("[studentLesson.js] video1Iframe element not found in cache."); showToast("영상 플레이어 요소를 찾을 수 없습니다.", true); this.app.showLessonSelectionScreen(); return; }
-    console.log("[studentLesson.js] Found iframe element:", iframe);
-    this.app.showScreen(this.app.elements.video1Screen); console.log("[studentLesson.js] Called showScreen for video1Screen.");
-    setTimeout(() => {
-        try {
-            console.log("[studentLesson.js] Setting iframe src inside setTimeout:", embedUrl); iframe.src = embedUrl;
-            iframe.onload = () => { console.log("[studentLesson.js] video1 iframe reported loaded."); iframe.style.display = 'block'; console.log("[studentLesson.js] Set video1 iframe display to 'block' after load."); };
-            iframe.onerror = (e) => { console.error("[studentLesson.js] video1 iframe reported error on load:", e); showToast("영상 로드 중 오류 발생.", true); iframe.style.display = 'none'; };
-             iframe.style.display = 'block'; console.log("[studentLesson.js] Set video1 iframe display to 'block' immediately after setting src.");
-        } catch (error) { console.error("[studentLesson.js] Error setting video1 iframe src or display:", error); showToast("영상 설정 중 오류 발생", true); }
-        const revUrls = this.app.state.activeLesson.video1RevUrls; const hasRevUrls = revUrls && Array.isArray(revUrls) && revUrls.length > 0;
-        const gotoRev1Btn = this.app.elements.gotoRev1Btn; const startQuizBtn = this.app.elements.startQuizBtn;
-        if (gotoRev1Btn) { gotoRev1Btn.style.display = hasRevUrls ? "block" : "none"; if (hasRevUrls) { gotoRev1Btn.textContent = `보충 영상 보기 (1/${revUrls.length})`; } }
-        if (startQuizBtn) { startQuizBtn.style.display = hasRevUrls ? "none" : "block"; }
-        console.log(`[studentLesson.js] Buttons updated (hasRevUrls: ${hasRevUrls}).`);
-    }, 10);
+    const { elements } = this.app;
+    this.app.state.activeLesson = lesson;
+    this.app.state.currentRevVideoIndex = 0;
+
+    const originalUrl = lesson.video1Url;
+    const embedUrl = this.convertYoutubeUrlToEmbed(originalUrl);
+    const iframe = elements.video1Iframe;
+    const titleElement = elements.video1Title;
+    
+    console.log("[studentLesson.js] === Starting Lesson:", lesson.title, "===");
+
+    if (!iframe || !titleElement) { 
+        console.error("[studentLesson.js] Video player elements (iframe/title) not found."); 
+        showToast("영상 플레이어 요소를 찾을 수 없습니다.", true); 
+        this.app.showLessonSelectionScreen(); 
+        return; 
+    }
+    
+    // 1. UI 초기화 및 로딩 표시
+    this.app.showScreen(elements.video1Screen);
+    titleElement.textContent = lesson.title;
+    iframe.style.display = 'none'; // 로드 완료 전 숨김
+    iframe.style.border = 'none'; // ✨ [보강] border: none 추가
+    
+    // 2. URL 유효성 검사
+    if (!embedUrl) {
+        console.error("[studentLesson.js] Failed to generate embed URL:", originalUrl);
+        showToast("비디오 URL 형식이 올바르지 않습니다. 관리자에게 문의하세요.", true);
+        this.app.showLessonSelectionScreen(); 
+        return; 
+    }
+
+    // 3. Iframe 로드 핸들링
+    iframe.onerror = (e) => { 
+        console.error("[studentLesson.js] video1 iframe reported error on load:", e); 
+        showToast("영상 로드 중 오류 발생. (유튜브 정책 확인 필요)", true); 
+        iframe.src = 'about:blank'; // 오류 시 비우기
+        iframe.style.display = 'none'; 
+    };
+    iframe.onload = () => { 
+        console.log("[studentLesson.js] video1 iframe reported loaded."); 
+        iframe.style.display = 'block'; 
+    };
+
+    // 4. SRC 설정 (즉시 실행)
+    iframe.src = embedUrl;
+    console.log("[studentLesson.js] Iframe SRC set to:", embedUrl);
+
+    // 5. 버튼 상태 업데이트
+    const revUrls = lesson.video1RevUrls;
+    const hasRevUrls = revUrls && Array.isArray(revUrls) && revUrls.length > 0;
+    
+    if (elements.gotoRev1Btn) { 
+        elements.gotoRev1Btn.style.display = hasRevUrls ? "block" : "none"; 
+        if (hasRevUrls) elements.gotoRev1Btn.textContent = `보충 영상 보기 (1/${revUrls.length})`; 
+    }
+    
+    if (elements.startQuizBtn) { 
+        elements.startQuizBtn.style.display = hasRevUrls ? "none" : "block"; 
+    }
+    console.log(`[studentLesson.js] Buttons updated (hasRevUrls: ${hasRevUrls}).`);
   },
 
   // 보충 영상 표시 함수 (변경 없음)
@@ -146,7 +205,7 @@ export const studentLesson = {
     if (!studentDocId || typeof studentDocId !== 'string' || studentDocId.trim() === '') {
         showToast("학생 정보(문서 ID)가 유효하지 않아 결과를 저장할 수 없습니다.", true);
         console.error("[studentLesson.js] showResults called with invalid studentDocId:", studentDocId);
-        this.app.showLessonSelectionScreen(); return;
+        this.app.showSubjectSelectionScreen(); return;
     }
 
     this.app.state.currentRevVideoIndex = 0;
@@ -204,7 +263,7 @@ export const studentLesson = {
           studentDocId: studentDocId, // 로그에 studentDocId 포함
           subjectId: selectedSubject?.id
       });
-      // 사용자에게 직접적인 오류 메시지는 상황에 따라 조절 (퀴즈 종료 시에는 이미 결과 화면이 보이므로 생략 가능)
+      // 사용자에게 직접적인 오류 메시지 (퀴즈 종료 시에는 이미 결과 화면이 보이므로 생략 가능)
       // showToast("학습 기록 저장에 필요한 정보가 부족합니다.", true);
       return;
     }
