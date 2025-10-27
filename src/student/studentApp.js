@@ -79,22 +79,33 @@ const StudentApp = {
         throw new Error("No class data found.");
       }
 
-      // Firestore 클래스 문서에서 subjectIds 배열과 subjects 맵 가져오기
-      const subjectIds = Array.isArray(classData.subjectIds) ? classData.subjectIds : [];
-      const subjectsMap = (typeof classData.subjects === 'object' && classData.subjects !== null) ? classData.subjects : {};
+      // 1. classData.subjects 맵의 키(ID)를 과목 목록으로 사용합니다.
+      const classSubjectsMap = (typeof classData.subjects === 'object' && classData.subjects !== null) ? classData.subjects : {};
+      const subjectIds = Object.keys(classSubjectsMap); 
+      
+      if (subjectIds.length === 0) {
+           showToast("클래스에 등록된 과목이 없습니다.", true);
+           this.renderSubjectList(); // 빈 목록 렌더링
+           return;
+      }
+      
+      // 2. subjects 컬렉션에서 전체 과목 이름 정보를 가져옵니다.
+      const allSubjectsQuery = query(collection(db, 'subjects'));
+      const allSubjectsSnapshot = await getDocs(allSubjectsQuery);
+      const allSubjectsMap = new Map();
+      allSubjectsSnapshot.forEach(docSnap => {
+          allSubjectsMap.set(docSnap.id, docSnap.data().name);
+      });
 
-      // subjectIds 배열을 기반으로 activeSubjects 배열 생성
+      // 3. subjectIds 배열을 기반으로 activeSubjects 배열 생성
       this.state.activeSubjects = subjectIds
         .map((id) => {
-          // subjects 맵에서 해당 ID의 데이터(이름 포함) 찾기
-          const subjectInfo = subjectsMap[id];
-          const subjectName = subjectInfo?.name; // 이름 가져오기 (Optional chaining)
-
-          if (subjectName) { // 이름이 있으면 객체 반환
+          const subjectName = allSubjectsMap.get(id); // subjects 컬렉션에서 이름 조회
+          
+          if (subjectName) { 
               return { id, name: subjectName };
-          } else { // 이름이 없으면 경고 로그 남기고 임시 이름 사용
-              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found in classData.subjects for ID: ${id}. Using ID as name.`);
-              // 👇 이름이 없으면 ID를 이름으로 사용 (임시 방편)
+          } else { 
+              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found for ID: ${id}. Using ID as name.`);
               return { id, name: `과목 ID: ${id}` };
           }
         })
