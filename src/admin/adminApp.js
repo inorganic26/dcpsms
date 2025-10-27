@@ -13,47 +13,11 @@ import { lessonManager } from "./lessonManager.js";
 import { adminClassVideoManager } from "./adminClassVideoManager.js";
 import { adminHomeworkDashboard } from "./adminHomeworkDashboard.js";
 import { reportManager } from "../shared/reportManager.js";
+import { teacherManager } from "./teacherManager.js";
+import { subjectManager } from "./subjectManager.js"; 
+import { textbookManager } from "./textbookManager.js"; 
 
-// 스텁 모듈 (실제 구현 시 교체 필요)
-const subjectManager = {
-    init(app) { this.app = app; },
-    renderList() { console.warn("subjectManager.renderList is a stub."); },
-    addNewSubject() { showToast("과목 매니저 파일이 아직 연결되지 않았어요."); }
-};
-const textbookManager = {
-    init(app) { this.app = app; },
-    handleSubjectSelectForTextbook() { showToast("교재 매니저 파일이 아직 연결되지 않았어요."); },
-    addNewTextbook() { showToast("교재 매니저 파일이 아직 연결되지 않았어요."); }
-};
-const teacherManager = {
-    init(app) { this.app = app; },
-    renderList(teachers) { 
-        const listEl = this.app.elements.teachersList;
-        if (!listEl) return;
-        listEl.innerHTML = "";
-        if (teachers.length === 0) {
-          listEl.innerHTML = '<p class="text-sm text-slate-400">등록된 교사가 없습니다.</p>';
-        } else {
-             teachers.forEach((teacher) => {
-                 const div = document.createElement("div");
-                 div.className = "p-3 border rounded-lg flex items-center justify-between";
-                 const emailDisplay = teacher.email ? `(${teacher.email})` : "(이메일 미등록)";
-                 div.innerHTML = `
-                    <div>
-                        <p class="font-medium text-slate-700">${teacher.name} ${emailDisplay}</p>
-                        <p class="text-xs text-slate-500">${teacher.phone || "번호없음"}</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <button data-id="${teacher.id}" class="edit-teacher-btn text-blue-500 text-sm font-semibold">수정</button>
-                        <button data-id="${teacher.id}" class="reset-password-btn text-gray-500 text-sm font-semibold">비밀번호 초기화</button>
-                        <button data-id="${teacher.id}" class="delete-teacher-btn text-red-500 text-sm font-semibold">삭제</button>
-                    </div>`;
-                 listEl.appendChild(div);
-             });
-        }
-    },
-    addNewTeacher() { showToast("교사 매니저 파일이 아직 연결되지 않았어요."); }
-};
+// ⚠️ 이전에 존재했던 subjectManager와 textbookManager의 Stub 정의를 제거했습니다.
 
 // adminClassVideoManagerConfig를 위한 상수
 const adminClassVideoManagerConfig = {
@@ -173,13 +137,11 @@ export const AdminApp = {
 
             // 교사 관리 뷰 요소
             newTeacherNameInput: document.getElementById('admin-new-teacher-name'),
-            newTeacherEmailInput: document.getElementById('admin-new-teacher-email'),
             newTeacherPhoneInput: document.getElementById('admin-new-teacher-phone'),
             addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
             teachersList: document.getElementById('admin-teachers-list'),
             editTeacherModal: document.getElementById('admin-edit-teacher-modal'),
             editTeacherNameInput: document.getElementById('admin-edit-teacher-name'),
-            editTeacherEmailInput: document.getElementById('admin-edit-teacher-email'),
             editTeacherPhoneInput: document.getElementById('admin-edit-teacher-phone'),
             closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
             cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
@@ -318,6 +280,9 @@ export const AdminApp = {
         document.querySelectorAll(".back-to-admin-dashboard-btn")
             .forEach((b) => b.addEventListener("click", () => this.showView("dashboard")));
 
+        // ✨ 리포트 업로드 버튼 리스너 추가
+        this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload());
+        
         // 보고서 뷰: 반 선택 또는 날짜 변경 시 목록 새로고침
         this.elements.reportClassSelect?.addEventListener('change', () => this.loadAndRenderUploadedReports());
         this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
@@ -365,7 +330,7 @@ export const AdminApp = {
             adminClassVideoManager.init(this);
             adminHomeworkDashboard.init(this);
 
-            // 스텁 모듈 초기화
+            // 실제 모듈 초기화
             subjectManager.init(this);
             textbookManager.init(this);
             teacherManager.init(this);
@@ -430,18 +395,23 @@ export const AdminApp = {
                     studentAssignmentManager.resetView?.();
                     break;
                 case "subjectMgmt":
-                    subjectManager.renderList?.(this.state.subjects); // ✨ [수정] 스텁이므로 state.subjects 전달
+                    subjectManager.renderList?.(this.state.subjects);
                     break;
                 case "textbookMgmt":
-                    // 교재 관리 뷰의 과목 선택 목록 갱신을 위해 onSnapshot의 콜백을 다시 호출하도록 트리거
-                    // onSnapshot에 의해 자동으로 갱신되지만, 수동 렌더링이 필요하다면 여기에 로직 추가
-                    textbookManager.handleSubjectSelectForTextbook?.(''); 
+                    // 교재 관리 뷰 진입 시 드롭다운 채우기 및 목록 초기화
+                    textbookManager.populateSubjectSelect?.();
+                    textbookManager.handleSubjectSelectForTextbook?.(this.elements.subjectSelectForTextbook.value || ''); 
+                    break;
+                case "lessonMgmt":
+                    // 학습 세트 관리 뷰 진입 시 드롭다운 채우기 및 목록 초기화
+                    lessonManager.populateSubjectSelect?.();
+                    lessonManager.handleSubjectSelectForLesson?.(this.elements.subjectSelectForMgmt.value || ''); 
                     break;
                 case "studentMgmt":
-                    studentManager.renderList?.(this.state.students); // ✨ [수정] 명시적으로 목록 렌더링 호출
+                    studentManager.renderList?.(this.state.students);
                     break;
                 case "teacherMgmt":
-                    teacherManager.renderList?.(this.state.teachers); // ✨ [수정] 명시적으로 목록 렌더링 호출
+                    teacherManager.renderList?.(this.state.teachers);
                     break;
             }
         } else {
@@ -459,7 +429,6 @@ export const AdminApp = {
             this.state.students = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
             console.log(`[AdminApp] 학생 ${this.state.students.length}명 로드됨`);
             document.dispatchEvent(new CustomEvent('studentsLoaded'));
-            // ✨ [수정] 현재 뷰가 studentMgmt일 경우에만 renderList 호출
             if (this.state.currentView === 'studentMgmt') {
                 studentManager.renderList?.(this.state.students);
             }
@@ -480,9 +449,18 @@ export const AdminApp = {
             this.state.subjects = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
             console.log(`[AdminApp] 과목 ${this.state.subjects.length}개 로드됨`);
             document.dispatchEvent(new CustomEvent('subjectsUpdated'));
+            
+            // 과목/교재/학습세트 드롭다운 갱신
             if (this.state.currentView === 'subjectMgmt') {
                 subjectManager.renderList?.(this.state.subjects);
             }
+            if (this.state.currentView === 'textbookMgmt') {
+                textbookManager.populateSubjectSelect?.();
+            }
+            if (this.state.currentView === 'lessonMgmt') {
+                lessonManager.populateSubjectSelect?.();
+            }
+
             if (this.elements.editClassModal?.style.display === 'flex' && classManager.sharedClassEditor) {
                 const container = document.getElementById(adminClassEditorConfig.elements.editClassSubjectsContainer);
                 if (container && this.state.editingClass) {
@@ -551,6 +529,73 @@ export const AdminApp = {
             }
         }
     },
+    
+    // ✨ [추가] 리포트 업로드 핸들러
+    async handleReportUpload() {
+        const dateInput = this.elements.reportDateInput;
+        const filesInput = this.elements.reportFilesInput;
+        const statusEl = this.elements.reportUploadStatus;
+        const uploadBtn = this.elements.uploadReportsBtn;
+
+        if (!dateInput || !filesInput || !statusEl || !uploadBtn) {
+            console.error("Report upload UI elements missing.");
+            return;
+        }
+
+        const classId = this.elements.reportClassSelect?.value;
+        const testDateRaw = dateInput.value;
+        const files = filesInput.files;
+
+        if (!classId) {
+            showToast("먼저 대상 반을 선택해주세요.");
+            return;
+        }
+        if (!testDateRaw || !files || files.length === 0) {
+            showToast("시험 날짜와 리포트 파일을 모두 선택해주세요.");
+            return;
+        }
+
+        // YYYY-MM-DD -> YYYYMMDD
+        const testDate = testDateRaw.replace(/-/g, '');
+        if (testDate.length !== 8 || !/^\d+$/.test(testDate)) {
+            showToast("날짜 형식이 올바르지 않습니다 (YYYY-MM-DD 선택).", true);
+            return;
+        }
+
+        uploadBtn.disabled = true;
+        statusEl.innerHTML = `<span class="text-blue-600">파일 ${files.length}개 업로드 시작 중...</span>`;
+        let successCount = 0;
+        let failCount = 0;
+
+        const uploadPromises = [];
+        for (const file of files) {
+            uploadPromises.push(
+                reportManager.uploadReport(file, classId, testDate)
+                    .then(success => {
+                        if (success) successCount++;
+                        else failCount++;
+                        statusEl.innerHTML =
+                            `<span class="text-blue-600">업로드 진행 중... (${successCount + failCount}/${files.length}, 성공: ${successCount}, 실패: ${failCount})</span>`;
+                    })
+            );
+        }
+
+        try {
+            await Promise.all(uploadPromises);
+            statusEl.innerHTML =
+                `<span class="${failCount > 0 ? 'text-red-600' : 'text-green-600'}">업로드 완료: 총 ${files.length}개 중 ${successCount}개 성공, ${failCount}개 실패.</span>`;
+            showToast(`리포트 업로드 완료 (성공: ${successCount}, 실패: ${failCount})`, failCount > 0);
+            filesInput.value = '';
+            await this.loadAndRenderUploadedReports(); // 목록 새로고침
+        } catch (error) {
+            console.error("Error during parallel report upload:", error);
+            statusEl.innerHTML =
+                `<span class="text-red-600">업로드 중 오류 발생. 일부 파일 실패 가능성 있음.</span>`;
+            showToast("리포트 업로드 중 오류 발생", true);
+        } finally {
+            uploadBtn.disabled = false;
+        }
+    },
 
     // 보고서 관리 뷰: 업로드된 파일 목록 로드 및 렌더링
     async loadAndRenderUploadedReports() {
@@ -573,6 +618,8 @@ export const AdminApp = {
             this.state.uploadedReports = reports.map(r => ({
                 fileName: r.fileName,
                 url: r.url || '',
+                // 날짜 폴더가 정확히 무엇이었는지 알 수 없으므로, URL에서 Storage 경로를 추론해야 하지만,
+                // 여기서는 YYYYMMDD 폴더에 있다고 가정하고 저장 경로를 구성합니다.
                 storagePath: `reports/${cls}/${yyyymmdd}/${r.fileName}`,
             }));
 
@@ -593,18 +640,28 @@ export const AdminApp = {
             this.state.uploadedReports.forEach((r) => {
                 const li = document.createElement("li");
                 li.className = "flex justify-between items-center border p-2 rounded mb-1 bg-white text-sm";
+                
+                // ⚠️ 주의: 파일 삭제 시 파일이 실제로 어디에 저장되었는지 확인하고 storagePath를 조정해야 정확히 삭제됩니다.
+                // 현재는 listReportsForDateAndClass가 찾은 파일을 기준으로 경로를 재구성합니다.
+                // 이전에 파일이 루트에 저장되었다면 삭제가 실패할 수 있습니다.
+                // 이 부분을 해결하려면 reportManager.listReportsForDateAndClass에서 정확한 Storage Path를 리턴해야 합니다.
+                // 임시 방편으로, 파일명만으로 삭제를 시도할 때 루트도 확인하도록 로직을 조정했습니다.
+                
                 li.innerHTML = `
                   <span class="truncate mr-2">${r.fileName}</span>
                   <div class="flex-shrink-0 flex gap-2">
                     <a href="${r.url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700 text-xs font-bold">보기</a>
-                    <button data-path="${r.storagePath}" data-filename="${r.fileName}" class="delete-report-btn text-red-500 hover:text-red-700 text-xs font-bold">삭제</button>
+                    <button data-path="${r.storagePath}" data-filename="${r.fileName}" data-class-id="${cls}" data-date-str="${date}" class="delete-report-btn text-red-500 hover:text-red-700 text-xs font-bold">삭제</button>
                   </div>
                 `;
                 li.querySelector('.delete-report-btn')?.addEventListener('click', async (e) => {
                     const path = e.target.dataset.path;
                     const filename = e.target.dataset.filename;
+                    
                     if (path && confirm(`'${filename}' 리포트를 삭제하시겠습니까?`)) {
-                        const success = await reportManager.deleteReport(path);
+                        // ✨ 삭제 로직 보강: 루트 폴더에 저장되었을 가능성을 열어두고 삭제 시도
+                        const success = await this.tryDeleteReport(e.target.dataset.classId, e.target.dataset.dateStr, filename, path);
+
                         if (success) {
                             await this.loadAndRenderUploadedReports();
                         }
@@ -619,6 +676,30 @@ export const AdminApp = {
             this.state.uploadedReports = [];
         }
     },
+    
+    // ✨ [추가] 리포트 삭제 로직 (루트 폴더 fallback 포함)
+    async tryDeleteReport(classId, dateStr, fileName, primaryPath) {
+        // 1. 기본 경로 (primaryPath, 즉 /dateStr/fileName)로 삭제 시도
+        let success = await reportManager.deleteReport(primaryPath);
+        if (success) {
+            showToast("리포트 삭제 완료.", false);
+            return true;
+        }
+
+        // 2. 기본 경로 삭제 실패 시, 루트 폴더 경로로 추정하여 삭제 시도
+        const rootPath = `reports/${classId}/${fileName}`;
+        if (primaryPath !== rootPath) { // 이미 primaryPath가 루트가 아니라면
+             console.log("[AdminApp] Primary delete failed. Trying root path:", rootPath);
+             success = await reportManager.deleteReport(rootPath);
+             if (success) {
+                 showToast("리포트 삭제 완료.", false);
+                 return true;
+             }
+        }
+        
+        showToast("리포트 삭제에 실패했습니다. 파일이 존재하지 않거나 권한이 없습니다.", true);
+        return false;
+    }
 };
 
 // DOM 로드 완료 후 AdminApp 초기화 실행

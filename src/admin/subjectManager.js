@@ -16,6 +16,7 @@ export const subjectManager = {
     if (!name) return showToast("과목 이름을 입력해주세요.");
     await addDoc(collection(db, "subjects"), { name, createdAt: serverTimestamp() });
     showToast("과목이 추가되었습니다.");
+    this.app.elements.newSubjectNameInput.value = '';
   },
 
   listenForSubjects() {
@@ -30,6 +31,7 @@ export const subjectManager = {
 
   renderList() {
     const list = this.app.elements.subjectsList;
+    if (!list) return;
     list.innerHTML = "";
     if (this.app.state.subjects.length === 0) {
       list.innerHTML = '<p class="text-sm text-slate-400">생성된 과목이 없습니다.</p>';
