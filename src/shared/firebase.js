@@ -7,12 +7,14 @@ import { getStorage } from "firebase/storage";
 
 // 🔹 Firebase 프로젝트 설정값
 const firebaseConfig = {
-  apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY", // 👈 여기에 키를 넣었습니다!
+  apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY", // 👈 실제 키 확인 필요
   authDomain: "svcm-v2.firebaseapp.com",
   projectId: "svcm-v2",
-  storageBucket: "svcm-v2.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID", // 필요하다면 이것도 실제 값으로 변경하세요
-  appId: "YOUR_APP_ID"             // 필요하다면 이것도 실제 값으로 변경하세요
+  // 👇 storageBucket 주소 수정됨
+  storageBucket: "svcm-v2.firebasestorage.app", // 👈 Firebase 콘솔 주소와 일치시킴
+  // 👆 storageBucket 주소 수정됨
+  messagingSenderId: "189740450655", // 👈 실제 값 확인 및 필요시 수정
+  appId: "1:189740450655:web:a7bf1b03d23352a09b2cea" // 👈 실제 값 확인 및 필요시 수정
 };
 
 // 🔹 이미 초기화된 앱이 있으면 재사용
