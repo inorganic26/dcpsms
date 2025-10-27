@@ -11,7 +11,7 @@ import {
     updateDoc,
     orderBy
 } from "firebase/firestore";
-import { db, auth } from '../shared/firebase.js'; // auth 추가
+import { db, auth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 // 모듈 import
@@ -19,37 +19,37 @@ import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js';
 import { classVideoManager } from './classVideoManager.js';
-import { reportManager } from '../shared/reportManager.js'; // reportManager 추가
+import { reportManager } from '../shared/reportManager.js';
 
 const TeacherApp = {
     isInitialized: false,
     elements: {},
     state: {
-        teacherId: null, // 로그인한 교사 ID
-        teacherData: null, // 로그인한 교사 데이터
+        teacherId: null,
+        teacherData: null,
         selectedClassId: null,
         selectedClassName: null,
         selectedClassData: null,
-        studentsInClass: new Map(), // key: studentId, value: studentName
-        subjects: [], // 모든 공통 과목
-        textbooksBySubject: {}, // key: subjectId, value: [textbooks]
-        selectedSubjectId: null, // 학습 현황용 (lessonDashboard가 사용)
-        selectedLessonId: null,  // 학습 현황용 (lessonDashboard가 사용)
-        selectedHomeworkId: null, // 숙제 현황용 (homeworkDashboard가 사용)
-        selectedSubjectIdForMgmt: null, // 학습 관리용 (lessonManager가 사용)
-        lessons: [], // 학습 관리용 (lessonManager가 사용)
-        editingLesson: null, // 학습 관리용 (lessonManager가 사용)
-        generatedQuiz: null, // 학습 관리용 (lessonManager가 사용)
-        editingClass: null, // 반 설정 수정용 (classEditor가 사용)
-        editingHomeworkId: null, // 숙제 수정용 (homeworkDashboard가 사용)
+        studentsInClass: new Map(),
+        subjects: [],
+        textbooksBySubject: {},
+        selectedSubjectId: null,
+        selectedLessonId: null,
+        selectedHomeworkId: null,
+        selectedSubjectIdForMgmt: null,
+        lessons: [],
+        editingLesson: null,
+        generatedQuiz: null,
+        editingClass: null,
+        editingHomeworkId: null,
         currentView: 'dashboard',
         isSubjectsLoading: true,
         isClassDataLoading: false,
         areTextbooksLoading: {},
 
-        // ✨ 리포트 관리 상태
-        selectedReportDate: null, // YYYYMMDD 형식
-        uploadedReports: [], // 현재 표시된 리포트 파일 목록 [{fileName,url,storagePath}]
+        // 리포트 관리 상태
+        selectedReportDate: null,
+        uploadedReports: [],
     },
 
     init() {
@@ -76,6 +76,7 @@ const TeacherApp = {
         if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'none';
     },
 
+    // ✨ [수정] 로그인 로직: 이름 + 비밀번호(뒷 4자리)로 인증
     async handleLogin(name, password) {
         if (!name || !password) {
             showToast("이름과 비밀번호를 모두 입력해주세요.");
@@ -94,20 +95,27 @@ const TeacherApp = {
             if (!teacherSnapshot.empty) {
                 const userDoc = teacherSnapshot.docs[0];
                 const data = userDoc.data();
-
-                // 🚨 임시 비밀번호 비교 (실제 앱은 해시 비교 or Firebase Auth 사용)
-                if (data.password === password) {
+                
+                // 🚨 [수정] 비밀번호 비교: 전화번호 뒷 4자리 또는 설정된 비밀번호 비교
+                if ((data.phone && data.phone.slice(-4) === password) || data.password === password) {
                     loggedIn = true;
                     userId = userDoc.id;
                     userData = data;
-                    showToast(`환영합니다, ${userData.name} 선생님!`, false);
                 }
             }
 
             if (loggedIn && userId && userData) {
                 this.state.teacherId = userId;
                 this.state.teacherData = userData;
-                this.showDashboard(userId, userData);
+                
+                // ✨ [추가] 최초 로그인 상태 확인 및 처리
+                if (userData.isInitialPassword === true) {
+                     this.showDashboard(userId, userData); // 일단 대시보드 표시
+                     this.promptPasswordChange(userId); // 비밀번호 변경 프롬프트
+                } else {
+                     showToast(`환영합니다, ${userData.name} 선생님!`, false);
+                     this.showDashboard(userId, userData);
+                }
             } else {
                 showToast("이름 또는 비밀번호가 일치하지 않습니다.");
             }
@@ -128,10 +136,7 @@ const TeacherApp = {
             this.initializeDashboard();
         }
 
-        // 최초 로그인 시 비밀번호 변경 요구
-        if (userData.isInitialPassword === true) {
-            this.promptPasswordChange(userId);
-        }
+        // isInitialPassword 처리는 handleLogin에서 호출하도록 변경되었으므로 여기서 제거
     },
 
     initializeDashboard() {
@@ -165,22 +170,37 @@ const TeacherApp = {
         console.log("[TeacherApp] Dashboard initialized.");
     },
 
+    // ✨ [수정] 최초 비밀번호 변경 프롬프트 함수
     async promptPasswordChange(teacherId) {
-        const newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
-        if (newPassword && newPassword.length >= 6) {
-            try {
-                // 🚨 실제 서비스라면 해시 저장 or Cloud Function 등으로 안전하게 처리해야 함
-                await updateDoc(doc(db, 'teachers', teacherId), {
-                    password: newPassword,
-                    isInitialPassword: false
-                });
-                showToast("비밀번호 변경 완료.", false);
-            } catch (error) {
-                console.error("비밀번호 변경 실패:", error);
-                showToast("비밀번호 변경 실패.");
+        let newPassword = null;
+        let isValid = false;
+
+        while (!isValid) {
+            newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
+            
+            if (newPassword === null) { // 취소 버튼
+                showToast("비밀번호 변경을 취소했습니다. 다음 로그인 시 다시 변경해야 합니다.");
+                return;
             }
-        } else if (newPassword) {
-            showToast("비밀번호는 6자리 이상이어야 합니다.");
+            
+            newPassword = newPassword.trim();
+            if (newPassword.length >= 6) {
+                isValid = true;
+            } else {
+                alert("비밀번호는 6자리 이상이어야 합니다.");
+            }
+        }
+
+        try {
+            // Firestore에 새 비밀번호와 최초 로그인 플래그 업데이트
+            await updateDoc(doc(db, 'teachers', teacherId), {
+                password: newPassword,
+                isInitialPassword: false
+            });
+            showToast("비밀번호가 성공적으로 변경되었습니다.", false);
+        } catch (error) {
+            console.error("비밀번호 변경 실패:", error);
+            showToast("비밀번호 변경에 실패했습니다. 관리자에게 문의하세요.");
         }
     },
 
@@ -343,7 +363,7 @@ const TeacherApp = {
             if (viewBtn && viewBtn.dataset.url) {
                 const fileUrl = viewBtn.dataset.url;
                 if (fileUrl) {
-                    window.open(fileUrl, '_blank'); // 실제 다운로드 URL 바로 열기
+                    window.open(fileUrl, '_blank');
                 } else {
                     showToast("리포트를 열 수 없습니다.", true);
                 }
@@ -362,9 +382,9 @@ const TeacherApp = {
             this.updateSubjectDropdowns();
 
             // 과목/교재 관리 모달이 열려 있으면 즉시 새 목록 반영
-            if (this.classEditor?.isSubjectTextbookMgmtModalOpen()) {
-                this.classEditor.renderSubjectListForMgmt();
-                this.classEditor.populateSubjectSelectForTextbookMgmt();
+            if (this.classEditor?.managerInstance?.isSubjectTextbookMgmtModalOpen?.()) {
+                this.classEditor.managerInstance.renderSubjectListForMgmt();
+                this.classEditor.managerInstance.populateSubjectSelectForTextbookMgmt();
             }
 
             // 반 설정 뷰가 열려 있다면 갱신
@@ -541,15 +561,15 @@ const TeacherApp = {
             return;
         }
         if (hasError) {
-            container.innerHTML = '<p class.="text-sm text-red-500 p-4">학생 명단 로딩 실패</p>';
+            container.innerHTML = '<p class="text-sm text-red-500 p-4">학생 명단 로딩 실패</p>';
             return;
         }
         if (!this.state.selectedClassId) {
-            container.innerHTML = '<p class.="text-sm text-slate-500 p-4">반을 선택해주세요.</p>';
+            container.innerHTML = '<p class="text-sm text-slate-500 p-4">반을 선택해주세요.</p>';
             return;
         }
         if (this.state.studentsInClass.size === 0) {
-            container.innerHTML = '<p class.="text-sm text-slate-500 p-4">이 반에 배정된 학생이 없습니다.</p>';
+            container.innerHTML = '<p class="text-sm text-slate-500 p-4">이 반에 배정된 학생이 없습니다.</p>';
             return;
         }
 
@@ -823,7 +843,7 @@ const TeacherApp = {
         }
 
         const classId = this.state.selectedClassId;
-        const testDateRaw = dateInput.value; // YYYY-MM-DD
+        const testDateRaw = dateInput.value;
         const files = filesInput.files;
 
         if (!classId) {
@@ -887,7 +907,7 @@ const TeacherApp = {
 
         if (!dateInput || !listContainer) return;
 
-        const testDateRaw = dateInput.value; // YYYY-MM-DD
+        const testDateRaw = dateInput.value;
 
         // 날짜나 반이 없으면 초기화
         if (!testDateRaw || !classId) {
@@ -897,7 +917,7 @@ const TeacherApp = {
             return;
         }
 
-        const testDate = testDateRaw.replace(/-/g, ''); // YYYYMMDD
+        const testDate = testDateRaw.replace(/-/g, '');
         this.state.selectedReportDate = testDate;
 
         listContainer.innerHTML = '<p class="text-sm text-slate-400">파일 목록 로딩 중...</p>';
@@ -911,9 +931,7 @@ const TeacherApp = {
             return;
         }
 
-        // rawReports: [{ fileName, url, title }, ...] 라고 가정
-        // 삭제 기능을 위해 storagePath도 직접 만들자:
-        // reports/{classId}/{testDate}/{fileName}
+        // storagePath를 추가하여 상태 업데이트
         const mappedReports = rawReports.map(r => ({
             fileName: r.fileName,
             url: r.url || '',
