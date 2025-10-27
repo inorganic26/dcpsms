@@ -1,72 +1,54 @@
 // src/shared/firebase.js
-
-import { initializeApp } from "firebase/app";
-// initializeAppCheck, ReCaptchaV3Provider import 제거됨
-import { getAuth, onAuthStateChanged, signInAnonymously, getIdTokenResult } from "firebase/auth";
+import { getApps, initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
+// ⬇️ 수정된 부분: signInAnonymously, onAuthStateChanged 추가
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getStorage } from "firebase/storage";
-import { showToast } from './utils.js';
 
+// 🔹 Firebase 프로젝트 설정값
 const firebaseConfig = {
-  apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY",
+  apiKey: "YOUR_API_KEY",
   authDomain: "svcm-v2.firebaseapp.com",
   projectId: "svcm-v2",
-  storageBucket: "svcm-v2.firebasestorage.app",
-  messagingSenderId: "189740450655",
-  appId: "1:189740450655:web:a7bf1b03d23352a09b2cea"
+  storageBucket: "svcm-v2.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
-const app = initializeApp(firebaseConfig);
+// 🔹 이미 초기화된 앱이 있으면 재사용
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-// App Check 호출 제거됨:
-/*
-initializeAppCheck(app, {
-  provider: new ReCaptchaV3Provider('6LdZeOYrAAAAAIK_L5u1NB-XZWyxl08UQ1jGgW3j'),
-  isTokenAutoRefreshEnabled: true
-});
-*/
+// 🔹 서비스 참조
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
 
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
-
-const ensureAnonymousAuth = (callback) => {
-    onAuthStateChanged(auth, user => {
-        if (user) {
-            callback(user);
-        } else {
-            signInAnonymously(auth).catch(err => console.error("Anonymous sign-in error:", err));
-        }
-    });
-};
-
-const ensureAuthWithRole = (requiredRole, callback) => {
-  onAuthStateChanged(auth, async (user) => {
+// ⬇️ 추가된 함수
+/**
+ * Firebase 익명 인증을 확인하고,
+ * 로그아웃 상태(user=null)이면 익명 로그인을 시도한 후
+ * 콜백(callback)을 실행합니다.
+ */
+export const ensureAnonymousAuth = (callback) => {
+  onAuthStateChanged(auth, (user) => {
     if (user) {
-      try {
-        const idTokenResult = await getIdTokenResult(user, true);
-        const userRole = idTokenResult.claims.role;
-
-        const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
-
-        if (roles.includes(userRole)) {
-          callback(user);
-        } else {
-          showToast("이 페이지에 접근할 권한이 없습니다.");
-          // 권한 없는 사용자는 로그아웃 처리 후 포털로 이동
-          await auth.signOut();
-          window.location.href = '../../index.html'; 
-        }
-      } catch (error) {
-        console.error("권한 확인 중 오류 발생:", error);
-        showToast("오류가 발생했습니다. 다시 로그인해주세요.");
-        window.location.href = '../../index.html';
-      }
+      // 이미 익명 또는 다른 방식으로 로그인됨
+      callback(user);
     } else {
-      // 로그인하지 않은 사용자는 포털로 리디렉션
-      window.location.href = '../../index.html';
+      // 로그아웃 상태 -> 익명 로그인 시도
+      signInAnonymously(auth)
+        .then((userCredential) => {
+          // 익명 로그인 성공
+          callback(userCredential.user);
+        })
+        .catch((error) => {
+          console.error("익명 로그인 실패:", error);
+          // 실패하더라도 앱 로직은 (user=null)로 시도
+          callback(null);
+        });
     }
   });
 };
 
-export { app, auth, db, storage, ensureAnonymousAuth, ensureAuthWithRole, onAuthStateChanged, signInAnonymously };
+
+export default app;
