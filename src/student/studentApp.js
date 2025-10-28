@@ -128,7 +128,7 @@ const StudentApp = {
     }
   },
 
-  // 요소 캐싱 (이전 답변과 동일)
+  // 요소 캐싱
   cacheElements() {
     this.elements = {
       loadingScreen: document.getElementById("student-loading-screen"),
@@ -207,7 +207,7 @@ const StudentApp = {
     Object.keys(this.elements).forEach(key => { if (!this.elements[key]) { console.warn(`[StudentApp.cacheElements] Element with key '${key}' not found in DOM! Check HTML ID.`); } });
   },
 
-  // 이벤트 리스너 추가 (숙제 중복 방지 코드 포함됨)
+  // 이벤트 리스너 추가
   addEventListeners() {
     // 뒤로가기 버튼들
     this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
@@ -226,7 +226,6 @@ const StudentApp = {
     this.elements.gotoClassVideoCard?.addEventListener('click', () => this.showClassVideoDateScreen());
     this.elements.gotoQnaVideoCard?.addEventListener('click', () => this.showQnaVideoDateScreen());
     this.elements.gotoHomeworkCard?.addEventListener('click', () => {
-        // 👇 숙제 목록 중복 방지: 호출 전에 로딩 표시
         if (this.elements.homeworkList) {
             this.elements.homeworkList.innerHTML = '<div class="loader mx-auto my-4"></div>';
         }
@@ -244,7 +243,7 @@ const StudentApp = {
     this.elements.backToMenuFromReportListBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
   },
 
-  // 화면 전환 (변경 없음)
+  // 화면 전환
   showScreen(screenEl) {
     const screens = document.querySelectorAll(".student-screen");
     screens.forEach((el) => { if (el) el.style.display = "none"; });
@@ -252,7 +251,7 @@ const StudentApp = {
     else console.warn("[StudentApp.showScreen] Target screen element is null or undefined.");
   },
 
-  // 과목 선택 화면 표시 (변경 없음)
+  // 과목 선택 화면 표시
   showSubjectSelectionScreen() {
     const welcomeEl = this.elements.welcomeMessage;
     if (welcomeEl) { welcomeEl.textContent = `${this.state.className || ''} ${this.state.studentName || ''}님, 환영합니다!`; }
@@ -267,7 +266,7 @@ const StudentApp = {
     console.log("[StudentApp] Subject selection screen shown.");
   },
 
-  // 과목 목록 UI 렌더링 (변경 없음)
+  // 과목 목록 UI 렌더링
   renderSubjectList() {
     const listEl = this.elements.subjectsList;
     if (!listEl) { console.error("[StudentApp.renderSubjectList] subjectsList element not found!"); return; }
@@ -279,7 +278,7 @@ const StudentApp = {
     });
   },
 
-  // 과목 선택 및 학습 목록 화면 표시 (변경 없음)
+  // 과목 선택 및 학습 목록 화면 표시
   async selectSubjectAndShowLessons(subject) {
     this.state.selectedSubject = subject;
     if (this.elements.selectedSubjectTitle) { this.elements.selectedSubjectTitle.textContent = `${subject.name} 학습 목록`; }
@@ -287,13 +286,13 @@ const StudentApp = {
     this.showScreen(this.elements.lessonSelectionScreen);
   },
 
-  // 학습 목록 화면 표시 (변경 없음)
+  // 학습 목록 화면 표시
   showLessonSelectionScreen() {
       if (!this.state.selectedSubject) { console.warn("[StudentApp] No subject selected. Cannot show lesson screen."); this.showSubjectSelectionScreen(); return; }
       this.showScreen(this.elements.lessonSelectionScreen);
   },
 
-  // 학습 목록 로드 및 렌더링 (변경 없음)
+  // 학습 목록 로드 및 렌더링
   async loadLessonsForSubject(subjectId) {
     const listEl = this.elements.lessonsList; if (!listEl) return; listEl.innerHTML = '<div class="loader mx-auto my-4"></div>';
     try {
@@ -308,16 +307,16 @@ const StudentApp = {
     } catch (error) { console.error("[StudentApp] Error loading lessons:", error); listEl.innerHTML = '<p class="text-center text-red-500 py-8">학습 목록을 불러오는 중 오류 발생</p>'; showToast("학습 목록 로딩 실패", true); }
   },
 
-  // 수업 영상 날짜 선택 화면 (변경 없음)
+  // 수업 영상 날짜 선택 화면
   async showClassVideoDateScreen() { await this.loadAndRenderVideoDates("class"); this.showScreen(this.elements.classVideoDateScreen); },
 
-  // 질문 영상 날짜 선택 화면 (변경 없음)
+  // 질문 영상 날짜 선택 화면
   async showQnaVideoDateScreen() { await this.loadAndRenderVideoDates("qna"); this.showScreen(this.elements.qnaVideoDateScreen); },
 
-  // 날짜 선택 화면으로 돌아가기 (변경 없음)
+  // 날짜 선택 화면으로 돌아가기
   backToVideoDatesScreen() { if (this.state.currentVideoType === "qna") this.showScreen(this.elements.qnaVideoDateScreen); else this.showScreen(this.elements.classVideoDateScreen); },
 
-  // 영상 날짜 목록 로드 및 렌더링 (변경 없음)
+  // 영상 날짜 목록 로드 및 렌더링
   async loadAndRenderVideoDates(videoType) {
     const isQna = videoType === "qna"; const collectionName = isQna ? "classVideos" : "classLectures"; const dateFieldName = isQna ? "videoDate" : "lectureDate";
     const listElement = isQna ? this.elements.qnaVideoDateList : this.elements.classVideoDateList; const stateKey = isQna ? "qnaVideosByDate" : "classVideosByDate";
@@ -338,7 +337,7 @@ const StudentApp = {
     } catch (e) { console.error("[StudentApp] loadAndRenderVideoDates error:", e); listElement.innerHTML = `<p class="text-center text-red-500 py-8">영상 목록을 불러오는 중 오류가 발생했습니다.</p>`; }
   },
 
-  // 날짜별 영상 제목 목록 표시 (변경 없음)
+  // 날짜별 영상 제목 목록 표시
   showVideoTitlesForDate(videoType, date) {
     this.state.currentVideoDate = date; this.state.currentVideoType = videoType; const stateKey = videoType === "qna" ? "qnaVideosByDate" : "classVideosByDate"; const videos = this.state[stateKey]?.[date] || [];
     if (this.elements.videoTitlesDate) { this.elements.videoTitlesDate.textContent = `${date} ${videoType === "qna" ? "질문" : "수업"} 영상`; }
@@ -349,7 +348,7 @@ const StudentApp = {
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
-  // 모달에서 영상 재생 (⭐️ 수정된 부분 ⭐️)
+  // 모달에서 영상 재생 (⭐️ 수정: iframe 생성 후 src 설정 ⭐️)
   playVideoInModal(video) {
     const modal = this.elements.videoDisplayModal;
     const content = this.elements.videoModalContent;
@@ -361,37 +360,32 @@ const StudentApp = {
       return;
     }
 
-    content.innerHTML = '<div class="w-full aspect-video flex items-center justify-center bg-black"><div class="loader"></div></div>';
+    content.innerHTML = '<div class="w-full aspect-video flex items-center justify-center bg-black"><div class="loader"></div></div>'; // 로딩 표시 먼저
     if (titleEl) titleEl.textContent = video.title || "영상 보기";
 
     const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url);
     console.log(`[StudentApp] Trying to play video: ${video.title}, Original URL: ${video.url}, Embed URL: ${embedUrl}`);
 
-    modal.style.display = "flex"; // 모달 먼저 표시
+    modal.style.display = "flex"; // 모달 표시
 
     if (embedUrl) {
+      // 1. iframe 요소 생성 및 기본 스타일 설정
       const iframe = document.createElement("iframe");
-      // ⭐️ 추가: 명시적으로 width/height 및 스타일 설정 ⭐️
       iframe.style.position = 'absolute';
       iframe.style.top = '0';
       iframe.style.left = '0';
       iframe.style.width = '100%';
       iframe.style.height = '100%';
-      iframe.style.border = 'none'; // 테두리 제거
+      iframe.style.border = 'none';
       iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
       iframe.allowFullscreen = true;
       iframe.style.display = 'none'; // 로드 완료 시까지 숨김
 
-      content.innerHTML = ""; // 로딩 인디케이터 제거
-      content.appendChild(iframe);
-
+      // 2. 로드/오류 핸들러 설정
       iframe.onload = () => {
         console.log("[StudentApp] Iframe loaded successfully (via onload).");
-        // ⭐️ 추가: 로드 후 잠시 뒤에 표시 (타이밍 문제 회피 시도) ⭐️
-        setTimeout(() => {
-             iframe.style.display = 'block';
-             console.log("[StudentApp] Iframe display set to block after delay.");
-        }, 100); // 100ms 딜레이
+        iframe.style.display = 'block'; // 로드 완료 후 즉시 표시
+        console.log("[StudentApp] Iframe display set to block immediately on load.");
       };
 
       iframe.onerror = () => {
@@ -400,32 +394,32 @@ const StudentApp = {
         showToast("영상 로드에 실패했습니다. (유튜브 정책 확인 필요)", true);
       };
 
-      // ⭐️ 수정: src 설정을 onload/onerror 설정 *후에* 실행 ⭐️
+      // 3. 로딩 인디케이터 제거 및 iframe DOM에 추가
+      content.innerHTML = "";
+      content.appendChild(iframe);
+
+      // 4. DOM 추가 후 src 설정 (브라우저가 iframe 로딩 시작)
       iframe.src = embedUrl;
-      console.log(`[StudentApp] Iframe SRC set to: ${embedUrl}`);
+      console.log(`[StudentApp] Iframe SRC set AFTER appending to DOM: ${embedUrl}`);
 
     } else {
       console.error("[StudentApp] Failed to get embed URL for video:", video);
       content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다. 관리자에게 문의하세요.</p>`;
-      // modal.style.display = "flex"; // 이미 위에서 표시함
     }
   },
 
-  // 영상 모달 닫기 (변경 없음)
+  // 영상 모달 닫기
   closeVideoModal() {
     const modal = this.elements.videoDisplayModal;
     const content = this.elements.videoModalContent;
 
     if (modal) modal.style.display = "none";
+    if (content) content.innerHTML = ""; // Stop video playback
 
-    // 콘텐츠를 비우면 다음 재생 시 충돌 방지
-    if (content) content.innerHTML = "";
-
-    // 모달이 닫히면 이전 화면으로 돌아가야 합니다.
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
-  // 시험 결과 리포트 목록 화면 표시 (변경 없음)
+  // 시험 결과 리포트 목록 화면 표시
   async showReportListScreen() {
       const container = this.elements.reportListContainer; if (!container) return;
       if (!this.state.classId || !this.state.studentName) { container.innerHTML = '<p class="text-center text-red-500 py-8">학생 또는 반 정보가 없습니다.</p>'; this.showScreen(this.elements.reportListScreen); return; }
@@ -434,7 +428,7 @@ const StudentApp = {
       catch (error) { console.error("Error loading student reports:", error); container.innerHTML = '<p class="text-center text-red-500 py-8">시험 결과 목록 로딩 실패</p>'; }
   },
 
-  // 시험 결과 리포트 목록 렌더링 (변경 없음)
+  // 시험 결과 리포트 목록 렌더링
   renderReportList() {
       const container = this.elements.reportListContainer; if (!container) return; container.innerHTML = ''; const dates = Object.keys(this.state.reportsByDate).sort((a, b) => b.localeCompare(a));
       if (dates.length === 0) { container.innerHTML = '<p class="text-center text-slate-500 py-8">업로드된 시험 결과가 없습니다.</p>'; return; }
@@ -451,7 +445,7 @@ const StudentApp = {
       });
   },
 
-  // 모든 비디오 중지 (변경 없음)
+  // 모든 비디오 중지
   stopAllVideos() {
       if (this.elements.video1Iframe) { this.elements.video1Iframe.src = 'about:blank'; }
       if (this.elements.reviewVideo2Iframe) { this.elements.reviewVideo2Iframe.src = 'about:blank'; }
@@ -461,7 +455,7 @@ const StudentApp = {
 
 };
 
-// DOM 로드 후 앱 초기화 (변경 없음)
+// DOM 로드 후 앱 초기화
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[StudentApp] DOMContentLoaded. Ensuring auth...");
   ensureAnonymousAuth((user) => {

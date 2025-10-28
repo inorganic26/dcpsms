@@ -17,7 +17,7 @@ export const studentLesson = {
     this.app.elements.showRev2BtnFailure?.addEventListener("click", () => this.showNextRevisionVideo(2, false));
   },
 
-  // ✨ [최종 보강] YouTube URL 변환 함수: 모든 형태의 YouTube 링크에서 ID 추출 로직 강화
+  // YouTube URL 변환 함수 (변경 없음)
   convertYoutubeUrlToEmbed(url) {
     if (!url || typeof url !== "string") return "";
 
@@ -25,7 +25,6 @@ export const studentLesson = {
     let startTime = 0;
     let tempUrl = url.trim();
 
-    // 1. YouTube ID 추출 정규식: watch?v=, youtu.be/, embed/, shorts/, Studio URL 등 모든 패턴 처리
     const videoIdRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?&]|$)/;
     const idMatch = tempUrl.match(videoIdRegex);
 
@@ -36,23 +35,17 @@ export const studentLesson = {
          return "";
     }
 
-    // 2. Start Time ('t' 또는 'start' 매개변수) 추출
     try {
-      // URL 객체로 파싱하여 쿼리에서 't' 또는 'start'를 찾습니다.
       if (!tempUrl.startsWith("http")) tempUrl = "https://" + tempUrl;
       const urlObj = new URL(tempUrl);
       const tParam = urlObj.searchParams.get('t') || urlObj.searchParams.get('start');
 
       if (tParam) {
-          // 숫자(초)만 추출
           const secondsMatch = tParam.match(/^(\d+)/);
           if (secondsMatch) startTime = parseInt(secondsMatch[1], 10);
       }
-    } catch (e) {
-        // URL 파싱 오류 무시
-    }
+    } catch (e) { /* URL 파싱 오류 무시 */ }
 
-    // 3. 최종 표준 임베드 URL 생성
     let embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
     if (startTime > 0) embedUrl += `&start=${startTime}`;
 
@@ -61,7 +54,7 @@ export const studentLesson = {
     return embedUrl;
   },
 
-  // ✨ [수정] 학습 시작 함수: setTimeout 제거 및 에러 핸들링 보강
+  // ⭐ 학습 시작 함수 수정 ⭐
   startSelectedLesson(lesson) {
     const { elements } = this.app;
     this.app.state.activeLesson = lesson;
@@ -81,37 +74,39 @@ export const studentLesson = {
         return;
     }
 
-    // 1. UI 초기화 및 로딩 표시
+    // 1. UI 초기화
     this.app.showScreen(elements.video1Screen);
     titleElement.textContent = lesson.title;
-    iframe.style.display = 'none'; // 로드 완료 전 숨김
-    iframe.style.border = 'none'; // ✨ [보강] border: none 추가
+    iframe.style.border = 'none';
 
     // 2. URL 유효성 검사
     if (!embedUrl) {
         console.error("[studentLesson.js] Failed to generate embed URL:", originalUrl);
         showToast("비디오 URL 형식이 올바르지 않습니다. 관리자에게 문의하세요.", true);
+        iframe.src = 'about:blank'; // iframe 비우기
+        iframe.style.display = 'none'; // 숨기기
         this.app.showLessonSelectionScreen();
         return;
     }
 
-    // 3. Iframe 로드 핸들링
+    // ⭐ 3. iframe src 설정 및 바로 표시 (display:none 제거) ⭐
+    iframe.src = embedUrl;
+    iframe.style.display = 'block'; // 바로 보이도록 설정
+    console.log("[studentLesson.js] Iframe SRC set and display set to block:", embedUrl);
+
+    // 4. 로드/오류 핸들러 (선택적: 오류 발생 시 사용자 알림용)
+    iframe.onload = () => {
+        console.log("[studentLesson.js] video1 iframe reported loaded.");
+        // 특별히 할 작업 없음 (이미 보이도록 설정됨)
+    };
     iframe.onerror = (e) => {
         console.error("[studentLesson.js] video1 iframe reported error on load:", e);
         showToast("영상 로드 중 오류 발생. (유튜브 정책 확인 필요)", true);
-        iframe.src = 'about:blank'; // 오류 시 비우기
-        iframe.style.display = 'none';
-    };
-    iframe.onload = () => {
-        console.log("[studentLesson.js] video1 iframe reported loaded.");
-        iframe.style.display = 'block';
+        iframe.style.display = 'none'; // 오류 시 숨기기
     };
 
-    // 4. SRC 설정 (즉시 실행)
-    iframe.src = embedUrl;
-    console.log("[studentLesson.js] Iframe SRC set to:", embedUrl);
 
-    // 5. 버튼 상태 업데이트
+    // 5. 버튼 상태 업데이트 (변경 없음)
     const revUrls = lesson.video1RevUrls;
     const hasRevUrls = revUrls && Array.isArray(revUrls) && revUrls.length > 0;
 
@@ -149,9 +144,8 @@ export const studentLesson = {
     }
   },
 
-  // 퀴즈 시작 함수
+  // 퀴즈 시작 함수 (변경 없음)
   startQuiz() {
-    // 👇 수정: studentDocId 유효성 검사 강화
     if (!this.app.state.activeLesson) { console.error("[studentLesson.js] startQuiz called but activeLesson is null."); this.app.showLessonSelectionScreen(); return; }
     if (!this.app.state.studentDocId || typeof this.app.state.studentDocId !== 'string' || this.app.state.studentDocId.trim() === '') {
         showToast("학생 정보(문서 ID)가 유효하지 않습니다. 다시 로그인해주세요.", true);
@@ -159,7 +153,7 @@ export const studentLesson = {
         this.app.showSubjectSelectionScreen(); return;
     }
 
-    this.updateStudentProgress("퀴즈 푸는 중"); // Firestore 업데이트 시도
+    this.updateStudentProgress("퀴즈 푸는 중");
     this.app.state.currentQuestionIndex = 0; this.app.state.score = 0;
     const questionBank = Array.isArray(this.app.state.activeLesson.questionBank) ? this.app.state.activeLesson.questionBank : [];
     if (questionBank.length === 0) { showToast("퀴즈 문항이 없습니다. 관리자에게 문의하세요."); this.app.showLessonSelectionScreen(); return; }
@@ -197,11 +191,10 @@ export const studentLesson = {
     setTimeout(() => { if(this.app.elements.optionsContainer) this.app.elements.optionsContainer.classList.remove("disabled"); this.app.state.currentQuestionIndex++; this.displayQuestion(); }, 1500);
   },
 
-  // 퀴즈 결과 표시 함수
+  // 퀴즈 결과 표시 함수 (변경 없음)
   showResults() {
-    const { score, passScore, totalQuizQuestions, activeLesson, studentDocId } = this.app.state; // studentDocId 추가
+    const { score, passScore, totalQuizQuestions, activeLesson, studentDocId } = this.app.state;
     if (!activeLesson) { console.error("[studentLesson.js] showResults called but activeLesson is null."); this.app.showLessonSelectionScreen(); return; }
-    // 👇 수정: studentDocId 유효성 검사 강화
     if (!studentDocId || typeof studentDocId !== 'string' || studentDocId.trim() === '') {
         showToast("학생 정보(문서 ID)가 유효하지 않아 결과를 저장할 수 없습니다.", true);
         console.error("[studentLesson.js] showResults called with invalid studentDocId:", studentDocId);
@@ -211,31 +204,31 @@ export const studentLesson = {
     this.app.state.currentRevVideoIndex = 0;
     const pass = score >= passScore; const status = pass ? "퀴즈 통과 (완료)" : "퀴즈 실패";
     console.log(`[studentLesson.js] Quiz finished. Score: ${score}/${totalQuizQuestions}. Pass: ${pass}`);
-    this.updateStudentProgress(status, score); // Firestore 업데이트 시도
+    this.updateStudentProgress(status, score);
 
     this.app.showScreen(this.app.elements.resultScreen); console.log("[studentLesson.js] Switched to resultScreen.");
     const scoreText = `${totalQuizQuestions} 문제 중 ${score} 문제를 맞혔습니다.`;
     const revUrls = Array.isArray(activeLesson.video2RevUrls) ? activeLesson.video2RevUrls : []; const hasRevUrls = revUrls.length > 0;
     const video2EmbedUrl = this.convertYoutubeUrlToEmbed(activeLesson.video2Url); let targetIframe = null;
 
-    if (pass) { /* ... (성공 UI 처리, 변경 없음) ... */
+    if (pass) {
       if(this.app.elements.successMessage) this.app.elements.successMessage.style.display = "block"; if(this.app.elements.failureMessage) this.app.elements.failureMessage.style.display = "none";
       if(this.app.elements.resultScoreTextSuccess) this.app.elements.resultScoreTextSuccess.textContent = scoreText; targetIframe = this.app.elements.reviewVideo2Iframe;
       console.log("[studentLesson.js] Target iframe is reviewVideo2Iframe.");
       if (this.app.elements.showRev2BtnSuccess) { this.app.elements.showRev2BtnSuccess.style.display = hasRevUrls ? "block" : "none"; if (hasRevUrls) this.app.elements.showRev2BtnSuccess.textContent = `보충 풀이 보기 (1/${revUrls.length})`; }
-    } else { /* ... (실패 UI 처리, 변경 없음) ... */
+    } else {
       if(this.app.elements.successMessage) this.app.elements.successMessage.style.display = "none"; if(this.app.elements.failureMessage) this.app.elements.failureMessage.style.display = "block";
       if(this.app.elements.resultScoreTextFailure) this.app.elements.resultScoreTextFailure.textContent = scoreText; targetIframe = this.app.elements.video2Iframe;
       console.log("[studentLesson.js] Target iframe is video2Iframe.");
       if (this.app.elements.showRev2BtnFailure) { this.app.elements.showRev2BtnFailure.style.display = hasRevUrls ? "block" : "none"; if (hasRevUrls) this.app.elements.showRev2BtnFailure.textContent = `보충 풀이 보기 (1/${revUrls.length})`; }
     }
 
-    if (!video2EmbedUrl) { /* ... (영상 URL 오류 처리, 변경 없음) ... */
+    if (!video2EmbedUrl) {
       console.error("[studentLesson.js] video2Url is invalid:", activeLesson.video2Url); if (targetIframe) targetIframe.style.display = 'none';
       if (this.app.elements.showRev2BtnSuccess) this.app.elements.showRev2BtnSuccess.style.display = 'none'; if (this.app.elements.showRev2BtnFailure) this.app.elements.showRev2BtnFailure.style.display = 'none';
-    } else if (!targetIframe) { /* ... (iframe 요소 없음 오류 처리, 변경 없음) ... */
+    } else if (!targetIframe) {
       console.error(`[studentLesson.js] Target iframe element (${pass ? 'reviewVideo2Iframe' : 'video2Iframe'}) not found.`); showToast("결과 영상 플레이어 요소를 찾을 수 없습니다.", true);
-    } else { /* ... (iframe src 설정, 변경 없음) ... */
+    } else {
       console.log(`[studentLesson.js] Setting target iframe (${targetIframe.id}) src:`, video2EmbedUrl);
       try { targetIframe.src = video2EmbedUrl; targetIframe.style.display = 'block'; console.log(`[studentLesson.js] Set target iframe (${targetIframe.id}) display to 'block'.`);
         targetIframe.onload = () => console.log(`[studentLesson.js] Target iframe (${targetIframe.id}) loaded successfully.`); targetIframe.onerror = (e) => console.error(`[studentLesson.js] Target iframe (${targetIframe.id}) failed to load:`, e);
@@ -252,19 +245,16 @@ export const studentLesson = {
     else { console.error("[studentLesson.js] Failed to get embedUrl for rewatching video 1."); }
   },
 
-  // Firestore 업데이트 함수
+  // Firestore 업데이트 함수 (변경 없음)
   async updateStudentProgress(status, score = null) {
     const { activeLesson, studentDocId, selectedSubject, studentName, totalQuizQuestions } = this.app.state;
 
-    // 👇 수정: studentDocId 유효성 검사 강화
     if (!activeLesson?.id || !studentDocId || typeof studentDocId !== 'string' || studentDocId.trim() === '' || !selectedSubject?.id) {
       console.warn("[studentLesson.js] Failed to update progress: Missing or invalid required info.", {
           lessonId: activeLesson?.id,
-          studentDocId: studentDocId, // 로그에 studentDocId 포함
+          studentDocId: studentDocId,
           subjectId: selectedSubject?.id
       });
-      // 사용자에게 직접적인 오류 메시지 (퀴즈 종료 시에는 이미 결과 화면이 보이므로 생략 가능)
-      // showToast("학습 기록 저장에 필요한 정보가 부족합니다.", true);
       return;
     }
 
@@ -276,7 +266,7 @@ export const studentLesson = {
       studentName: studentName || "익명",
       status: status,
       lastAttemptAt: serverTimestamp(),
-      studentDocId: studentDocId // Firestore 규칙 검증을 위해 studentDocId 필드 포함 (필수)
+      studentDocId: studentDocId
     };
 
     if (score !== null) {
@@ -286,12 +276,10 @@ export const studentLesson = {
     console.log("[studentLesson.js] Preparing to update progress data:", data, "to path:", submissionRef.path);
 
     try {
-      // merge: true 옵션으로 기존 문서가 있으면 덮어쓰지 않고 필드 병합
       await setDoc(submissionRef, data, { merge: true });
       console.log("[studentLesson.js] Student progress updated successfully in Firestore.");
     } catch (error) {
       console.error("[studentLesson.js] Firestore write error while updating progress:", error);
-      // 사용자에게 오류 표시 (퀴즈 종료 시 결과는 보여주되 저장 실패 알림)
       showToast(`학습 기록 저장 실패: ${error.message}. 결과는 표시되지만 저장되지 않았습니다.`);
     }
   },
