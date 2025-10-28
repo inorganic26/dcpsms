@@ -81,14 +81,14 @@ const StudentApp = {
 
       // 1. classData.subjects 맵의 키(ID)를 과목 목록으로 사용합니다.
       const classSubjectsMap = (typeof classData.subjects === 'object' && classData.subjects !== null) ? classData.subjects : {};
-      const subjectIds = Object.keys(classSubjectsMap); 
-      
+      const subjectIds = Object.keys(classSubjectsMap);
+
       if (subjectIds.length === 0) {
            showToast("클래스에 등록된 과목이 없습니다.", true);
            this.renderSubjectList(); // 빈 목록 렌더링
            return;
       }
-      
+
       // 2. subjects 컬렉션에서 전체 과목 이름 정보를 가져옵니다.
       const allSubjectsQuery = query(collection(db, 'subjects'));
       const allSubjectsSnapshot = await getDocs(allSubjectsQuery);
@@ -101,10 +101,10 @@ const StudentApp = {
       this.state.activeSubjects = subjectIds
         .map((id) => {
           const subjectName = allSubjectsMap.get(id); // subjects 컬렉션에서 이름 조회
-          
-          if (subjectName) { 
+
+          if (subjectName) {
               return { id, name: subjectName };
-          } else { 
+          } else {
               console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found for ID: ${id}. Using ID as name.`);
               return { id, name: `과목 ID: ${id}` };
           }
@@ -349,74 +349,78 @@ const StudentApp = {
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
-  // 모달에서 영상 재생 (최종 수정 반영)
+  // 모달에서 영상 재생 (⭐️ 수정된 부분 ⭐️)
   playVideoInModal(video) {
-    const modal = this.elements.videoDisplayModal; 
-    const content = this.elements.videoModalContent; 
+    const modal = this.elements.videoDisplayModal;
+    const content = this.elements.videoModalContent;
     const titleEl = this.elements.videoModalTitle;
-    
-    // 필수 요소가 없으면 경고 후 함수 종료
+
     if (!modal || !content) {
-        console.error("[StudentApp] Video modal elements not found.");
-        showToast("영상 모달을 여는 데 실패했습니다.", true);
-        return; 
+      console.error("[StudentApp] Video modal elements not found.");
+      showToast("영상 모달을 여는 데 실패했습니다.", true);
+      return;
     }
-    
-    // 1. UI 초기화 및 로딩 표시
-    content.innerHTML = '<div class="w-full aspect-video flex items-center justify-center bg-black"><div class="loader"></div></div>'; // 로딩 표시
+
+    content.innerHTML = '<div class="w-full aspect-video flex items-center justify-center bg-black"><div class="loader"></div></div>';
     if (titleEl) titleEl.textContent = video.title || "영상 보기";
-    
-    const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url); 
+
+    const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url);
     console.log(`[StudentApp] Trying to play video: ${video.title}, Original URL: ${video.url}, Embed URL: ${embedUrl}`);
-    
+
     modal.style.display = "flex"; // 모달 먼저 표시
 
     if (embedUrl) {
-      // iframe을 DOM에 추가한 후 src를 설정하여 재생 시작 시점 분리
-      const iframe = document.createElement("iframe"); 
-      iframe.className = "w-full aspect-video"; 
-      iframe.style.border = "none"; // ✨ [보강] border: none 추가
-      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"; 
-      iframe.allowFullscreen = true; 
+      const iframe = document.createElement("iframe");
+      // ⭐️ 추가: 명시적으로 width/height 및 스타일 설정 ⭐️
+      iframe.style.position = 'absolute';
+      iframe.style.top = '0';
+      iframe.style.left = '0';
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none'; // 테두리 제거
+      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+      iframe.allowFullscreen = true;
       iframe.style.display = 'none'; // 로드 완료 시까지 숨김
-      
+
       content.innerHTML = ""; // 로딩 인디케이터 제거
-      content.appendChild(iframe); // DOM에 추가
+      content.appendChild(iframe);
 
-      // 로드 핸들러
       iframe.onload = () => {
-          console.log("[StudentApp] Iframe loaded successfully.");
-          iframe.style.display = 'block'; // 로드 성공 시 표시
-      };
-      
-      // 오류 핸들러 (유튜브가 로드를 거부했을 때 발생)
-      iframe.onerror = () => {
-          console.error("[StudentApp] Iframe failed to load.");
-          content.innerHTML = `<p class="text-red-500 p-4">영상 로드 실패: YouTube 임베드 정책 문제이거나 URL이 잘못되었습니다.</p>`;
-          showToast("영상 로드에 실패했습니다. (유튜브 정책 확인 필요)", true);
+        console.log("[StudentApp] Iframe loaded successfully (via onload).");
+        // ⭐️ 추가: 로드 후 잠시 뒤에 표시 (타이밍 문제 회피 시도) ⭐️
+        setTimeout(() => {
+             iframe.style.display = 'block';
+             console.log("[StudentApp] Iframe display set to block after delay.");
+        }, 100); // 100ms 딜레이
       };
 
-      // SRC 설정 (즉시 실행)
-      iframe.src = embedUrl; 
+      iframe.onerror = () => {
+        console.error("[StudentApp] Iframe failed to load (via onerror).");
+        content.innerHTML = `<p class="text-red-500 p-4">영상 로드 실패: YouTube 임베드 정책 문제이거나 URL이 잘못되었습니다.</p>`;
+        showToast("영상 로드에 실패했습니다. (유튜브 정책 확인 필요)", true);
+      };
+
+      // ⭐️ 수정: src 설정을 onload/onerror 설정 *후에* 실행 ⭐️
+      iframe.src = embedUrl;
       console.log(`[StudentApp] Iframe SRC set to: ${embedUrl}`);
-      
-    } else { 
-      console.error("[StudentApp] Failed to get embed URL for video:", video); 
-      content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다. 관리자에게 문의하세요.</p>`; 
-      modal.style.display = "flex";
+
+    } else {
+      console.error("[StudentApp] Failed to get embed URL for video:", video);
+      content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다. 관리자에게 문의하세요.</p>`;
+      // modal.style.display = "flex"; // 이미 위에서 표시함
     }
   },
 
   // 영상 모달 닫기 (변경 없음)
   closeVideoModal() {
-    const modal = this.elements.videoDisplayModal; 
+    const modal = this.elements.videoDisplayModal;
     const content = this.elements.videoModalContent;
-    
-    if (modal) modal.style.display = "none"; 
-    
+
+    if (modal) modal.style.display = "none";
+
     // 콘텐츠를 비우면 다음 재생 시 충돌 방지
-    if (content) content.innerHTML = ""; 
-    
+    if (content) content.innerHTML = "";
+
     // 모달이 닫히면 이전 화면으로 돌아가야 합니다.
     this.showScreen(this.elements.videoTitlesScreen);
   },

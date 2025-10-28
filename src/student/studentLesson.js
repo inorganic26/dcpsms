@@ -20,42 +20,42 @@ export const studentLesson = {
   // ✨ [최종 보강] YouTube URL 변환 함수: 모든 형태의 YouTube 링크에서 ID 추출 로직 강화
   convertYoutubeUrlToEmbed(url) {
     if (!url || typeof url !== "string") return "";
-    
-    let videoId = null; 
-    let startTime = 0; 
+
+    let videoId = null;
+    let startTime = 0;
     let tempUrl = url.trim();
 
     // 1. YouTube ID 추출 정규식: watch?v=, youtu.be/, embed/, shorts/, Studio URL 등 모든 패턴 처리
     const videoIdRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[?&]|$)/;
     const idMatch = tempUrl.match(videoIdRegex);
-    
+
     if (idMatch && idMatch[1]) {
         videoId = idMatch[1];
     } else {
          console.error("[studentLesson.js] Failed to extract video ID from URL:", url);
          return "";
     }
-    
+
     // 2. Start Time ('t' 또는 'start' 매개변수) 추출
     try {
       // URL 객체로 파싱하여 쿼리에서 't' 또는 'start'를 찾습니다.
       if (!tempUrl.startsWith("http")) tempUrl = "https://" + tempUrl;
       const urlObj = new URL(tempUrl);
       const tParam = urlObj.searchParams.get('t') || urlObj.searchParams.get('start');
-      
+
       if (tParam) {
           // 숫자(초)만 추출
-          const secondsMatch = tParam.match(/^(\d+)/); 
+          const secondsMatch = tParam.match(/^(\d+)/);
           if (secondsMatch) startTime = parseInt(secondsMatch[1], 10);
       }
-    } catch (e) { 
+    } catch (e) {
         // URL 파싱 오류 무시
     }
 
     // 3. 최종 표준 임베드 URL 생성
     let embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
     if (startTime > 0) embedUrl += `&start=${startTime}`;
-    
+
     console.log("[studentLesson.js] Extracted Video ID:", videoId);
     console.log("[studentLesson.js] Generated Embed URL:", embedUrl);
     return embedUrl;
@@ -71,40 +71,40 @@ export const studentLesson = {
     const embedUrl = this.convertYoutubeUrlToEmbed(originalUrl);
     const iframe = elements.video1Iframe;
     const titleElement = elements.video1Title;
-    
+
     console.log("[studentLesson.js] === Starting Lesson:", lesson.title, "===");
 
-    if (!iframe || !titleElement) { 
-        console.error("[studentLesson.js] Video player elements (iframe/title) not found."); 
-        showToast("영상 플레이어 요소를 찾을 수 없습니다.", true); 
-        this.app.showLessonSelectionScreen(); 
-        return; 
+    if (!iframe || !titleElement) {
+        console.error("[studentLesson.js] Video player elements (iframe/title) not found.");
+        showToast("영상 플레이어 요소를 찾을 수 없습니다.", true);
+        this.app.showLessonSelectionScreen();
+        return;
     }
-    
+
     // 1. UI 초기화 및 로딩 표시
     this.app.showScreen(elements.video1Screen);
     titleElement.textContent = lesson.title;
     iframe.style.display = 'none'; // 로드 완료 전 숨김
     iframe.style.border = 'none'; // ✨ [보강] border: none 추가
-    
+
     // 2. URL 유효성 검사
     if (!embedUrl) {
         console.error("[studentLesson.js] Failed to generate embed URL:", originalUrl);
         showToast("비디오 URL 형식이 올바르지 않습니다. 관리자에게 문의하세요.", true);
-        this.app.showLessonSelectionScreen(); 
-        return; 
+        this.app.showLessonSelectionScreen();
+        return;
     }
 
     // 3. Iframe 로드 핸들링
-    iframe.onerror = (e) => { 
-        console.error("[studentLesson.js] video1 iframe reported error on load:", e); 
-        showToast("영상 로드 중 오류 발생. (유튜브 정책 확인 필요)", true); 
+    iframe.onerror = (e) => {
+        console.error("[studentLesson.js] video1 iframe reported error on load:", e);
+        showToast("영상 로드 중 오류 발생. (유튜브 정책 확인 필요)", true);
         iframe.src = 'about:blank'; // 오류 시 비우기
-        iframe.style.display = 'none'; 
+        iframe.style.display = 'none';
     };
-    iframe.onload = () => { 
-        console.log("[studentLesson.js] video1 iframe reported loaded."); 
-        iframe.style.display = 'block'; 
+    iframe.onload = () => {
+        console.log("[studentLesson.js] video1 iframe reported loaded.");
+        iframe.style.display = 'block';
     };
 
     // 4. SRC 설정 (즉시 실행)
@@ -114,14 +114,14 @@ export const studentLesson = {
     // 5. 버튼 상태 업데이트
     const revUrls = lesson.video1RevUrls;
     const hasRevUrls = revUrls && Array.isArray(revUrls) && revUrls.length > 0;
-    
-    if (elements.gotoRev1Btn) { 
-        elements.gotoRev1Btn.style.display = hasRevUrls ? "block" : "none"; 
-        if (hasRevUrls) elements.gotoRev1Btn.textContent = `보충 영상 보기 (1/${revUrls.length})`; 
+
+    if (elements.gotoRev1Btn) {
+        elements.gotoRev1Btn.style.display = hasRevUrls ? "block" : "none";
+        if (hasRevUrls) elements.gotoRev1Btn.textContent = `보충 영상 보기 (1/${revUrls.length})`;
     }
-    
-    if (elements.startQuizBtn) { 
-        elements.startQuizBtn.style.display = hasRevUrls ? "none" : "block"; 
+
+    if (elements.startQuizBtn) {
+        elements.startQuizBtn.style.display = hasRevUrls ? "none" : "block";
     }
     console.log(`[studentLesson.js] Buttons updated (hasRevUrls: ${hasRevUrls}).`);
   },
