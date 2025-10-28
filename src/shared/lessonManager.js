@@ -183,6 +183,7 @@ export function createLessonManager(config) {
             const title = document.getElementById(elements.lessonTitle).value.trim();
             const video1Url = document.getElementById(elements.video1Url).value.trim();
             const video2Url = document.getElementById(elements.video2Url).value.trim();
+            const quizJsonInput = document.getElementById(elements.quizJsonInput).value.trim(); // raw json input
 
             // 보충 영상 URL 배열 만들기 (빈 값은 제외)
             const video1RevUrls = Array.from(document.querySelectorAll(`#${elements.videoRevUrlsContainer(1)} .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
@@ -196,6 +197,34 @@ export function createLessonManager(config) {
 
             this.setSaveButtonLoading(true); // 저장 버튼 로딩 상태 시작
 
+            // --- START FIX: 퀴즈 데이터 구조 통일 ---
+            let finalQuizData = {};
+            
+            // 1순위: 파싱된 객체 (generatedQuiz)를 questionBank 필드에 저장
+            if (generatedQuiz) {
+                finalQuizData.questionBank = generatedQuiz;
+            }
+
+            // 2순위: raw json string을 quizJson 필드에 저장 (관리자 re-edit 호환성)
+            if (quizJsonInput) {
+                finalQuizData.quizJson = quizJsonInput;
+            }
+            
+            if (!finalQuizData.questionBank && finalQuizData.quizJson) {
+                // raw json은 있지만 파싱된 객체가 없는 경우 (preview 버튼을 누르지 않은 경우)
+                try {
+                    const parsed = JSON.parse(finalQuizData.quizJson);
+                    const questions = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.questionBank || []);
+                    if (Array.isArray(questions) && questions.length > 0) {
+                        finalQuizData.questionBank = questions;
+                    }
+                } catch(e) {
+                    console.warn("[Shared LessonManager] Quiz JSON exists but couldn't be parsed for questionBank field on save:", e);
+                }
+            }
+            // --- END FIX ---
+
+
             // Firestore에 저장할 데이터 객체 생성
             const lessonData = {
                  title,
@@ -203,7 +232,7 @@ export function createLessonManager(config) {
                  video2Url,
                  video1RevUrls,
                  video2RevUrls,
-                 questionBank: generatedQuiz
+                 ...finalQuizData, // questionBank 및 quizJson 포함
             };
 
             // --- 👇 로그 추가 시작 👇 ---
@@ -267,9 +296,9 @@ export function createLessonManager(config) {
             if (!lessonData) { showToast("수정할 학습 세트 정보를 찾을 수 없습니다."); return; }
             app.state.editingLesson = lessonData;
             document.getElementById(elements.modalTitle).textContent = "학습 세트 수정";
-            document.getElementById(elements.lessonTitle).value = lessonData.title;
-            document.getElementById(elements.video1Url).value = lessonData.video1Url; // video1Url 필드가 없을 수 있음
-            document.getElementById(elements.video2Url).value = lessonData.video2Url;
+            document.getElementById(elements.lessonTitle).value = lessonData.title || '';
+            document.getElementById(elements.video1Url).value = lessonData.video1Url || ''; // video1Url 필드가 없을 수 있음
+            document.getElementById(elements.video2Url).value = lessonData.video2Url || '';
 
             const v1Container = document.getElementById(elements.videoRevUrlsContainer(1));
             const v2Container = document.getElementById(elements.videoRevUrlsContainer(2));
@@ -279,9 +308,23 @@ export function createLessonManager(config) {
             lessonData.video1RevUrls?.forEach(url => this.addRevUrlInput(1, url));
             lessonData.video2RevUrls?.forEach(url => this.addRevUrlInput(2, url));
 
-            // questionBank가 없을 경우 빈 객체로 처리하여 오류 방지
-            document.getElementById(elements.quizJsonInput).value = JSON.stringify(lessonData.questionBank || {}, null, 2);
-            this.handleJsonPreview(); // 미리보기 실행
+            // --- START FIX: 퀴즈 JSON 입력 필드에 데이터 채우기 ---
+            let quizContent = lessonData.quizJson; // 1순위: raw json 필드 확인
+            try {
+                if (!quizContent && lessonData.questionBank) {
+                     // 2순위: questionBank (parsed object)가 있을 경우 JSON 문자열로 변환하여 채움
+                     quizContent = JSON.stringify(lessonData.questionBank || [], null, 2);
+                }
+            } catch(e) {
+                console.error("[Shared LessonManager] Failed to stringify questionBank for edit:", e);
+                showToast("퀴즈 데이터 로딩 중 오류가 발생했습니다. 원본 텍스트로 로드합니다.", true);
+                quizContent = lessonData.quizJson || ''; 
+            }
+            // --- END FIX ---
+
+
+            document.getElementById(elements.quizJsonInput).value = quizContent || '';
+            this.handleJsonPreview(quizContent); // 미리보기 실행 (명시적으로 전달)
             document.getElementById(elements.modal).style.display = 'flex';
         },
 
@@ -290,14 +333,16 @@ export function createLessonManager(config) {
             document.getElementById(elements.modal).style.display = 'none';
         },
 
-        handleJsonPreview() {
-            const jsonText = document.getElementById(elements.quizJsonInput).value.trim();
+        // ✨ 수정: 인수를 받아 처리하고, 없으면 input 필드에서 읽도록 함
+        handleJsonPreview(jsonString = null) {
+            const jsonText = jsonString || document.getElementById(elements.quizJsonInput).value.trim();
             const previewContainer = document.getElementById(elements.questionsPreviewContainer);
+            
             if (!jsonText) {
                 showToast("붙여넣은 내용이 없습니다.");
                 app.state.generatedQuiz = null;
                 previewContainer.classList.add('hidden');
-                return;
+                return; 
             }
             try {
                 const parsedJson = JSON.parse(jsonText);

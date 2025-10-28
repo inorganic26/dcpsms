@@ -54,7 +54,7 @@ export const studentLesson = {
     return embedUrl;
   },
 
-  // ⭐ 학습 시작 함수 수정 ⭐
+  // ⭐ 학습 시작 함수 수정 ⭐ (변경 없음)
   startSelectedLesson(lesson) {
     const { elements } = this.app;
     this.app.state.activeLesson = lesson;
@@ -163,30 +163,79 @@ export const studentLesson = {
     this.updateScoreDisplay(); this.app.showScreen(this.app.elements.quizScreen); this.displayQuestion();
   },
 
-  // 현재 질문 표시 함수 (변경 없음)
+  // 현재 질문 표시 함수 (수정됨)
   displayQuestion() {
     const { quizQuestions, currentQuestionIndex } = this.app.state;
     if (currentQuestionIndex >= quizQuestions.length) { console.log("[studentLesson.js] All questions answered. Showing results."); this.showResults(); return; }
     const question = quizQuestions[currentQuestionIndex];
     if (!question) { console.error(`[studentLesson.js] Question at index ${currentQuestionIndex} is undefined.`); this.showResults(); return; }
+
     this.updateProgress();
-    if(this.app.elements.questionText) this.app.elements.questionText.textContent = question.question || "[질문 텍스트 없음]";
-    if(this.app.elements.optionsContainer) this.app.elements.optionsContainer.innerHTML = "";
+
+    // 질문 텍스트 설정 (innerHTML 사용)
+    const questionEl = this.app.elements.questionText;
+    if (questionEl) {
+      questionEl.innerHTML = question.question || "[질문 텍스트 없음]";
+    }
+
+    // 옵션 컨테이너 초기화
+    const optionsContainer = this.app.elements.optionsContainer;
+    if (!optionsContainer) {
+        console.error("[studentLesson.js] optionsContainer element not found.");
+        return;
+    }
+    optionsContainer.innerHTML = "";
+
     const options = Array.isArray(question.options) ? question.options : [];
     if (options.length === 0) { console.warn(`[studentLesson.js] Question ${currentQuestionIndex + 1} has no options.`); showToast("선택지가 없는 문제가 있습니다. 다음 문제로 넘어갑니다.", true); setTimeout(() => { this.app.state.currentQuestionIndex++; this.displayQuestion(); }, 1500); return; }
+
+    // 옵션 버튼 생성 (innerHTML 사용)
     [...options].sort(() => 0.5 - Math.random()).forEach((option) => {
-      const button = document.createElement("button"); button.textContent = option; button.className = "option-btn w-full p-4 text-left border-2 border-slate-300 rounded-lg hover:bg-slate-100"; button.onclick = (e) => this.selectAnswer(e);
-      if(this.app.elements.optionsContainer) this.app.elements.optionsContainer.appendChild(button);
+      const button = document.createElement("button");
+      button.innerHTML = option; // ✨ innerHTML 사용 (수식 렌더링용)
+      button.className = "option-btn w-full p-4 text-left border-2 border-slate-300 rounded-lg hover:bg-slate-100";
+      button.onclick = (e) => this.selectAnswer(e);
+      // 정답 비교를 위해 순수 텍스트를 data-text 속성에 저장 (MathJax 렌더링 전/후 관계 없이 원본 텍스트 비교용)
+      button.dataset.text = option; 
+      optionsContainer.appendChild(button);
     });
+
+    // ✨ MathJax 렌더링 요청 ✨
+    if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
+        console.log("[studentLesson.js] Queuing MathJax typeset for quiz screen elements.");
+        MathJax.typesetPromise([questionEl, optionsContainer]).catch((err) => console.error('MathJax typeset failed:', err));
+    } else {
+        console.warn("[studentLesson.js] MathJax is not ready or typesetPromise is not available.");
+    }
   },
 
-  // 답안 선택 시 처리 함수 (변경 없음)
+  // 답안 선택 시 처리 함수 (✨ 수정됨: data-text 속성 또는 textContent로 비교 복구 ✨)
   selectAnswer(e) {
     if(this.app.elements.optionsContainer) this.app.elements.optionsContainer.classList.add("disabled");
-    const selectedButton = e.target; const selectedAnswerText = selectedButton.textContent;
-    const currentQuestion = this.app.state.quizQuestions[this.app.state.currentQuestionIndex]; const correctAnswerText = currentQuestion.answer;
-    if (selectedAnswerText === correctAnswerText) { this.app.state.score++; selectedButton.classList.add("correct"); }
-    else { selectedButton.classList.add("incorrect"); Array.from(this.app.elements.optionsContainer.children).forEach((btn) => { if (btn.textContent === correctAnswerText) { btn.classList.add("correct"); } }); }
+    const selectedButton = e.target.closest('.option-btn'); // 클릭된 요소가 버튼 자체가 아닐 수 있으므로 closest 사용
+    if (!selectedButton) return;
+
+    // 선택된 답안의 텍스트를 추출 (data-text 속성 우선 사용, 없으면 innerHTML에서 순수 텍스트 추출)
+    // 순수 텍스트를 추출하여 MathJax 렌더링 전의 정답과 비교
+    const selectedAnswerText = selectedButton.dataset.text || selectedButton.textContent; 
+
+    const currentQuestion = this.app.state.quizQuestions[this.app.state.currentQuestionIndex]; 
+    const correctAnswerText = currentQuestion.answer; // 정답 텍스트 (JSON에 저장된 값)
+
+    // 순수한 텍스트 내용을 비교
+    if (selectedAnswerText.trim() === correctAnswerText.trim()) {
+      this.app.state.score++;
+      selectedButton.classList.add("correct");
+    } else {
+      selectedButton.classList.add("incorrect");
+      Array.from(this.app.elements.optionsContainer.children).forEach((btn) => {
+        // 정답 버튼을 찾을 때도 data-text 속성 또는 textContent 사용
+        const buttonText = btn.dataset.text || btn.textContent;
+        if (buttonText.trim() === correctAnswerText.trim()) {
+          btn.classList.add("correct");
+        }
+      });
+    }
     this.updateScoreDisplay();
     setTimeout(() => { if(this.app.elements.optionsContainer) this.app.elements.optionsContainer.classList.remove("disabled"); this.app.state.currentQuestionIndex++; this.displayQuestion(); }, 1500);
   },

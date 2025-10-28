@@ -49,9 +49,8 @@ export const lessonManager = {
         this.app.elements.cancelBtn?.addEventListener('click', () => this.hideModal());
         this.app.elements.previewQuizBtn?.addEventListener('click', () => this.previewQuiz());
         this.app.elements.saveLessonBtn?.addEventListener('click', () => this.saveLesson());
-        this.app.elements.addVideo1RevBtn?.addEventListener('click', () => this.handleVideoRevision('video1'));
-        this.app.elements.addVideo2RevBtn?.addEventListener('click', () => this.handleVideoRevision('video2'));
-        this.app.elements.saveOrderBtn?.addEventListener('click', () => this.saveLessonOrder());
+        this.app.elements.addVideo1RevBtn?.addEventListener('click', () => this.addRevUrlInput(1));
+        this.app.elements.addVideo2RevBtn?.addEventListener('click', () => this.addRevUrlInput(2));
     },
 
     // ✨ [추가] 과목 드롭다운 채우기 함수
@@ -233,8 +232,27 @@ export const lessonManager = {
         }
     },
 
+    editLesson(lessonId) {
+        const lesson = this.app.state.lessons.find(l => l.id === lessonId);
+        if (lesson) {
+             this.showModal('edit', lesson);
+        } else {
+             // 데이터 찾기 실패 시 로그 및 토스트 메시지
+             console.warn(`[LessonManager] Could not find lesson with ID: ${lessonId}`);
+             showToast("수정할 학습 세트 정보를 찾을 수 없습니다.");
+        }
+    },
 
+
+    // ✨ 수정: 모달 표시를 위한 안전성 강화 로직
     showModal(mode, lesson = null) {
+        // 1. 모달 요소 존재 여부 확인
+        if (!this.elements.modal) {
+             console.error("[LessonManager] Modal element (this.elements.modal) is null. Cannot show modal.");
+             showToast("모달 창을 열 수 없습니다. HTML 요소 ID를 확인해주세요.", true);
+             return;
+        }
+        
         this.app.state.editingLesson = lesson;
         const isEdit = mode === 'edit';
 
@@ -242,25 +260,45 @@ export const lessonManager = {
         this.elements.lessonTitle.value = lesson?.title || '';
         this.elements.video1Url.value = lesson?.video1Url || '';
         this.elements.video2Url.value = lesson?.video2Url || '';
-        this.elements.quizJsonInput.value = lesson?.quizJson || '';
         
-        // 보충 영상 입력 필드 초기화 및 기존 값 채우기
-        document.getElementById(this.app.elements.videoRevUrlsContainer(1)).innerHTML = '';
-        document.getElementById(this.app.elements.videoRevUrlsContainer(2)).innerHTML = '';
+        let quizContent = lesson?.quizJson;
+        
+        // 2. 퀴즈 데이터 JSON.stringify 시 예외 처리 추가 (오류로 인해 모달이 안 열리는 것 방지)
+        try {
+            if (!quizContent && lesson?.questionBank) {
+                 quizContent = JSON.stringify(lesson.questionBank || [], null, 2);
+            }
+        } catch(e) {
+             console.error("[LessonManager] Failed to stringify questionBank for edit:", e);
+             showToast("퀴즈 데이터 로딩 중 오류가 발생했습니다. 원본 텍스트로 로드합니다.", true);
+             quizContent = lesson?.quizJson || ''; // stringify 실패 시 원본 텍스트로 대체
+        }
+
+        if (this.elements.quizJsonInput) {
+             this.elements.quizJsonInput.value = quizContent || '';
+        }
+        
+        // 3. 보충 영상 입력 필드 초기화 및 값 채우기
+        const v1Container = document.getElementById(this.app.elements.videoRevUrlsContainer(1));
+        const v2Container = document.getElementById(this.app.elements.videoRevUrlsContainer(2));
+        
+        if (v1Container) v1Container.innerHTML = '';
+        if (v2Container) v2Container.innerHTML = '';
+        
         lesson?.video1RevUrls?.forEach(url => this.addRevUrlInput(1, url));
         lesson?.video2RevUrls?.forEach(url => this.addRevUrlInput(2, url));
 
-        // 퀴즈 미리보기 초기화
+        // 퀴즈 미리보기 초기화 및 실행
         this.elements.questionsPreviewContainer.style.display = 'none';
         this.elements.questionsPreviewList.innerHTML = '';
         this.app.elements.questionsPreviewTitle.textContent = '퀴즈 미리보기';
         this.app.state.generatedQuiz = null;
         
-        // 퀴즈 JSON이 있으면 미리보기 실행
-        if (lesson?.quizJson) {
-            this.previewQuiz(lesson.quizJson);
+        if (quizContent) {
+            this.previewQuiz(quizContent); 
         }
         
+        // 4. 모달 표시 (맨 마지막에 실행되도록 보장)
         this.elements.modal.style.display = 'flex';
     },
     
@@ -305,7 +343,7 @@ export const lessonManager = {
         const title = this.elements.lessonTitle.value.trim();
         const video1Url = this.elements.video1Url.value.trim();
         const video2Url = this.elements.video2Url.value.trim();
-        const quizJson = this.elements.quizJsonInput.value.trim();
+        const quizJsonInput = this.elements.quizJsonInput.value.trim();
         const isEdit = !!this.app.state.editingLesson;
         
         // 보충 영상 URL 배열 추출
@@ -313,22 +351,47 @@ export const lessonManager = {
         const video2RevUrls = Array.from(document.querySelectorAll(`#admin-video2-rev-urls-container .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
 
 
-        if (!title || (!video1Url && !video2Url && !quizJson)) {
+        if (!title || (!video1Url && !video2Url && !quizJsonInput)) {
             showToast("제목을 입력하고, 최소한 하나의 영상 URL이나 퀴즈 JSON을 입력해주세요.", true);
             return;
+        }
+        
+        const generatedQuiz = this.app.state.generatedQuiz; // previewQuiz를 통해 파싱된 객체
+
+        if (quizJsonInput && !generatedQuiz) {
+             showToast("퀴즈 JSON을 입력한 경우, '미리보기' 버튼을 눌러 유효성을 검사해야 합니다.", true);
+             return;
+        }
+        if (!quizJsonInput && !isEdit && !generatedQuiz) { // 새 항목 추가 시 퀴즈는 필수임
+             showToast("퀴즈 정보를 입력하거나 붙여넣고 '미리보기'를 실행해야 합니다.", true);
+             return;
         }
 
         this.app.elements.saveBtnText.textContent = isEdit ? '수정 중...' : '저장 중...';
         this.app.elements.saveLessonBtn.disabled = true;
         this.app.elements.saveLoader.style.display = 'inline-block';
 
+        // --- START FIX: 퀴즈 데이터 구조 통일 ---
+        let finalQuizData = {};
+        
+        // 1순위: 파싱된 객체 (generatedQuiz)를 questionBank 필드에 저장
+        if (generatedQuiz) {
+            finalQuizData.questionBank = generatedQuiz;
+        }
+
+        // 2순위: raw json string을 quizJson 필드에 저장 (관리자 re-edit 호환성)
+        if (quizJsonInput) {
+            finalQuizData.quizJson = quizJsonInput;
+        }
+        // --- END FIX ---
+
         const lessonData = {
             title,
             video1Url: video1Url || null,
             video2Url: video2Url || null,
-            video1RevUrls, // ✨ 보충 영상 URL 필드 추가
-            video2RevUrls, // ✨ 보충 영상 URL 필드 추가
-            quizJson: quizJson || null,
+            video1RevUrls,
+            video2RevUrls,
+            ...finalQuizData, // quizJson 및 questionBank 포함
             updatedAt: serverTimestamp(),
             isActive: this.app.state.editingLesson?.isActive ?? false, // 기존 상태 유지
         };
@@ -393,7 +456,7 @@ export const lessonManager = {
             const quiz = JSON.parse(quizJson);
             
             // JSON 구조가 { questions: [...] } 형태인지, 아니면 바로 배열인지 확인
-            const questions = Array.isArray(quiz) ? quiz : (quiz.questions || []);
+            const questions = Array.isArray(quiz) ? quiz : (quiz.questions || quiz.questionBank || []);
 
             if (!Array.isArray(questions) || questions.length === 0) {
                 showToast("JSON 형식이 올바르지 않거나, 'questions' 배열이 비어있습니다.", true);
@@ -455,5 +518,16 @@ export const lessonManager = {
         // 이 함수는 단순히 새 입력 필드를 추가하는 역할만 수행합니다.
         const containerId = type === 'video1' ? 'admin-video1-rev-urls-container' : 'admin-video2-rev-urls-container';
         this.addRevUrlInput(type === 'video1' ? 1 : 2);
-    }
+    },
+    
+    editLesson(lessonId) {
+        const lesson = this.app.state.lessons.find(l => l.id === lessonId);
+        if (lesson) {
+             this.showModal('edit', lesson);
+        } else {
+             // 데이터 찾기 실패 시 로그 및 토스트 메시지
+             console.warn(`[LessonManager] Could not find lesson with ID: ${lessonId}`);
+             showToast("수정할 학습 세트 정보를 찾을 수 없습니다.");
+        }
+    },
 };

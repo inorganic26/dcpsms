@@ -1,11 +1,11 @@
-// src/admin/adminApp.js — 공용 유지형 컨트롤러(경로 수정 안정화 버전, 목록 갱신 보강)
+// src/admin/adminApp.js
 
 import { signInAnonymously } from "firebase/auth";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db, auth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
-// 공용 기반 모듈
+// 모듈
 import { studentManager } from "./studentManager.js";
 import { classManager } from "./classManager.js";
 import { studentAssignmentManager } from "./studentAssignmentManager.js";
@@ -16,8 +16,6 @@ import { reportManager } from "../shared/reportManager.js";
 import { teacherManager } from "./teacherManager.js";
 import { subjectManager } from "./subjectManager.js"; 
 import { textbookManager } from "./textbookManager.js"; 
-
-// ⚠️ 이전에 존재했던 subjectManager와 textbookManager의 Stub 정의를 제거했습니다.
 
 // adminClassVideoManagerConfig를 위한 상수
 const adminClassVideoManagerConfig = {
@@ -181,6 +179,10 @@ export const AdminApp = {
             video2Url: document.getElementById('admin-video2-url'),
             addVideo1RevBtn: document.getElementById('admin-add-video1-rev-btn'),
             addVideo2RevBtn: document.getElementById('admin-add-video2-rev-btn'),
+            // ✨ FIX: lessonManager에서 필요한 헬퍼 함수를 직접 정의합니다.
+            videoRevUrlsContainer: (type) => `admin-video${type}-rev-urls-container`,
+            // ✨ END FIX
+
             quizJsonInput: document.getElementById('admin-quiz-json-input'),
             previewQuizBtn: document.getElementById('admin-preview-quiz-btn'),
             questionsPreviewContainer: document.getElementById('admin-questions-preview-container'),
@@ -239,7 +241,7 @@ export const AdminApp = {
         // 캐싱 후 누락된 요소 확인
         Object.keys(this.elements).forEach(key => {
             if (typeof this.elements[key] !== 'function' && !this.elements[key]) {
-                console.warn(`[AdminApp Cache] Element ID for key '${key}' not found in DOM! Check HTML.`);
+                console.warn(`[AdminApp Cache] Element ID for key '${key}' not found in DOM! Check HTML ID.`);
             }
         });
     },
