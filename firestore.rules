@@ -32,7 +32,8 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if isAuthenticated();
       // 학생 본인도 자기 정보 수정 가능하게 하려면? (예: 비밀번호 변경)
-      // allow update: if isAdminOrTeacher() || request.auth.uid == studentId; // (주의: studentId가 auth.uid와 같다는 보장 없음)
+      // allow update: if isAdminOrTeacher() ||
+      // request.auth.uid == studentId; // (주의: studentId가 auth.uid와 같다는 보장 없음)
       // student 문서 내부에 authUid 필드를 저장하고 비교하는 방식이 더 일반적
       allow write: if isAdminOrTeacher();
     }
