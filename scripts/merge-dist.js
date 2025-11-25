@@ -5,60 +5,43 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
+const distDir = path.join(rootDir, 'dist');
 
-async function mergeDist() {
-  console.log('🧹 Cleaning dist folder...');
-  await fs.remove(path.join(rootDir, 'dist'));
-  await fs.ensureDir(path.join(rootDir, 'dist'));
+async function reorganizeDist() {
+  console.log('🔧 Dist 폴더 구조 정리 중...');
 
-  console.log('📦 Copying portal files...');
-  // dist-portal의 모든 파일을 dist로 복사
-  await fs.copy(
-    path.join(rootDir, 'dist-portal'),
-    path.join(rootDir, 'dist')
-  );
+  // 이동할 대상 목록 (소스 경로 -> 목적지 경로)
+  // 예: dist/src/admin -> dist/admin
+  const moves = [
+    { src: 'src/admin', dest: 'admin' },
+    { src: 'src/teacher', dest: 'teacher' },
+    { src: 'src/student', dest: 'student' }
+  ];
 
-  console.log('🔧 Reorganizing admin folder...');
-  // dist/src/admin -> dist/admin으로 이동
-  const adminSrcPath = path.join(rootDir, 'dist/src/admin');
-  const adminDestPath = path.join(rootDir, 'dist/admin');
-  
-  if (await fs.pathExists(adminSrcPath)) {
-    await fs.move(adminSrcPath, adminDestPath, { overwrite: true });
-    console.log('✅ Admin folder moved to /admin');
+  for (const move of moves) {
+    const srcPath = path.join(distDir, move.src);
+    const destPath = path.join(distDir, move.dest);
+
+    // 소스 폴더가 존재하면 이동
+    if (await fs.pathExists(srcPath)) {
+      await fs.move(srcPath, destPath, { overwrite: true });
+      console.log(`✅ Moved ${move.src} to /${move.dest}`);
+    } else {
+      console.log(`ℹ️  ${move.src} 폴더가 없어서 건너뜁니다.`);
+    }
   }
 
-  // dist/src 폴더 삭제
-  const srcPath = path.join(rootDir, 'dist/src');
-  if (await fs.pathExists(srcPath)) {
-    await fs.remove(srcPath);
-    console.log('✅ Removed /dist/src folder');
+  // 빈 src 폴더 삭제
+  const srcDir = path.join(distDir, 'src');
+  if (await fs.pathExists(srcDir)) {
+    await fs.remove(srcDir);
+    console.log('🗑️  불필요한 /dist/src 폴더 삭제 완료');
   }
 
-  console.log('👨‍🏫 Copying teacher files...');
-  // dist-teacher -> dist/teacher
-  await fs.copy(
-    path.join(rootDir, 'dist-teacher'),
-    path.join(rootDir, 'dist/teacher')
-  );
-
-  console.log('🧑‍🎓 Copying student files...');
-  // dist-student -> dist/student
-  await fs.copy(
-    path.join(rootDir, 'dist-student'),
-    path.join(rootDir, 'dist/student')
-  );
-
-  console.log('✨ Merge complete!');
-  console.log('\nFinal structure:');
-  console.log('  dist/');
-  console.log('  ├── index.html (portal)');
-  console.log('  ├── admin/index.html');
-  console.log('  ├── teacher/index.html');
-  console.log('  └── student/index.html');
+  console.log('✨ 빌드 폴더 정리가 완료되었습니다!');
 }
 
-mergeDist().catch(err => {
-  console.error('❌ Error during merge:', err);
+reorganizeDist().catch(err => {
+  console.error('❌ 정리 중 오류 발생:', err);
   process.exit(1);
 });

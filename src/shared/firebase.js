@@ -7,7 +7,7 @@ import { getStorage } from "firebase/storage";
 
 // 🔹 Firebase 프로젝트 설정값
 const firebaseConfig = {
-  apiKey: "AIzaSyBWD__2wEy7dkZ40-UBMLik-acqPJ4wpEY", // 👈 실제 키 확인 필요
+  apiKey: "AIzaSyBWto_OQ5pXI1i4NDTrEiqNZwZInmbxDwY", // 👈 실제 키 확인 필요
   authDomain: "svcm-v2.firebaseapp.com",
   projectId: "svcm-v2",
   // 👇 storageBucket 주소 수정됨
