@@ -12,8 +12,8 @@
     <script>
       MathJax = {
         tex: {
-          inlineMath: [['$', '$'], ['\\(', '\\)']], // 인라인 수식 구분 기호 설정
-          displayMath: [['$$', '$$'], ['\\[', '\\]']] // 디스플레이 수식 구분 기호 설정
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
         },
         svg: {
           fontCache: 'global'
@@ -91,7 +91,6 @@
                         </div>
                         </div>
                     <style>
-                        /* 인라인/스코프드 CSS의 @apply 사용 시 Tailwind v4 요구사항 */
                         @reference "tailwindcss";
                         .admin-menu-item { @apply cursor-pointer p-6 text-center transition hover:bg-slate-50; }
                     </style>
@@ -526,17 +525,16 @@
                             </div>
                             <div id="admin-video1-rev-urls-container" class="space-y-2"></div>
                         </div>
-                        <div>
-                            <label for="admin-video2-url" class="block text-sm font-medium text-slate-600 mb-1">영상 2 URL (문제 풀이 영상)</label>
-                            <input type="url" id="admin-video2-url" class="form-input" placeholder="https://youtube.com/watch?v=...">
+                        
+                        <div class="p-4 bg-slate-50 rounded-lg border border-slate-200 mt-2">
+                            <label class="block text-sm font-medium text-slate-700 mb-2">응용 영상 (Video 2) - 교재별 등록</label>
+                            <div class="text-xs text-slate-500 mb-3">학생의 반에 지정된 교재 영상이 자동으로 표시됩니다.</div>
+                            <div id="video2ListContainer" class="space-y-2"></div>
+                            <button type="button" id="btnAddVideo2Item" class="mt-2 text-sm text-blue-600 hover:text-blue-800 font-bold">
+                                + 영상 추가 (교재명/URL)
+                            </button>
                         </div>
-                        <div>
-                            <div class="flex items-center justify-between mb-1">
-                                <label class="block text-sm font-medium text-slate-600">영상 2 수정/보충 영상 (선택)</label>
-                                <button id="admin-add-video2-rev-btn" class="btn-secondary btn-sm">+</button>
-                            </div>
-                            <div id="admin-video2-rev-urls-container" class="space-y-2"></div>
-                        </div>
+
                     </div>
                 </div>
                 <div>

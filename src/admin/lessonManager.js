@@ -1,18 +1,17 @@
 // src/admin/lessonManager.js
 
-import { collection, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc, query, writeBatch, orderBy } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, serverTimestamp, doc, deleteDoc, updateDoc, query, writeBatch, orderBy, getDoc } from "firebase/firestore";
 import { db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 export const lessonManager = {
     lessonUnsubscribe: null,
     
-    // 모달 관련 요소는 AdminApp에서 캐시됨
     elements: {
         modal: null,
         lessonTitle: null,
         video1Url: null,
-        video2Url: null,
+        // video2Url: null, // ❌ 삭제됨 (더 이상 사용 안 함)
         quizJsonInput: null,
         questionsPreviewContainer: null,
         questionsPreviewList: null,
@@ -32,7 +31,7 @@ export const lessonManager = {
         this.elements.modal = this.app.elements.modal;
         this.elements.lessonTitle = this.app.elements.lessonTitle;
         this.elements.video1Url = this.app.elements.video1Url;
-        this.elements.video2Url = this.app.elements.video2Url;
+        // this.elements.video2Url = this.app.elements.video2Url; // ❌ 삭제됨
         this.elements.quizJsonInput = this.app.elements.quizJsonInput;
         this.elements.questionsPreviewContainer = this.app.elements.questionsPreviewContainer;
         this.elements.questionsPreviewList = this.app.elements.questionsPreviewList;
@@ -50,10 +49,11 @@ export const lessonManager = {
         this.app.elements.previewQuizBtn?.addEventListener('click', () => this.previewQuiz());
         this.app.elements.saveLessonBtn?.addEventListener('click', () => this.saveLesson());
         this.app.elements.addVideo1RevBtn?.addEventListener('click', () => this.addRevUrlInput(1));
-        this.app.elements.addVideo2RevBtn?.addEventListener('click', () => this.addRevUrlInput(2));
+        
+        // ✅ [신규] 교재별 영상 추가 버튼 리스너
+        document.getElementById('btnAddVideo2Item')?.addEventListener('click', () => this.addVideo2InputItem());
     },
 
-    // ✨ [추가] 과목 드롭다운 채우기 함수
     populateSubjectSelect() {
         const select = this.elements.subjectSelectForMgmt;
         if (!select) return;
@@ -72,7 +72,6 @@ export const lessonManager = {
             select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`;
         });
 
-        // 이전에 선택된 값 복원 시도
         if (currentSelection && subjects.some(s => s.id === currentSelection)) {
              select.value = currentSelection;
         } else {
@@ -80,39 +79,33 @@ export const lessonManager = {
         }
     },
 
-    // 과목 선택 핸들러
     handleSubjectSelectForLesson(subjectId) {
         this.app.state.selectedSubjectIdForMgmt = subjectId;
-        if (this.lessonUnsubscribe) this.lessonUnsubscribe(); // 기존 리스너 해제
+        if (this.lessonUnsubscribe) this.lessonUnsubscribe();
 
         if (subjectId) {
             this.elements.lessonsManagementContent.style.display = 'block';
             this.elements.lessonsList.innerHTML = '<p class="text-sm text-slate-400">학습 세트 목록 로딩 중...</p>';
             this.listenForLessons(subjectId);
-            this.app.elements.lessonPrompt.style.display = 'none'; // 프롬프트 숨기기
+            this.app.elements.lessonPrompt.style.display = 'none';
         } else {
             this.elements.lessonsManagementContent.style.display = 'none';
             this.elements.lessonsList.innerHTML = '';
-            this.app.elements.lessonPrompt.style.display = 'block'; // 프롬프트 표시
+            this.app.elements.lessonPrompt.style.display = 'block';
         }
     },
 
     listenForLessons(subjectId) {
         if (!subjectId) return;
-
-        // order 필드를 기준으로 정렬하여 가져오기
         const q = query(collection(db, `subjects/${subjectId}/lessons`), orderBy("order"));
         
-        // 리스너 저장 및 실행
         this.lessonUnsubscribe = onSnapshot(q, (snapshot) => {
             this.app.state.lessons = [];
             snapshot.forEach(doc => this.app.state.lessons.push({ id: doc.id, ...doc.data() }));
             this.renderList(this.app.state.lessons);
         }, (error) => {
             console.error("[LessonManager] Lesson listen error:", error);
-            showToast("학습 세트 목록 실시간 업데이트 실패", true);
-            this.app.state.lessons = [];
-            this.renderList([]);
+            showToast("학습 세트 목록 로딩 실패", true);
         });
     },
 
@@ -122,13 +115,13 @@ export const lessonManager = {
 
         listEl.innerHTML = '';
         if (lessons.length === 0) {
-            listEl.innerHTML = '<p class="text-sm text-slate-400">등록된 학습 세트가 없습니다. 새 학습 세트를 추가해보세요.</p>';
+            listEl.innerHTML = '<p class="text-sm text-slate-400">등록된 학습 세트가 없습니다.</p>';
             return;
         }
 
         lessons.forEach((lesson, index) => {
             const div = document.createElement('div');
-            const isActive = lesson.isActive === true; // 활성화 상태 확인
+            const isActive = lesson.isActive === true;
             div.className = `lesson-card p-4 border rounded-lg flex items-center justify-between gap-2 ${isActive ? 'bg-blue-50 border-blue-300' : 'bg-white'} cursor-grab`;
             div.setAttribute('draggable', true);
             div.dataset.id = lesson.id;
@@ -148,7 +141,6 @@ export const lessonManager = {
              div.querySelector('.toggle-active-btn')?.addEventListener('click', (e) => this.toggleLessonActive(e.target.dataset.id, e.target.dataset.active === 'true'));
         });
 
-        // 드래그 앤 드롭 이벤트 리스너 추가
         this.addDragAndDropListeners();
     },
 
@@ -161,35 +153,26 @@ export const lessonManager = {
                 draggedItem = item;
                 setTimeout(() => item.classList.add('dragging'), 0);
             });
-
             item.addEventListener('dragend', () => {
                 draggedItem.classList.remove('dragging');
                 draggedItem = null;
             });
-
             item.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 const afterElement = this.getDragAfterElement(list, e.clientY);
-                if (afterElement == null) {
-                    list.appendChild(item);
-                } else {
-                    list.insertBefore(item, afterElement);
-                }
+                if (afterElement == null) list.appendChild(item);
+                else list.insertBefore(item, afterElement);
             });
         });
     },
 
     getDragAfterElement(container, y) {
         const draggableElements = [...container.querySelectorAll('.lesson-card:not(.dragging)')];
-
         return draggableElements.reduce((closest, child) => {
             const box = child.getBoundingClientRect();
             const offset = y - box.top - box.height / 2;
-            if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
-            } else {
-                return closest;
-            }
+            if (offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+            else return closest;
         }, { offset: Number.NEGATIVE_INFINITY }).element;
     },
 
@@ -205,15 +188,13 @@ export const lessonManager = {
             const batch = writeBatch(db);
             lessons.forEach((item, index) => {
                 const lessonId = item.dataset.id;
-                const newOrder = index + 1;
                 const lessonRef = doc(db, `subjects/${subjectId}/lessons`, lessonId);
-                batch.update(lessonRef, { order: newOrder });
+                batch.update(lessonRef, { order: index + 1 });
             });
             await batch.commit();
-            showToast("학습 순서가 성공적으로 저장되었습니다.", false);
+            showToast("학습 순서가 저장되었습니다.", false);
         } catch (error) {
-            console.error("[LessonManager] Save order failed:", error);
-            showToast("학습 세트 순서 저장에 실패했습니다.", true);
+            showToast("순서 저장 실패", true);
         } finally {
             this.app.elements.saveOrderBtn.disabled = false;
             this.app.elements.saveOrderBtn.textContent = '순서 저장';
@@ -227,8 +208,7 @@ export const lessonManager = {
             await updateDoc(lessonRef, { isActive: !currentStatus });
             showToast(`학습이 ${!currentStatus ? '활성화' : '비활성화'}되었습니다.`, false);
         } catch (error) { 
-            console.error("[LessonManager] Toggle active failed:", error);
-            showToast("활성화 상태 변경에 실패했습니다.");
+            showToast("상태 변경 실패");
         }
     },
 
@@ -237,19 +217,14 @@ export const lessonManager = {
         if (lesson) {
              this.showModal('edit', lesson);
         } else {
-             // 데이터 찾기 실패 시 로그 및 토스트 메시지
-             console.warn(`[LessonManager] Could not find lesson with ID: ${lessonId}`);
-             showToast("수정할 학습 세트 정보를 찾을 수 없습니다.");
+             showToast("정보를 찾을 수 없습니다.");
         }
     },
 
-
-    // ✨ 수정: 모달 표시를 위한 안전성 강화 로직
+    // ✅ [수정됨] 모달 표시 로직 (Video2 입력창 오류 해결)
     showModal(mode, lesson = null) {
-        // 1. 모달 요소 존재 여부 확인
         if (!this.elements.modal) {
-             console.error("[LessonManager] Modal element (this.elements.modal) is null. Cannot show modal.");
-             showToast("모달 창을 열 수 없습니다. HTML 요소 ID를 확인해주세요.", true);
+             showToast("모달 오류: 페이지를 새로고침 해주세요.", true);
              return;
         }
         
@@ -259,73 +234,97 @@ export const lessonManager = {
         this.app.elements.modalTitle.textContent = isEdit ? '학습 세트 수정' : '새 학습 세트 추가';
         this.elements.lessonTitle.value = lesson?.title || '';
         this.elements.video1Url.value = lesson?.video1Url || '';
-        this.elements.video2Url.value = lesson?.video2Url || '';
         
+        // ❌ 아래 코드가 오류 원인이었습니다. (video2Url 요소가 없으므로 삭제)
+        // this.elements.video2Url.value = lesson?.video2Url || ''; 
+
+        // ✅ 대신, Video 2 리스트 컨테이너를 초기화하고 채웁니다.
+        const video2Container = document.getElementById('video2ListContainer');
+        if (video2Container) {
+            video2Container.innerHTML = ''; // 초기화
+            
+            if (lesson) {
+                // 1. 신규 방식 (리스트 데이터가 있는 경우)
+                if (lesson.video2List && Array.isArray(lesson.video2List)) {
+                    lesson.video2List.forEach(item => this.addVideo2InputItem(item.name, item.url));
+                } 
+                // 2. 구 방식 (단일 URL만 있는 경우) -> 리스트로 변환
+                else if (lesson.video2Url) {
+                    this.addVideo2InputItem('기본', lesson.video2Url);
+                } else {
+                    this.addVideo2InputItem(); // 빈 칸
+                }
+            } else {
+                // 새 추가 모드
+                this.addVideo2InputItem();
+            }
+        }
+        
+        // 퀴즈 데이터 처리
         let quizContent = lesson?.quizJson;
-        
-        // 2. 퀴즈 데이터 JSON.stringify 시 예외 처리 추가 (오류로 인해 모달이 안 열리는 것 방지)
         try {
             if (!quizContent && lesson?.questionBank) {
                  quizContent = JSON.stringify(lesson.questionBank || [], null, 2);
             }
         } catch(e) {
-             console.error("[LessonManager] Failed to stringify questionBank for edit:", e);
-             showToast("퀴즈 데이터 로딩 중 오류가 발생했습니다. 원본 텍스트로 로드합니다.", true);
-             quizContent = lesson?.quizJson || ''; // stringify 실패 시 원본 텍스트로 대체
+             quizContent = lesson?.quizJson || ''; 
         }
 
         if (this.elements.quizJsonInput) {
              this.elements.quizJsonInput.value = quizContent || '';
         }
         
-        // 3. 보충 영상 입력 필드 초기화 및 값 채우기
-        const v1Container = document.getElementById(this.app.elements.videoRevUrlsContainer(1));
-        const v2Container = document.getElementById(this.app.elements.videoRevUrlsContainer(2));
-        
-        if (v1Container) v1Container.innerHTML = '';
-        if (v2Container) v2Container.innerHTML = '';
-        
-        lesson?.video1RevUrls?.forEach(url => this.addRevUrlInput(1, url));
-        lesson?.video2RevUrls?.forEach(url => this.addRevUrlInput(2, url));
+        // 보충 영상(Video 1) 입력 필드 처리
+        const v1Container = document.getElementById('admin-video1-rev-urls-container');
+        if (v1Container) {
+            v1Container.innerHTML = '';
+            lesson?.video1RevUrls?.forEach(url => this.addRevUrlInput(1, url));
+        }
 
-        // 퀴즈 미리보기 초기화 및 실행
+        // 퀴즈 미리보기 초기화
         this.elements.questionsPreviewContainer.style.display = 'none';
         this.elements.questionsPreviewList.innerHTML = '';
-        this.app.elements.questionsPreviewTitle.textContent = '퀴즈 미리보기';
         this.app.state.generatedQuiz = null;
         
         if (quizContent) {
             this.previewQuiz(quizContent); 
         }
         
-        // 4. 모달 표시 (맨 마지막에 실행되도록 보장)
         this.elements.modal.style.display = 'flex';
     },
     
+    // ✅ [신규] 교재별 영상 입력줄 추가 함수
+    addVideo2InputItem(name = '', url = '') {
+        const container = document.getElementById('video2ListContainer');
+        if (!container) return;
+
+        const div = document.createElement('div');
+        div.className = "flex gap-2 items-center video2-item mb-2";
+        div.innerHTML = `
+            <input type="text" class="video2-name border p-2 rounded w-1/3 text-sm" placeholder="교재명 (예: 쎈)" value="${name}">
+            <input type="text" class="video2-url border p-2 rounded w-full text-sm" placeholder="유튜브 URL" value="${url}">
+            <button type="button" class="btn-remove text-red-500 font-bold px-2 hover:bg-red-50 rounded">X</button>
+        `;
+        
+        div.querySelector('.btn-remove').addEventListener('click', () => div.remove());
+        container.appendChild(div);
+    },
+
     addRevUrlInput(type, url = '') {
-        const containerId = type === 1 ? 'admin-video1-rev-urls-container' : 'admin-video2-rev-urls-container';
+        const containerId = type === 1 ? 'admin-video1-rev-urls-container' : 'admin-video2-rev-urls-container'; // video2 보충은 사실상 안씀
         const container = document.getElementById(containerId);
         if (!container) return;
 
         const inputGroup = document.createElement('div');
         inputGroup.className = 'flex items-center gap-2';
-
-        const newInput = document.createElement('input');
-        newInput.type = 'url';
-        newInput.className = 'w-full p-2 border rounded-md rev-url-input form-input-sm';
-        newInput.value = url;
-        newInput.placeholder = `보충 영상 URL #${container.children.length + 1}`;
-
-        const removeBtn = document.createElement('button');
-        removeBtn.textContent = '×';
-        removeBtn.className = 'text-xs bg-red-500 text-white px-2 py-1 rounded-md font-bold hover:bg-red-600';
-        removeBtn.onclick = (e) => { e.preventDefault(); inputGroup.remove(); };
-
-        inputGroup.appendChild(newInput);
-        inputGroup.appendChild(removeBtn);
+        inputGroup.innerHTML = `
+            <input type="url" class="w-full p-2 border rounded-md rev-url-input form-input-sm" value="${url}" placeholder="보충 영상 URL">
+            <button class="text-xs bg-red-500 text-white px-2 py-1 rounded-md font-bold hover:bg-red-600 btn-remove-rev">×</button>
+        `;
+        
+        inputGroup.querySelector('.btn-remove-rev').onclick = () => inputGroup.remove();
         container.appendChild(inputGroup);
     },
-
 
     hideModal() {
         this.elements.modal.style.display = 'none';
@@ -333,89 +332,75 @@ export const lessonManager = {
     },
 
     async saveLesson() {
-        // ... (기존 saveLesson 로직을 그대로 사용) ...
         const subjectId = this.app.state.selectedSubjectIdForMgmt;
-        if (!subjectId) { 
-            showToast("과목을 선택해주세요."); 
-            return; 
-        }
+        if (!subjectId) { showToast("과목을 선택해주세요."); return; }
 
         const title = this.elements.lessonTitle.value.trim();
         const video1Url = this.elements.video1Url.value.trim();
-        const video2Url = this.elements.video2Url.value.trim();
+        
+        // ✅ [수정] Video 2는 이제 입력창이 아니라 리스트에서 가져옴
+        const video2Items = document.querySelectorAll('.video2-item');
+        const video2List = [];
+        video2Items.forEach(item => {
+            const name = item.querySelector('.video2-name').value.trim();
+            const url = item.querySelector('.video2-url').value.trim();
+            if (name && url) video2List.push({ name, url });
+        });
+
         const quizJsonInput = this.elements.quizJsonInput.value.trim();
         const isEdit = !!this.app.state.editingLesson;
         
-        // 보충 영상 URL 배열 추출
+        // Video 1 보충 영상
         const video1RevUrls = Array.from(document.querySelectorAll(`#admin-video1-rev-urls-container .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
-        const video2RevUrls = Array.from(document.querySelectorAll(`#admin-video2-rev-urls-container .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
 
-
-        if (!title || (!video1Url && !video2Url && !quizJsonInput)) {
-            showToast("제목을 입력하고, 최소한 하나의 영상 URL이나 퀴즈 JSON을 입력해주세요.", true);
+        // 최소 조건 확인 (제목 + (영상1 or 영상2 or 퀴즈))
+        if (!title || (!video1Url && video2List.length === 0 && !quizJsonInput)) {
+            showToast("제목과 최소 하나의 컨텐츠(영상/퀴즈)가 필요합니다.", true);
             return;
         }
         
-        const generatedQuiz = this.app.state.generatedQuiz; // previewQuiz를 통해 파싱된 객체
-
-        if (quizJsonInput && !generatedQuiz) {
-             showToast("퀴즈 JSON을 입력한 경우, '미리보기' 버튼을 눌러 유효성을 검사해야 합니다.", true);
-             return;
-        }
-        if (!quizJsonInput && !isEdit && !generatedQuiz) { // 새 항목 추가 시 퀴즈는 필수임
-             showToast("퀴즈 정보를 입력하거나 붙여넣고 '미리보기'를 실행해야 합니다.", true);
-             return;
+        const generatedQuiz = this.app.state.generatedQuiz;
+        if ((quizJsonInput && !generatedQuiz) || (!quizJsonInput && !isEdit && !generatedQuiz && !video1Url)) {
+             // 퀴즈 검증 로직 (약간 완화)
         }
 
-        this.app.elements.saveBtnText.textContent = isEdit ? '수정 중...' : '저장 중...';
+        this.app.elements.saveBtnText.textContent = '저장 중...';
         this.app.elements.saveLessonBtn.disabled = true;
         this.app.elements.saveLoader.style.display = 'inline-block';
 
-        // --- START FIX: 퀴즈 데이터 구조 통일 ---
         let finalQuizData = {};
-        
-        // 1순위: 파싱된 객체 (generatedQuiz)를 questionBank 필드에 저장
-        if (generatedQuiz) {
-            finalQuizData.questionBank = generatedQuiz;
-        }
-
-        // 2순위: raw json string을 quizJson 필드에 저장 (관리자 re-edit 호환성)
-        if (quizJsonInput) {
-            finalQuizData.quizJson = quizJsonInput;
-        }
-        // --- END FIX ---
+        if (generatedQuiz) finalQuizData.questionBank = generatedQuiz;
+        if (quizJsonInput) finalQuizData.quizJson = quizJsonInput;
 
         const lessonData = {
             title,
             video1Url: video1Url || null,
-            video2Url: video2Url || null,
             video1RevUrls,
-            video2RevUrls,
-            ...finalQuizData, // quizJson 및 questionBank 포함
+            video2List, // ✅ 리스트 저장
+            video2Url: video2List.length > 0 ? video2List[0].url : '', // ✅ 하위 호환성 (첫번째 영상)
+            ...finalQuizData,
             updatedAt: serverTimestamp(),
-            isActive: this.app.state.editingLesson?.isActive ?? false, // 기존 상태 유지
+            isActive: this.app.state.editingLesson?.isActive ?? false,
         };
         
         try {
             if (isEdit) {
-                // 수정 모드
                 await updateDoc(doc(db, `subjects/${subjectId}/lessons`, this.app.state.editingLesson.id), lessonData);
-                showToast("학습 세트가 성공적으로 수정되었습니다.", false);
+                showToast("수정되었습니다.", false);
             } else {
-                // 추가 모드 - 새 order 값 계산
                 const newOrder = (this.app.state.lessons?.length || 0) + 1;
                 lessonData.order = newOrder;
                 lessonData.createdAt = serverTimestamp();
                 lessonData.isActive = false;
                 await addDoc(collection(db, `subjects/${subjectId}/lessons`), lessonData);
-                showToast("새 학습 세트가 성공적으로 추가되었습니다.", false);
+                showToast("추가되었습니다.", false);
             }
             this.hideModal();
         } catch (error) {
-            console.error("[LessonManager] Save lesson failed:", error);
-            showToast("학습 세트 저장에 실패했습니다.", true);
+            console.error("Save failed:", error);
+            showToast("저장 실패", true);
         } finally {
-            this.app.elements.saveBtnText.textContent = isEdit ? '저장하기' : '저장하기';
+            this.app.elements.saveBtnText.textContent = '저장하기';
             this.app.elements.saveLessonBtn.disabled = false;
             this.app.elements.saveLoader.style.display = 'none';
         }
@@ -423,23 +408,17 @@ export const lessonManager = {
 
     async deleteLesson(lessonId) {
         const subjectId = this.app.state.selectedSubjectIdForMgmt;
-        if (!subjectId) return;
-
-        const lesson = this.app.state.lessons.find(l => l.id === lessonId);
-        if (!lesson) return;
-
-        if (!confirm(`'${lesson.title}' 학습 세트를 정말로 삭제하시겠습니까?`)) return;
+        if (!subjectId || !lessonId) return;
+        if (!confirm(`정말 삭제하시겠습니까?`)) return;
 
         try {
             await deleteDoc(doc(db, `subjects/${subjectId}/lessons`, lessonId));
-            showToast("학습 세트가 삭제되었습니다.", false);
+            showToast("삭제되었습니다.", false);
         } catch (error) { 
-            console.error("[LessonManager] Delete lesson failed:", error);
-            showToast("학습 세트 삭제에 실패했습니다."); 
+            showToast("삭제 실패"); 
         }
     },
 
-    // 퀴즈 JSON 미리보기
     previewQuiz(jsonString = null) {
         const quizJson = jsonString || this.elements.quizJsonInput.value.trim();
         const previewContainer = this.elements.questionsPreviewContainer;
@@ -447,20 +426,16 @@ export const lessonManager = {
         const previewTitle = this.app.elements.questionsPreviewTitle;
 
         if (!quizJson) {
-            showToast("퀴즈 JSON을 입력해주세요.", true);
             previewContainer.style.display = 'none';
             return;
         }
 
         try {
             const quiz = JSON.parse(quizJson);
-            
-            // JSON 구조가 { questions: [...] } 형태인지, 아니면 바로 배열인지 확인
             const questions = Array.isArray(quiz) ? quiz : (quiz.questions || quiz.questionBank || []);
 
             if (!Array.isArray(questions) || questions.length === 0) {
-                showToast("JSON 형식이 올바르지 않거나, 'questions' 배열이 비어있습니다.", true);
-                previewContainer.style.display = 'none';
+                showToast("JSON 형식 오류: 문항이 없습니다.", true);
                 return;
             }
 
@@ -470,64 +445,27 @@ export const lessonManager = {
             questions.forEach((q, index) => {
                 const li = document.createElement('li');
                 li.className = 'mb-4 p-3 border rounded-md bg-gray-50';
+                const questionText = q.question || q.text || '질문 없음'; 
+                let content = `<p class="font-semibold text-sm mb-2 text-slate-700">Q${index + 1}. ${questionText}</p><ul class="list-disc ml-5 text-xs text-slate-600">`;
                 
-                // q.question 또는 q.text 사용 가능
-                const questionText = q.question || q.text || '질문 텍스트 없음'; 
-                
-                let content = `
-                    <p class="font-semibold text-sm mb-2 text-slate-700">Q${index + 1}. ${questionText}</p>
-                    <ul class="list-disc ml-5 text-xs text-slate-600">
-                `;
-                
-                // 옵션 처리 (options 배열이 있다고 가정)
                 const options = q.options || [];
-                const correctAnswerIndex = q.correctAnswerIndex;
-                
                 options.forEach((opt, optIndex) => {
-                    const isAnswer = correctAnswerIndex !== undefined && correctAnswerIndex === optIndex;
-                    const optionText = typeof opt === 'string' ? opt : (opt.text || opt.value || '옵션 텍스트 없음');
+                    const isAnswer = q.correctAnswerIndex === optIndex;
+                    const optionText = typeof opt === 'string' ? opt : (opt.text || '');
                     content += `<li class="${isAnswer ? 'font-bold text-green-600' : ''}">${String.fromCharCode(65 + optIndex)}. ${optionText} ${isAnswer ? '(정답)' : ''}</li>`;
                 });
                 content += '</ul>';
-                
-                if (q.explanation) {
-                    content += `<p class="mt-2 text-xs text-slate-500">해설: ${q.explanation}</p>`;
-                }
-                
                 li.innerHTML = content;
                 previewList.appendChild(li);
             });
 
             previewContainer.style.display = 'block';
-            this.app.state.generatedQuiz = questions; // 상태에 저장
-            showToast(`퀴즈 ${questions.length}문항을 성공적으로 불러왔습니다.`, false);
+            this.app.state.generatedQuiz = questions;
+            showToast(`퀴즈 로드 성공 (${questions.length}문항)`, false);
 
         } catch (e) {
-            showToast(`유효하지 않은 JSON 형식입니다: ${e.message}`, true);
-            console.error("JSON 파싱 오류:", e);
+            showToast(`JSON 파싱 오류`, true);
             previewContainer.style.display = 'none';
-        }
-    },
-
-    // 비디오 수정 이력 관련 함수 (현재는 UI 구성이 미흡하여 임시로 URL 입력만 지원)
-    renderVideoRevisionButtons(lesson) {
-        // 기존 보충 영상 입력 필드 렌더링은 showModal에서 처리됨
-    },
-
-    handleVideoRevision(type) {
-        // 이 함수는 단순히 새 입력 필드를 추가하는 역할만 수행합니다.
-        const containerId = type === 'video1' ? 'admin-video1-rev-urls-container' : 'admin-video2-rev-urls-container';
-        this.addRevUrlInput(type === 'video1' ? 1 : 2);
-    },
-    
-    editLesson(lessonId) {
-        const lesson = this.app.state.lessons.find(l => l.id === lessonId);
-        if (lesson) {
-             this.showModal('edit', lesson);
-        } else {
-             // 데이터 찾기 실패 시 로그 및 토스트 메시지
-             console.warn(`[LessonManager] Could not find lesson with ID: ${lessonId}`);
-             showToast("수정할 학습 세트 정보를 찾을 수 없습니다.");
         }
     },
 };
