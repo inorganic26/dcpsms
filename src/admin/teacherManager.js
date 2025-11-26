@@ -1,34 +1,35 @@
 // src/admin/teacherManager.js
-import { collection, onSnapshot, addDoc, doc, deleteDoc, query, updateDoc, serverTimestamp } from "firebase/firestore";
-// import { getFunctions, httpsCallable } from "firebase/functions"; // ⚠️ Cloud Function 관련 코드 제거
+import { collection, onSnapshot, doc, deleteDoc, query, updateDoc } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
-
-// ⚠️ Cloud Function 관련 변수 제거
+// ✨ Store 임포트
+import { setTeachers, getTeachers, TEACHER_EVENTS } from "../store/teacherStore.js";
 
 export const teacherManager = {
   editingTeacherId: null,
-  isInitialLoad: true,
+  elements: {},
 
   init(adminAppInstance) {
-    this.app = adminAppInstance;
-    // ⚠️ Cloud Function 초기화 로직 제거
-    
-    this.elements = this.app.elements;
+    // this.app = adminAppInstance; // ❌ 의존성 제거
+    this.elements = adminAppInstance.elements;
 
     this.elements.addTeacherBtn?.addEventListener("click", () => this.addNewTeacher());
     this.elements.closeEditTeacherModalBtn?.addEventListener("click", () => this.closeEditTeacherModal());
     this.elements.cancelEditTeacherBtn?.addEventListener("click", () => this.closeEditTeacherModal());
     this.elements.saveTeacherEditBtn?.addEventListener("click", () => this.saveTeacherChanges());
-    
     this.elements.teachersList?.addEventListener("click", (e) => this.handleListClick(e));
+
+    // ✨ Store 변경 감지 -> 화면 갱신
+    document.addEventListener(TEACHER_EVENTS.UPDATED, () => {
+        this.renderList();
+    });
 
     this.listenForTeachers();
   },
 
+  // ✅ 서버 함수 호출 유지 (보안)
   async addNewTeacher() {
-    // ⚠️ Cloud Function 호출 전 검사 로직 제거
-
     const { newTeacherNameInput, newTeacherPhoneInput } = this.elements;
     const name = newTeacherNameInput?.value.trim();
     const phone = newTeacherPhoneInput?.value.trim();
@@ -38,21 +39,19 @@ export const teacherManager = {
       return;
     }
 
-    try {
-      // ✅ Cloud Function 대신 Firestore addDoc 사용
-      await addDoc(collection(db, "teachers"), {
-          name,
-          phone,
-          password: phone.slice(-4), // 초기 비번: 전화번호 뒷 4자리
-          isInitialPassword: true, // 첫 로그인 시 재설정 유도
-          createdAt: serverTimestamp(),
-      });
+    showToast("교사 계정 생성 중...", false);
 
-      showToast(`${name} 교사가 등록되었습니다. (초기 비밀번호: 뒷 4자리)`, false);
+    try {
+      const functions = getFunctions(app, 'asia-northeast3');
+      const createTeacher = httpsCallable(functions, 'createTeacherAccount');
       
-      // 입력 필드 초기화
+      await createTeacher({ name, phone });
+
+      showToast(`${name} 교사가 등록되었습니다.`, false);
+      
       newTeacherNameInput.value = "";
       newTeacherPhoneInput.value = "";
+      
     } catch (error) {
       console.error("[teacherManager] 교사 추가 실패:", error);
       showToast(`교사 추가 실패: ${error.message}`, true);
@@ -60,10 +59,8 @@ export const teacherManager = {
   },
 
   listenForTeachers() {
-    // Firestore 직접 읽기 (onSnapshot) 사용
     const q = query(collection(db, "teachers"));
     const listEl = this.elements.teachersList;
-    if (!listEl) return;
 
     onSnapshot(
       q,
@@ -71,23 +68,19 @@ export const teacherManager = {
         const teachers = [];
         snapshot.forEach((doc) => teachers.push({ id: doc.id, ...doc.data() }));
         teachers.sort((a, b) => a.name.localeCompare(b.name));
-        this.app.state.teachers = teachers;
         
-        // 이 로직 덕분에 등록/수정 즉시 목록이 갱신됩니다.
-        if (this.isInitialLoad || this.app.state.currentView === 'teacherMgmt') {
-             this.renderList(teachers);
-        }
-        
-        this.isInitialLoad = false;
+        // ✨ Store 업데이트
+        setTeachers(teachers);
       },
       (error) => {
         console.error("[teacherManager] Firestore listen error:", error);
-        if (listEl) listEl.innerHTML = '<p class="text-red-500">교사 목록 로딩 실패</p>';
+        if (listEl) listEl.innerHTML = '<p class="text-red-500">교사 목록 로딩 실패 (권한 부족)</p>';
       }
     );
   },
 
-  renderList(teachers) {
+  renderList() {
+    const teachers = getTeachers(); // ✨ Store에서 조회
     const listEl = this.elements.teachersList;
     if (!listEl) return;
     listEl.innerHTML = "";
@@ -128,11 +121,15 @@ export const teacherManager = {
       if (e.target.classList.contains("edit-teacher-btn")) {
           this.openEditTeacherModal(id);
       } else if (e.target.classList.contains("delete-teacher-btn")) {
-          const teacherName = this.app.state.teachers.find(t => t.id === id)?.name || '이 교사';
+          // ✨ Store에서 조회
+          const teacherName = getTeachers().find(t => t.id === id)?.name || '이 교사';
           if (confirm(`'${teacherName}' 교사를 삭제하시겠습니까?`)) {
-               // Firestore 직접 삭제
-               await deleteDoc(doc(db, "teachers", id)); 
-               showToast("교사 삭제 완료.", false);
+               try {
+                   await deleteDoc(doc(db, "teachers", id)); 
+                   showToast("교사 삭제 완료.", false);
+               } catch(e) {
+                   showToast("삭제 실패 (권한 부족 가능성)");
+               }
           }
       } else if (e.target.classList.contains("reset-password-btn")) {
            this.resetTeacherPassword(id);
@@ -140,7 +137,8 @@ export const teacherManager = {
   },
 
   openEditTeacherModal(teacherId) {
-    const teacherData = this.app.state.teachers.find((t) => t.id === teacherId);
+    // ✨ Store에서 조회
+    const teacherData = getTeachers().find((t) => t.id === teacherId);
     if (!teacherData) return;
     this.editingTeacherId = teacherId;
     this.elements.editTeacherNameInput.value = teacherData.name;
@@ -165,16 +163,14 @@ export const teacherManager = {
 
     try {
         const teacherRef = doc(db, 'teachers', this.editingTeacherId);
-        
-        // ✅ Cloud Function 대신 Firestore updateDoc 사용
         await updateDoc(teacherRef, {
             name, 
             phone,
-            password: phone.slice(-4), // 전화번호 변경 시 비밀번호 재설정
-            isInitialPassword: true // 재설정 시 첫 로그인 플래그 활성화
+            password: phone.slice(-4), 
+            isInitialPassword: true 
         });
 
-        showToast(`${name} 교사 정보가 수정되었습니다. (비밀번호 재설정됨)`, false);
+        showToast(`${name} 교사 정보가 수정되었습니다.`, false);
         this.closeEditTeacherModal();
     } catch (error) {
         console.error("정보 수정 실패:", error);
@@ -183,26 +179,26 @@ export const teacherManager = {
   },
   
   async resetTeacherPassword(teacherId) {
-       const teacherData = this.app.state.teachers.find(t => t.id === teacherId);
+       // ✨ Store에서 조회
+       const teacherData = getTeachers().find(t => t.id === teacherId);
        if (!teacherData?.phone || teacherData.phone.length < 4) {
-           showToast("전화번호가 유효하지 않아 초기 비밀번호를 설정할 수 없습니다. 수정 후 다시 시도해주세요.", true);
+           showToast("전화번호가 유효하지 않습니다.", true);
            return;
        }
        const newPassword = teacherData.phone.slice(-4);
 
-       if (!confirm(`'${teacherData.name}' 교사의 비밀번호를 전화번호 뒷 4자리(${newPassword})로 초기화하고, 최초 로그인 상태로 되돌리시겠습니까?`)) {
+       if (!confirm(`'${teacherData.name}' 교사의 비밀번호를 초기화하시겠습니까?`)) {
            return;
        }
 
        try {
            const teacherRef = doc(db, 'teachers', teacherId);
-           // Firestore 직접 업데이트 (이 로직은 이전에도 updateDoc을 사용했습니다)
            await updateDoc(teacherRef, {
                password: newPassword,
                isInitialPassword: true
            });
            
-           showToast(`'${teacherData.name}' 교사의 비밀번호가 초기화되었습니다.`, false);
+           showToast(`비밀번호가 초기화되었습니다.`, false);
        } catch (error) {
            console.error("비밀번호 초기화 실패:", error);
            showToast(`비밀번호 초기화 실패: ${error.message}`, true);

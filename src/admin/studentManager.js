@@ -10,9 +10,11 @@ import {
     limit, 
     startAfter 
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions"; // ✨ 추가됨
-import app, { db } from "../shared/firebase.js"; // ✨ app 추가
+import { getFunctions, httpsCallable } from "firebase/functions";
+import app, { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
+// ✨ Store 임포트
+import { setStudents, getStudents, STUDENT_EVENTS } from "../store/studentStore.js";
 
 export const studentManager = {
   editingStudentId: null,
@@ -22,10 +24,11 @@ export const studentManager = {
   currentPage: 1,
   pageCursors: [], 
   isLoading: false,
+  elements: {},
 
-  init(app) {
-    this.app = app;
-    this.elements = app.elements;
+  init(adminAppInstance) {
+    // this.app = adminAppInstance; // ❌ 의존성 제거
+    this.elements = adminAppInstance.elements;
 
     this.elements.addStudentBtn?.addEventListener("click", () => this.addNewStudent());
     this.elements.studentsList?.addEventListener("click", (e) => this.handleListClick(e));
@@ -34,6 +37,13 @@ export const studentManager = {
     this.elements.cancelEditStudentBtn?.addEventListener("click", () => this.closeEditModal());
 
     this.createPaginationControls();
+    
+    // ✨ Store 변경 감지 -> 화면 갱신
+    document.addEventListener(STUDENT_EVENTS.UPDATED, () => {
+        const currentData = getStudents();
+        this.renderList(currentData);
+    });
+
     this.loadPage('first'); 
   },
 
@@ -113,7 +123,9 @@ export const studentManager = {
       }
 
       const newStudents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      this.app.state.students = newStudents;
+      
+      // ✨ Store 업데이트
+      setStudents(newStudents);
 
       if (direction === 'next') {
           if (this.pageCursors.length < this.currentPage) {
@@ -129,8 +141,6 @@ export const studentManager = {
           this.pageCursors = [snapshot.docs[snapshot.docs.length - 1]];
       }
 
-      this.elements.studentsList.innerHTML = "";
-      newStudents.forEach(s => this.renderStudent(s));
       this.updateButtons(snapshot.docs.length);
 
     } catch (error) {
@@ -147,7 +157,7 @@ export const studentManager = {
       if (this.nextBtn) this.nextBtn.disabled = (loadedCount < this.pageSize);
   },
 
-  // ✅ [수정됨] 서버 함수(createStudentAccount)를 호출하도록 복구!
+  // ✅ 서버 함수 호출 유지 (보안)
   async addNewStudent() {
     const name = this.elements.newStudentNameInput.value.trim();
     const phone = this.elements.newStudentPhoneInput.value.trim();
@@ -161,7 +171,6 @@ export const studentManager = {
     showToast("학생 계정 생성 중...", false);
 
     try {
-      // 🔥 여기가 핵심입니다: addDoc 대신 서버 함수 호출
       const functions = getFunctions(app, 'asia-northeast3');
       const createStudent = httpsCallable(functions, 'createStudentAccount');
       
@@ -173,13 +182,18 @@ export const studentManager = {
       this.elements.newStudentPhoneInput.value = "";
       this.elements.newParentPhoneInput.value = "";
       
-      // 목록 갱신
       this.loadPage('first');
 
     } catch (e) {
       console.error("학생 추가 실패:", e);
       showToast(`추가 실패: ${e.message}`, true);
     }
+  },
+
+  renderList(data) {
+    if(!this.elements.studentsList) return;
+    this.elements.studentsList.innerHTML = "";
+    data.forEach(s => this.renderStudent(s));
   },
 
   renderStudent(data) {
@@ -200,9 +214,9 @@ export const studentManager = {
   async handleListClick(e) {
     const id = e.target.dataset.id;
     if (e.target.classList.contains("delete-student-btn")) {
-      const studentName = this.app.state.students.find(s => s.id === id)?.name || "이 학생";
+      // ✨ Store에서 데이터 찾기
+      const studentName = getStudents().find(s => s.id === id)?.name || "이 학생";
       if (confirm(`'${studentName}' 학생 정보를 삭제하시겠습니까?`)) {
-        // 주의: 서버 함수로 계정 삭제까지 하려면 onStudentDeleted 트리거가 작동해야 함 (이미 설정함)
         await deleteDoc(doc(db, "students", id));
         showToast("삭제되었습니다.", false);
         this.loadPage('first');
@@ -213,7 +227,8 @@ export const studentManager = {
   },
   
   openEditModal(studentId) {
-      const studentData = this.app.state.students.find(s => s.id === studentId);
+      // ✨ Store에서 데이터 찾기
+      const studentData = getStudents().find(s => s.id === studentId);
       if (!studentData) return showToast("정보를 찾을 수 없습니다.");
       this.editingStudentId = studentId;
       this.elements.editStudentNameInput.value = studentData.name || '';
@@ -235,7 +250,6 @@ export const studentManager = {
     if (!name || !phone) { showToast("필수 입력 항목 누락"); return; }
 
     try {
-      // 수정은 DB만 업데이트 (비밀번호 등 민감 정보 변경은 별도 로직 필요)
       await updateDoc(doc(db, "students", this.editingStudentId), {
         name, phone, parentPhone: parentPhone || null
       });
