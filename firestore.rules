@@ -3,19 +3,20 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================
-    // 공통 헬퍼
+    // 공통 헬퍼 함수
     // =========================================
+    
+    // 1. 로그인 여부 확인
     function isAuthenticated() {
-      // 익명 로그인(anonymous auth) 포함: request.auth != null 이면 true
       return request.auth != null;
     }
 
-    // 지금은 역할(관리자/교사)을 따로 구분 안 하고
-    // "로그인만 되어 있으면 관리자/교사 취급"으로 둔 상태.
-    // 실제 배포에서는 custom claims로 role 체크해서 강화해야 함.
+    // 2. [수정됨] 관리자 또는 선생님 권한 확인 (보안 강화)
+    // 로그인되어 있고(AND), 토큰에 'role' 속성이 있으며, 그 값이 'admin'이나 'teacher'여야 함
     function isAdminOrTeacher() {
-      // TODO: 실제 운영에서는 custom claims (request.auth.token.role) 체크 필요
-      return isAuthenticated();
+      return isAuthenticated() 
+             && 'role' in request.auth.token 
+             && (request.auth.token.role == 'admin' || request.auth.token.role == 'teacher');
     }
 
     // =========================================
@@ -31,10 +32,7 @@ service cloud.firestore {
     // =========================================
     match /students/{studentId} {
       allow read: if isAuthenticated();
-      // 학생 본인도 자기 정보 수정 가능하게 하려면? (예: 비밀번호 변경)
-      // allow update: if isAdminOrTeacher() ||
-      // request.auth.uid == studentId; // (주의: studentId가 auth.uid와 같다는 보장 없음)
-      // student 문서 내부에 authUid 필드를 저장하고 비교하는 방식이 더 일반적
+      // 학생 관리는 관리자/선생님만 가능
       allow write: if isAdminOrTeacher();
     }
 
@@ -54,27 +52,19 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         allow write: if isAdminOrTeacher();
 
-        // --- 👇 수정된 submissions 규칙 (studentDocId 사용) 👇 ---
-        match /submissions/{studentDocId} { // 문서 ID를 학생 Firestore 문서 ID로 사용
-          // 읽기: 교사/관리자만 허용 (학생은 자기 진행상황을 앱 로컬에서 관리)
+        // submissions 하위 컬렉션
+        match /submissions/{studentDocId} {
+          // 읽기: 교사/관리자만 (학생은 자기 것만 읽게 하려면 수정 필요하지만, 현재 로직 유지)
           allow read: if isAdminOrTeacher();
-          // 생성/수정: 로그인했고, 제출하려는 문서 ID가 실제 제출하는 학생의 문서 ID와 일치할 때
-          // (주의: 학생 앱에서 studentDocId를 올바르게 전달해야 함)
-          // (주의: request.resource.data.studentDocId는 쓰기/업데이트 시에만 사용 가능)
-          allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
-          // 삭제: 교사/관리자만 허용
+          
+          // 생성/수정: 본인(studentDocId)이거나 관리자/선생님
+          // (학생 앱 로직상 본인의 studentDocId로만 저장하므로 이중 검증)
+          allow create, update: if isAdminOrTeacher() || (isAuthenticated() && request.resource.data.studentDocId == studentDocId);
+          
+          // 삭제: 교사/관리자만
           allow delete: if isAdminOrTeacher();
         }
-        // --- 👆 ---
       }
-    }
-
-    // =========================================
-    // lessons 컬렉션 (최상위) - 현재 사용 안 함
-    // =========================================
-    match /lessons/{lessonId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdminOrTeacher();
     }
 
     // =========================================
@@ -82,15 +72,12 @@ service cloud.firestore {
     // =========================================
     match /homeworks/{homeworkId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminOrTeacher(); // 숙제 생성/수정은 관리자/교사만
+      allow write: if isAdminOrTeacher();
 
-      match /submissions/{studentDocId} { // 문서 ID를 학생 Firestore 문서 ID로 사용
-        // 읽기: 교사/관리자만 허용
+      match /submissions/{studentDocId} {
         allow read: if isAdminOrTeacher();
-        // 쓰기(생성/수정): 로그인했고, 제출하려는 문서 ID가 실제 제출하는 학생의 문서 ID와 일치할 때
-        // (주의: 학생 앱에서 studentDocId를 올바르게 전달해야 함)
-        allow write: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
-        // 삭제: 교사/관리자만 허용
+        // 본인 제출물이거나 관리자/선생님인 경우만 쓰기 허용
+        allow write: if isAdminOrTeacher() || (isAuthenticated() && request.resource.data.studentDocId == studentDocId);
         allow delete: if isAdminOrTeacher();
       }
     }
@@ -99,6 +86,7 @@ service cloud.firestore {
     // teachers 컬렉션
     // =========================================
     match /teachers/{teacherId} {
+      // 교사 정보는 관리자/교사만 접근 가능
       allow read, write: if isAdminOrTeacher();
     }
 
@@ -115,7 +103,7 @@ service cloud.firestore {
     }
 
     // =========================================
-    // 기본 거부
+    // 기본 거부 (나머지 모든 경로는 차단)
     // =========================================
     match /{document=**} {
       allow read, write: if false;

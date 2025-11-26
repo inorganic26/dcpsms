@@ -6,13 +6,20 @@
     {
       "site": "svcm-v2",
       "public": "dist",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
       "rewrites": [
-        { "source": "/admin{,/**}",   "destination": "/src/admin/index.html" },
+        { "source": "/admin{,/**}", "destination": "/src/admin/index.html" },
         { "source": "/teacher{,/**}", "destination": "/src/teacher/index.html" },
         { "source": "/student{,/**}", "destination": "/src/student/index.html" },
-        { "source": "**",             "destination": "/index.html" }
+        { "source": "**", "destination": "/index.html" }
       ]
     }
-  ]
+  ],
+  "firestore": {
+    "rules": "firestore.rules"
+  }
 }
