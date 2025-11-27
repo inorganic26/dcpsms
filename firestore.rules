@@ -11,8 +11,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // 2. [수정됨] 관리자 또는 선생님 권한 확인 (보안 강화)
-    // 로그인되어 있고(AND), 토큰에 'role' 속성이 있으며, 그 값이 'admin'이나 'teacher'여야 함
+    // 2. 관리자 또는 선생님 권한 확인
     function isAdminOrTeacher() {
       return isAuthenticated() 
              && 'role' in request.auth.token 
@@ -32,7 +31,6 @@ service cloud.firestore {
     // =========================================
     match /students/{studentId} {
       allow read: if isAuthenticated();
-      // 학생 관리는 관리자/선생님만 가능
       allow write: if isAdminOrTeacher();
     }
 
@@ -52,14 +50,12 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         allow write: if isAdminOrTeacher();
 
-        // submissions 하위 컬렉션
         match /submissions/{studentDocId} {
-          // 읽기: 교사/관리자만 (학생은 자기 것만 읽게 하려면 수정 필요하지만, 현재 로직 유지)
-          allow read: if isAdminOrTeacher();
+          // [수정됨] 읽기: 관리자/교사 OR 학생 본인
+          allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
           
-          // 생성/수정: 본인(studentDocId)이거나 관리자/선생님
-          // (학생 앱 로직상 본인의 studentDocId로만 저장하므로 이중 검증)
-          allow create, update: if isAdminOrTeacher() || (isAuthenticated() && request.resource.data.studentDocId == studentDocId);
+          // 쓰기: 본인만 (데이터 ID와 인증 ID 일치 시)
+          allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
           
           // 삭제: 교사/관리자만
           allow delete: if isAdminOrTeacher();
@@ -75,9 +71,12 @@ service cloud.firestore {
       allow write: if isAdminOrTeacher();
 
       match /submissions/{studentDocId} {
-        allow read: if isAdminOrTeacher();
-        // 본인 제출물이거나 관리자/선생님인 경우만 쓰기 허용
-        allow write: if isAdminOrTeacher() || (isAuthenticated() && request.resource.data.studentDocId == studentDocId);
+        // ✅ [수정됨] 핵심: 학생 본인이면 자기 제출물을 읽을 수 있게 허용!
+        allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
+        
+        // 쓰기: 본인만
+        allow write: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
+        // 삭제: 교사/관리자만
         allow delete: if isAdminOrTeacher();
       }
     }
@@ -86,7 +85,6 @@ service cloud.firestore {
     // teachers 컬렉션
     // =========================================
     match /teachers/{teacherId} {
-      // 교사 정보는 관리자/교사만 접근 가능
       allow read, write: if isAdminOrTeacher();
     }
 
