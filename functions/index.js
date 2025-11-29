@@ -198,26 +198,68 @@ export const createTeacherAccount = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 6. [신규] 관리자 비밀번호 검증 및 권한 부여 함수
+// 6. 관리자 비밀번호 검증 및 권한 부여 함수
 // =====================================================
 export const verifyAdminPassword = onCall({ region }, async (request) => {
-  // 익명 로그인 상태여야 함
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "로그인 세션이 필요합니다.");
   }
 
   const { password } = request.data;
-  // 🚨 비밀번호 확인 (서버에서 수행하므로 안전함)
   if (password !== "qkraudtls0626^^") {
     throw new HttpsError("permission-denied", "비밀번호가 일치하지 않습니다.");
   }
 
   try {
-    // 비밀번호가 맞으면 해당 유저(익명)에게 'admin' 권한 부여
     await auth.setCustomUserClaims(request.auth.uid, { role: "admin" });
     return { success: true, message: "관리자 권한이 부여되었습니다." };
   } catch (error) {
     console.error("권한 부여 실패:", error);
     throw new HttpsError("internal", "권한 부여 중 오류가 발생했습니다.");
+  }
+});
+
+// =====================================================
+// 7. [신규] 선생님 로그인 처리 (이름/비번 검증 -> 토큰 생성)
+// =====================================================
+export const verifyTeacherLogin = onCall({ region }, async (request) => {
+  const { name, password } = request.data;
+
+  try {
+    // 1. 이름으로 선생님 찾기 (관리자 권한으로 DB 조회)
+    const snapshot = await db.collection("teachers").where("name", "==", name).get();
+    
+    if (snapshot.empty) {
+        return { success: false, message: "존재하지 않는 선생님입니다." };
+    }
+
+    const teacherDoc = snapshot.docs[0];
+    const teacherData = teacherDoc.data();
+    const teacherId = teacherDoc.id;
+
+    // 2. 비밀번호 비교 (전화번호 뒷 4자리 or 설정된 비번)
+    let isMatch = false;
+    // (보안상 실제로는 hash 비교가 좋지만, 현재 로직 유지)
+    if (teacherData.password === password) isMatch = true;
+    else if (teacherData.phone && teacherData.phone.slice(-4) === password) isMatch = true;
+
+    if (!isMatch) {
+        return { success: false, message: "비밀번호가 일치하지 않습니다." };
+    }
+
+    // 3. 성공 시 커스텀 토큰 생성 (클라이언트가 이걸로 로그인함)
+    // 중요: 'teacher' 역할을 토큰에 심어서 반환
+    const customToken = await auth.createCustomToken(teacherId, { role: "teacher" });
+    
+    return { 
+        success: true, 
+        token: customToken, 
+        teacherId: teacherId, 
+        teacherData: teacherData 
+    };
+
+  } catch (error) {
+    console.error("Teacher Login Error:", error);
+    throw new HttpsError("internal", "로그인 처리 중 오류 발생");
   }
 });

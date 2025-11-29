@@ -2,9 +2,15 @@
   "functions": {
     "source": "functions"
   },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "hosting": [
     {
-      "site": "svcm-v2",
+      "target": "portal",
       "public": "dist",
       "ignore": [
         "firebase.json",
@@ -12,14 +18,59 @@
         "**/node_modules/**"
       ],
       "rewrites": [
-        { "source": "/admin{,/**}", "destination": "/src/admin/index.html" },
-        { "source": "/teacher{,/**}", "destination": "/src/teacher/index.html" },
-        { "source": "/student{,/**}", "destination": "/src/student/index.html" },
-        { "source": "**", "destination": "/index.html" }
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "admin",
+      "public": "dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "index.html"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/src/admin/index.html"
+        }
+      ]
+    },
+    {
+      "target": "teacher",
+      "public": "dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "index.html"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/src/teacher/index.html"
+        }
+      ]
+    },
+    {
+      "target": "student",
+      "public": "dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "index.html"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/src/student/index.html"
+        }
       ]
     }
-  ],
-  "firestore": {
-    "rules": "firestore.rules"
-  }
+  ]
 }
