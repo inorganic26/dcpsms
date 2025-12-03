@@ -11,16 +11,19 @@ import {
     updateDoc,
     orderBy
 } from "firebase/firestore";
-import { signInWithCustomToken } from "firebase/auth"; // ✨ 추가됨
-import { getFunctions, httpsCallable } from "firebase/functions"; // ✨ 추가됨
-import { db, auth } from '../shared/firebase.js'; // ✨ app은 shared/firebase.js에서 export되는지 확인 필요 (보통 app도 export함)
-import app from '../shared/firebase.js'; // ✨ default export로 app 가져오기 (firebase.js 확인 필요)
+import { signInWithCustomToken } from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import app, { db, auth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
+// ✨ Store 임포트 (반 설정 화면에 데이터 공급용)
+import { setSubjects } from "../store/subjectStore.js";
+
 // 모듈 import
+// (주의: classEditor는 공용 모듈을 사용합니다)
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
-import { classEditor } from './classEditor.js';
+import { classEditor } from '../shared/classEditor.js'; // ✨ shared 경로로 수정 권장
 import { classVideoManager } from './classVideoManager.js';
 import { reportManager } from '../shared/reportManager.js';
 import { analysisDashboard } from './analysisDashboard.js'; 
@@ -76,7 +79,7 @@ const TeacherApp = {
         if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'none';
     },
 
-    // ✅ [수정됨] 서버 함수를 통한 로그인 (DB 직접 조회 X)
+    // ✅ 서버 함수를 통한 안전한 로그인 (권한 문제 해결)
     async handleLogin(name, password) {
         if (!name || !password) {
             showToast("이름과 비밀번호를 모두 입력해주세요.");
@@ -89,7 +92,7 @@ const TeacherApp = {
             const functions = getFunctions(app, 'asia-northeast3');
             const verifyLogin = httpsCallable(functions, 'verifyTeacherLogin');
             
-            // 1. 서버에 검증 요청
+            // 1. 서버에 이름/비번 보내서 검증
             const result = await verifyLogin({ name, password });
             const { success, message, token, teacherId, teacherData } = result.data;
 
@@ -98,16 +101,16 @@ const TeacherApp = {
                 return;
             }
 
-            // 2. 토큰으로 Firebase 로그인 (권한 획득)
+            // 2. 받아온 토큰으로 실제 Firebase 로그인 (이때 권한 획득!)
             await signInWithCustomToken(auth, token);
 
-            // 3. 로그인 성공 처리
+            // 3. 상태 저장 및 대시보드 이동
             this.state.teacherId = teacherId;
             this.state.teacherData = teacherData;
 
             if (teacherData.isInitialPassword === true) {
-                 this.showDashboard(teacherId, teacherData); 
-                 this.promptPasswordChange(teacherId); 
+                 this.showDashboard(teacherId, teacherData);
+                 this.promptPasswordChange(teacherId);
             } else {
                  showToast(`환영합니다, ${teacherData.name} 선생님!`, false);
                  this.showDashboard(teacherId, teacherData);
@@ -115,7 +118,7 @@ const TeacherApp = {
 
         } catch (error) {
             console.error("Login error:", error);
-            showToast("로그인 처리 중 오류가 발생했습니다.", true);
+            showToast("로그인 서버 오류 발생", true);
         }
     },
 
@@ -154,7 +157,7 @@ const TeacherApp = {
 
         this.addEventListeners();
         this.populateClassSelect();
-        this.listenForSubjects();
+        this.listenForSubjects(); // 여기서 Store 업데이트 실행됨
 
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'none';
 
@@ -215,11 +218,15 @@ const TeacherApp = {
             },
 
             studentListContainer: document.getElementById('teacher-student-list-container'),
+            
+            // Class Info
             currentClassInfo: document.getElementById('current-class-info'),
             currentClassType: document.getElementById('current-class-type'),
             currentClassSubjectsList: document.getElementById('current-class-subjects-list'),
             editClassBtn: document.getElementById('teacher-edit-class-btn'),
             manageSubjectsTextbooksBtn: document.getElementById('teacher-manage-subjects-textbooks-btn'),
+            
+            // Homework
             homeworkDashboardControls: document.getElementById('homework-dashboard-controls'),
             homeworkSelect: document.getElementById('teacher-homework-select'),
             assignHomeworkBtn: document.getElementById('teacher-assign-homework-btn'),
@@ -238,6 +245,8 @@ const TeacherApp = {
             homeworkTextbookSelect: document.getElementById('teacher-homework-textbook-select'),
             homeworkPagesInput: document.getElementById('teacher-homework-pages'),
             homeworkDueDateInput: document.getElementById('teacher-homework-due-date'),
+            
+            // Lesson
             lessonMgmtControls: document.getElementById('lesson-mgmt-controls'),
             subjectSelectForMgmt: document.getElementById('teacher-subject-select-mgmt'),
             lessonsManagementContent: document.getElementById('teacher-lessons-management-content'),
@@ -263,6 +272,8 @@ const TeacherApp = {
             saveLessonBtn: document.getElementById('teacher-save-lesson-btn'),
             saveBtnText: document.getElementById('teacher-save-btn-text'),
             saveLoader: document.getElementById('teacher-save-loader'),
+            
+            // Class Editor & Mgmt
             editClassModal: document.getElementById('teacher-edit-class-modal'),
             editClassName: document.getElementById('teacher-edit-class-name'),
             closeEditClassModalBtn: document.getElementById('teacher-close-edit-class-modal-btn'),
@@ -270,6 +281,7 @@ const TeacherApp = {
             saveClassEditBtn: document.getElementById('teacher-save-class-edit-btn'),
             editClassSubjectsContainer: document.getElementById('teacher-edit-class-subjects-and-textbooks'),
             editClassTypeSelect: document.getElementById('teacher-edit-class-type'),
+            
             subjectTextbookMgmtModal: document.getElementById('teacher-subject-textbook-mgmt-modal'),
             newSubjectNameInputMgmt: document.getElementById('teacher-new-subject-name'),
             addSubjectBtnMgmt: document.getElementById('teacher-add-subject-btn'),
@@ -281,6 +293,8 @@ const TeacherApp = {
             textbooksListMgmt: document.getElementById('teacher-textbooks-list-mgmt'),
             closeSubjectTextbookModalBtn: document.getElementById('teacher-close-subject-textbook-modal-btn'),
             closeSubjectTextbookModalBtnFooter: document.getElementById('teacher-close-subject-textbook-modal-btn-footer'),
+            
+            // Videos
             qnaVideoDateInput: document.getElementById('qna-video-date'),
             qnaVideoTitleInput: document.getElementById('qna-video-title'),
             qnaVideoUrlInput: document.getElementById('qna-video-url'),
@@ -293,12 +307,16 @@ const TeacherApp = {
             lectureVideoTitleInput: document.getElementById('class-video-title'),
             lectureVideoUrlInput: document.getElementById('class-video-url'),
             gotoClassVideoMgmtBtn: document.querySelector('[data-view="class-video-mgmt"]'),
+            
+            // Report
             reportDateInput: document.getElementById('teacher-report-date'),
             reportFilesInput: document.getElementById('teacher-report-files-input'),
             reportCurrentClassSpan: document.getElementById('teacher-report-current-class'),
             uploadReportsBtn: document.getElementById('teacher-upload-reports-btn'),
             reportUploadStatus: document.getElementById('teacher-report-upload-status'),
             uploadedReportsList: document.getElementById('teacher-uploaded-reports-list'),
+            
+            // Analysis
             studentDataUploadInput: document.getElementById('student-data-upload-input'),
             testStudentListContainer: document.getElementById('test-analysis-student-list'),
             analysisModal: document.getElementById('analysis-report-modal'),
@@ -604,17 +622,28 @@ const TeacherApp = {
         });
     },
 
+    // ✅ [핵심 수정] 과목 데이터를 불러오면 Store에도 넣어줍니다.
     listenForSubjects() {
         this.state.isSubjectsLoading = true;
-        const q = query(collection(db, 'subjects'), orderBy("name"));
-        onSnapshot(q, (snapshot) => {
-            this.state.subjects = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-            this.state.isSubjectsLoading = false;
-            document.dispatchEvent(new CustomEvent('subjectsUpdated'));
-        }, (error) => {
+        try {
+            const q = query(collection(db, 'subjects'), orderBy("name"));
+            onSnapshot(q, (snapshot) => {
+                const subjects = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+                this.state.subjects = subjects;
+                
+                // ✨ Store 업데이트 (이게 있어야 반 설정 화면에서 과목이 뜹니다!)
+                setSubjects(subjects);
+
+                this.state.isSubjectsLoading = false;
+                document.dispatchEvent(new CustomEvent('subjectsUpdated'));
+            }, (error) => {
+                console.error(error);
+                this.state.isSubjectsLoading = false;
+            });
+        } catch (error) {
             console.error(error);
             this.state.isSubjectsLoading = false;
-        });
+        }
     },
 
     updateSubjectDropdowns() {
