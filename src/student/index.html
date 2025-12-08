@@ -6,13 +6,14 @@
   <title>학생 학습 앱</title>
   <link rel="icon" href="/vite.svg" type="image/svg+xml">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
   <link rel="stylesheet" href="/src/shared/style.css">
 
   <script>
     MathJax = {
       tex: {
-        inlineMath: [['$', '$'], ['\\(', '\\)']], // 인라인 수식 구분 기호 설정
-        displayMath: [['$$', '$$'], ['\\[', '\\]']] // 디스플레이 수식 구분 기호 설정
+        inlineMath: [['$', '$'], ['\\(', '\\)']], 
+        displayMath: [['$$', '$$'], ['\\[', '\\]']] 
       },
       svg: {
         fontCache: 'global'
@@ -267,7 +268,7 @@
     </div>
   </div>
 
-  <div id="student-video-display-modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50">
+  <div id="student-video-display-modal" class="fixed inset-0 bg-black/70 hidden items-center justify-center z-50" style="display: none;">
     <div class="bg-white rounded-lg w-11/12 max-w-2xl p-4 relative">
       <h3 id="student-video-modal-title" class="text-lg font-semibold mb-3"></h3>
       <div id="student-video-modal-content" class="w-full aspect-video bg-black relative">

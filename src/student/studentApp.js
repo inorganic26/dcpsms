@@ -11,10 +11,13 @@ import {
 import { db, ensureAnonymousAuth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
+// 스타일 파일 불러오기
+import "../shared/style.css";
+
 // 모듈
 import { studentAuth } from "./studentAuth.js";
 import { studentLesson } from "./studentLesson.js";
-import studentHomework from "./studentHomework.js"; // default export로 가져옴
+import studentHomework from "./studentHomework.js"; 
 import { reportManager } from "../shared/reportManager.js";
 
 const StudentApp = {
@@ -22,7 +25,7 @@ const StudentApp = {
   elements: {},
   state: {
     authUid: null,
-    studentDocId: null, // Firestore 문서 ID 저장
+    studentDocId: null, 
     studentName: null,
     classId: null,
     className: null,
@@ -71,7 +74,7 @@ const StudentApp = {
   // 과목 로드
   async loadAvailableSubjects() {
     console.log("[StudentApp.loadAvailableSubjects] called.");
-    this.state.activeSubjects = []; // 시작 시 초기화
+    this.state.activeSubjects = []; 
 
     try {
       const classData = this.state.selectedClassData;
@@ -79,17 +82,15 @@ const StudentApp = {
         throw new Error("No class data found.");
       }
 
-      // 1. classData.subjects 맵의 키(ID)를 과목 목록으로 사용합니다.
       const classSubjectsMap = (typeof classData.subjects === 'object' && classData.subjects !== null) ? classData.subjects : {};
       const subjectIds = Object.keys(classSubjectsMap);
 
       if (subjectIds.length === 0) {
            showToast("클래스에 등록된 과목이 없습니다.", true);
-           this.renderSubjectList(); // 빈 목록 렌더링
+           this.renderSubjectList(); 
            return;
       }
 
-      // 2. subjects 컬렉션에서 전체 과목 이름 정보를 가져옵니다.
       const allSubjectsQuery = query(collection(db, 'subjects'));
       const allSubjectsSnapshot = await getDocs(allSubjectsQuery);
       const allSubjectsMap = new Map();
@@ -97,10 +98,9 @@ const StudentApp = {
           allSubjectsMap.set(docSnap.id, docSnap.data().name);
       });
 
-      // 3. subjectIds 배열을 기반으로 activeSubjects 배열 생성
       this.state.activeSubjects = subjectIds
         .map((id) => {
-          const subjectName = allSubjectsMap.get(id); // subjects 컬렉션에서 이름 조회
+          const subjectName = allSubjectsMap.get(id); 
 
           if (subjectName) {
               return { id, name: subjectName };
@@ -109,9 +109,8 @@ const StudentApp = {
               return { id, name: `과목 ID: ${id}` };
           }
         })
-        .filter(subject => subject !== null); // 혹시 모를 null 값 제거
+        .filter(subject => subject !== null); 
 
-      // 과목 이름 순 정렬 (선택적)
       this.state.activeSubjects.sort((a, b) => a.name.localeCompare(b.name));
 
       console.log(
@@ -122,9 +121,9 @@ const StudentApp = {
     } catch (error) {
       console.error("[StudentApp.loadAvailableSubjects] Error:", error);
       showToast("과목 정보를 불러오는 중 오류가 발생했습니다.", true);
-      this.state.activeSubjects = []; // 오류 시 빈 배열 유지
+      this.state.activeSubjects = []; 
     } finally {
-        this.renderSubjectList(); // 항상 과목 목록 UI 업데이트 호출
+        this.renderSubjectList(); 
     }
   },
 
@@ -209,13 +208,11 @@ const StudentApp = {
 
   // 이벤트 리스너 추가
   addEventListeners() {
-    // 뒤로가기 버튼들
     this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     this.elements.backToLessonsFromResultBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     this.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
 
-    // 메뉴 카드 클릭 이벤트
     this.elements.subjectsList?.addEventListener('click', (e) => {
         if (e.target.closest('.subject-btn')) {
             const subjectId = e.target.closest('.subject-btn').dataset.id;
@@ -233,13 +230,11 @@ const StudentApp = {
     });
     this.elements.gotoReportCard?.addEventListener('click', () => this.showReportListScreen());
 
-    // 비디오 관련 뒤로가기 및 모달 닫기
     this.elements.backToSubjectsFromClassVideoBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToSubjectsFromQnaBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToVideoDatesBtn?.addEventListener('click', () => this.backToVideoDatesScreen());
     this.elements.closeVideoModalBtn?.addEventListener('click', () => this.closeVideoModal());
 
-    // 리포트 관련 뒤로가기
     this.elements.backToMenuFromReportListBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
   },
 
@@ -348,7 +343,7 @@ const StudentApp = {
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
-  // 모달에서 영상 재생 (⭐️ 수정: iframe 생성 후 src 설정 ⭐️)
+  // 모달에서 영상 재생 (✨ 수정됨: 디스플레이 로직 단순화)
   playVideoInModal(video) {
     const modal = this.elements.videoDisplayModal;
     const content = this.elements.videoModalContent;
@@ -360,16 +355,19 @@ const StudentApp = {
       return;
     }
 
-    content.innerHTML = '<div class="w-full aspect-video flex items-center justify-center bg-black"><div class="loader"></div></div>'; // 로딩 표시 먼저
+    // 로딩 스피너 대신 바로 비워두고 iframe 추가 준비
+    content.innerHTML = ''; 
     if (titleEl) titleEl.textContent = video.title || "영상 보기";
 
-    const embedUrl = studentLesson.convertYoutubeUrlToEmbed(video.url);
-    console.log(`[StudentApp] Trying to play video: ${video.title}, Original URL: ${video.url}, Embed URL: ${embedUrl}`);
+    // ✨ URL 추출 (studentLesson.extractVideoId 사용)
+    const videoId = studentLesson.extractVideoId(video.url);
+    const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+        
+    console.log(`[StudentApp] Trying to play video: ${video.title}, Embed URL: ${embedUrl}`);
 
-    modal.style.display = "flex"; // 모달 표시
+    modal.style.display = "flex"; 
 
     if (embedUrl) {
-      // 1. iframe 요소 생성 및 기본 스타일 설정
       const iframe = document.createElement("iframe");
       iframe.style.position = 'absolute';
       iframe.style.top = '0';
@@ -379,32 +377,16 @@ const StudentApp = {
       iframe.style.border = 'none';
       iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
       iframe.allowFullscreen = true;
-      iframe.style.display = 'none'; // 로드 완료 시까지 숨김
-
-      // 2. 로드/오류 핸들러 설정
-      iframe.onload = () => {
-        console.log("[StudentApp] Iframe loaded successfully (via onload).");
-        iframe.style.display = 'block'; // 로드 완료 후 즉시 표시
-        console.log("[StudentApp] Iframe display set to block immediately on load.");
-      };
-
-      iframe.onerror = () => {
-        console.error("[StudentApp] Iframe failed to load (via onerror).");
-        content.innerHTML = `<p class="text-red-500 p-4">영상 로드 실패: YouTube 임베드 정책 문제이거나 URL이 잘못되었습니다.</p>`;
-        showToast("영상 로드에 실패했습니다. (유튜브 정책 확인 필요)", true);
-      };
-
-      // 3. 로딩 인디케이터 제거 및 iframe DOM에 추가
-      content.innerHTML = "";
-      content.appendChild(iframe);
-
-      // 4. DOM 추가 후 src 설정 (브라우저가 iframe 로딩 시작)
+      
+      // ✨ [수정] 바로 보여주기 (복잡한 onload 로직 제거)
+      iframe.style.display = 'block'; 
       iframe.src = embedUrl;
-      console.log(`[StudentApp] Iframe SRC set AFTER appending to DOM: ${embedUrl}`);
+
+      content.appendChild(iframe);
 
     } else {
       console.error("[StudentApp] Failed to get embed URL for video:", video);
-      content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다. 관리자에게 문의하세요.</p>`;
+      content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다.</p>`;
     }
   },
 
@@ -414,7 +396,7 @@ const StudentApp = {
     const content = this.elements.videoModalContent;
 
     if (modal) modal.style.display = "none";
-    if (content) content.innerHTML = ""; // Stop video playback
+    if (content) content.innerHTML = ""; 
 
     this.showScreen(this.elements.videoTitlesScreen);
   },
