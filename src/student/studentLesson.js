@@ -21,7 +21,6 @@ export const studentLesson = {
     this.loadYoutubeApi();
   },
 
-  // ✨ helper function for studentApp.js
   convertYoutubeUrlToEmbed(url) {
     const videoId = this.extractVideoId(url);
     if (!videoId) return "";
@@ -68,19 +67,18 @@ export const studentLesson = {
         return;
     }
 
-    // 1. iframe 표시 및 재생 준비
+    // 1. 영상 초기화
     const iframe = elements.video1Iframe;
     if (iframe) {
-        iframe.style.display = 'block'; // 보이게 설정
+        iframe.style.display = 'block'; 
         iframe.src = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
+        
+        const container = iframe.parentNode;
+        const oldMsg = container?.querySelector('.video-complete-msg');
+        if(oldMsg) oldMsg.remove();
     }
-    
-    // 비디오 컨테이너(검은 배경)에 완료 메시지가 있다면 제거
-    const container = iframe?.parentNode;
-    const oldMsg = container?.querySelector('.video-complete-msg');
-    if(oldMsg) oldMsg.remove();
 
-    // 2. 퀴즈/보충 버튼 숨김 (잠금)
+    // 2. 퀴즈 버튼 잠금
     if (elements.startQuizBtn) {
         elements.startQuizBtn.style.display = "none"; 
         elements.startQuizBtn.textContent = "퀴즈 시작 (영상을 끝까지 봐주세요)";
@@ -89,9 +87,9 @@ export const studentLesson = {
     }
     if (elements.gotoRev1Btn) elements.gotoRev1Btn.style.display = "none";
 
-    // 3. 감시자 시작
+    // 3. 플레이어 감시
     this.loadVideoWithMonitoring('student-video1-iframe', (playerStatus) => {
-        if (playerStatus === 0) { // 0 = 종료(Ended)
+        if (playerStatus === 0) { 
             this.onVideoEnded();
         }
     });
@@ -111,43 +109,34 @@ export const studentLesson = {
                     onStateChangeCallback(event.data);
                 },
                 'onError': () => {
-                    this.onVideoEnded(); // 에러 시 잠금 해제
+                    this.onVideoEnded(); 
                 }
             }
         });
     } catch (e) {
         console.warn("YouTube Player 연결 실패:", e);
-        this.onVideoEnded();
     }
   },
 
-  // ✨ [핵심 수정] 영상이 끝나면 플레이어를 숨겨서 추천 영상 차단
   onVideoEnded() {
     const { elements } = this.app;
     
-    // 1. 영상 숨기기 (추천 영상 안 보이게)
     if (elements.video1Iframe) {
         elements.video1Iframe.style.display = 'none';
         
-        // "학습 완료" 메시지 표시 (검은 화면 대신)
         const container = elements.video1Iframe.parentNode;
-        if (container) {
-             // 중복 추가 방지
-            const oldMsg = container.querySelector('.video-complete-msg');
-            if(oldMsg) oldMsg.remove();
-
+        if (container && !container.querySelector('.video-complete-msg')) {
             const msgDiv = document.createElement('div');
-            msgDiv.className = 'video-complete-msg w-full h-full flex flex-col items-center justify-center text-white';
+            msgDiv.className = 'video-complete-msg w-full h-full flex flex-col items-center justify-center text-white bg-slate-800';
             msgDiv.innerHTML = `
-                <svg class="w-12 h-12 mb-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                <span class="text-lg font-bold">학습 영상 시청 완료!</span>
-                <span class="text-sm text-slate-400 mt-1">아래 버튼을 눌러 다음 단계로 진행하세요.</span>
+                <svg class="w-16 h-16 mb-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span class="text-xl font-bold">학습 영상 시청 완료!</span>
+                <span class="text-sm text-slate-400 mt-2">아래 버튼을 눌러 다음 단계로 진행하세요.</span>
             `;
             container.appendChild(msgDiv);
         }
     }
 
-    // 2. 버튼 활성화 로직
     const lesson = this.app.state.activeLesson;
     const revUrls = lesson.video1RevUrls;
     const hasRevUrls = revUrls && Array.isArray(revUrls) && revUrls.length > 0;
@@ -186,14 +175,12 @@ export const studentLesson = {
 
     if (type === 1) {
       const iframe = elements.video1Iframe;
-      
-      // 완료 메시지 제거하고 영상 다시 표시
-      const container = iframe?.parentNode;
+      iframe.style.display = "block"; 
+      const container = iframe.parentNode;
       const oldMsg = container?.querySelector('.video-complete-msg');
       if(oldMsg) oldMsg.remove();
-      
+
       iframe.src = embedUrl;
-      iframe.style.display = "block"; // 다시 보이게
       
       state.currentRevVideoIndex++;
 
@@ -311,31 +298,53 @@ export const studentLesson = {
     const scoreText = `${totalQuizQuestions} 문제 중 ${score} 문제를 맞혔습니다.`;
     const revUrls = activeLesson.video2RevUrls || [];
 
+    // ✨ [수정] 현강반인지 확인
+    const isLiveClass = this.app.state.classType === 'live-lecture';
+
     if (this.app.elements.successMessage) this.app.elements.successMessage.style.display = pass ? "block" : "none";
     if (this.app.elements.failureMessage) this.app.elements.failureMessage.style.display = pass ? "none" : "block";
     
     if (pass) {
         if(this.app.elements.resultScoreTextSuccess) this.app.elements.resultScoreTextSuccess.textContent = scoreText;
-        if(this.app.elements.showRev2BtnSuccess) this.app.elements.showRev2BtnSuccess.style.display = revUrls.length > 0 ? "block" : "none";
         
-        const video2List = activeLesson.video2List || [];
-        const targetIframe = this.app.elements.reviewVideo2Iframe;
+        // ✨ [핵심 분기] 현강반(예습) vs 자기주도반(풀코스)
+        const resultVideoContainer = this.app.elements.reviewVideo2Iframe?.parentNode?.parentNode;
         
-        const existingSelection = document.getElementById('video2SelectionContainer');
-        if(existingSelection) existingSelection.innerHTML = '';
-
-        if (video2List.length > 1) {
-            this.showVideo2Selection(video2List, targetIframe);
-        } else {
-            const defaultUrl = video2List.length === 1 ? video2List[0].url : activeLesson.video2Url;
-            // 결과 화면은 강제 시청 로직이 없으므로 단순 embed 사용
-            const embedUrl = this.convertYoutubeUrlToEmbed(defaultUrl);
+        if (isLiveClass) {
+            // 현강반: 예습 완료 (영상2 숨김)
+            if(resultVideoContainer) resultVideoContainer.style.display = 'none';
+            if(this.app.elements.showRev2BtnSuccess) this.app.elements.showRev2BtnSuccess.style.display = 'none';
             
-            if(embedUrl && targetIframe) {
-                targetIframe.src = embedUrl;
-                targetIframe.style.display = 'block';
-            } else if(targetIframe) {
-                targetIframe.style.display = 'none';
+            // 메시지 변경
+            const successHeader = this.app.elements.successMessage.querySelector('h1');
+            if(successHeader) successHeader.textContent = "🎉 예습 완료! 🎉";
+            if(this.app.elements.resultScoreTextSuccess) this.app.elements.resultScoreTextSuccess.textContent = `${scoreText}\n오늘 수업 준비가 완료되었습니다.`;
+
+        } else {
+            // 자기주도반: 기존대로 영상2 표시
+            if(resultVideoContainer) resultVideoContainer.style.display = 'block';
+            const successHeader = this.app.elements.successMessage.querySelector('h1');
+            if(successHeader) successHeader.textContent = "🎉 퀴즈 통과! 🎉";
+
+            if(this.app.elements.showRev2BtnSuccess) this.app.elements.showRev2BtnSuccess.style.display = revUrls.length > 0 ? "block" : "none";
+            
+            const video2List = activeLesson.video2List || [];
+            const targetIframe = this.app.elements.reviewVideo2Iframe;
+            const existingSelection = document.getElementById('video2SelectionContainer');
+            if(existingSelection) existingSelection.innerHTML = '';
+
+            if (video2List.length > 1) {
+                this.showVideo2Selection(video2List, targetIframe);
+            } else {
+                const defaultUrl = video2List.length === 1 ? video2List[0].url : activeLesson.video2Url;
+                const embedUrl = this.convertYoutubeUrlToEmbed(defaultUrl);
+                
+                if(embedUrl && targetIframe) {
+                    targetIframe.src = embedUrl;
+                    targetIframe.style.display = 'block';
+                } else if(targetIframe) {
+                    targetIframe.style.display = 'none';
+                }
             }
         }
     } else {

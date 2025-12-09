@@ -22,6 +22,7 @@ import { studentAssignmentManager } from "./studentAssignmentManager.js";
 import { adminClassVideoManager } from "./adminClassVideoManager.js";
 import { adminHomeworkDashboard } from "./adminHomeworkDashboard.js";
 import { reportManager } from "../shared/reportManager.js";
+import { adminAnalysisManager } from "./adminAnalysisManager.js"; // ✨ [추가]
 
 const adminClassVideoManagerConfig = {
     elements: {
@@ -35,8 +36,7 @@ export const AdminApp = {
     elements: {},
     state: {
         currentView: "dashboard",
-        // ⚠️ Bridge: 아직 리팩토링되지 않은 다른 매니저들을 위해 
-        // Store의 데이터를 이곳에 동기화하여 유지합니다.
+        // Bridge: Store 데이터 동기화
         teachers: [], 
         students: [], 
         subjects: [],
@@ -69,19 +69,15 @@ export const AdminApp = {
         this.showLoginScreen();
         this.addEventListeners();
         
-        // ✨ Store와 AdminApp State 동기화 (Bridge 설정)
         this.setupStoreBridges();
 
         console.log("[AdminApp.init] 기본 초기화 완료");
     },
 
-    // ✨ Store 데이터가 변경되면 AdminApp state도 업데이트 (호환성 유지)
     setupStoreBridges() {
         document.addEventListener(CLASS_EVENTS.UPDATED, () => {
             this.state.classes = getClasses();
-            document.dispatchEvent(new CustomEvent('classesUpdated')); // 레거시 이벤트 트리거
-            
-            // UI 자동 갱신 (Report 뷰 등 AdminApp 직접 관리 요소)
+            document.dispatchEvent(new CustomEvent('classesUpdated'));
             if (this.state.currentView === 'reportMgmt') this.populateReportClassSelect();
         });
 
@@ -101,13 +97,14 @@ export const AdminApp = {
     },
 
     cacheElements() {
-        // (이전과 동일한 코드, 생략 없이 전체 포함)
         this.elements = {
             initialLogin: document.getElementById("admin-initial-login"),
             secretPasswordInput: document.getElementById("admin-secret-password"),
             secretLoginBtn: document.getElementById("admin-secret-login-btn"),
             mainDashboard: document.getElementById("admin-main-dashboard"),
             dashboardView: document.getElementById("admin-dashboard-view"),
+            
+            // Views
             subjectMgmtView: document.getElementById("admin-subject-mgmt-view"),
             textbookMgmtView: document.getElementById("admin-textbook-mgmt-view"),
             classMgmtView: document.getElementById("admin-class-mgmt-view"),
@@ -119,6 +116,9 @@ export const AdminApp = {
             classVideoMgmtView: document.getElementById("admin-class-video-mgmt-view"),
             homeworkMgmtView: document.getElementById("admin-homework-mgmt-view"),
             reportMgmtView: document.getElementById("admin-report-mgmt-view"),
+            analysisMgmtView: document.getElementById("admin-analysis-mgmt-view"), // ✨ [추가]
+
+            // Menu Buttons
             gotoSubjectMgmtBtn: document.getElementById("goto-subject-mgmt-btn"),
             gotoTextbookMgmtBtn: document.getElementById("goto-textbook-mgmt-btn"),
             gotoClassMgmtBtn: document.getElementById("goto-class-mgmt-btn"),
@@ -130,6 +130,9 @@ export const AdminApp = {
             gotoClassVideoMgmtBtn: document.getElementById("goto-class-video-mgmt-btn"),
             gotoHomeworkMgmtBtn: document.getElementById("goto-homework-mgmt-btn"),
             gotoReportMgmtBtn: document.getElementById("goto-report-mgmt-btn"),
+            gotoAnalysisMgmtBtn: document.getElementById("goto-analysis-mgmt-btn"), // ✨ [추가]
+
+            // Subject & Textbook
             newSubjectNameInput: document.getElementById('admin-new-subject-name'),
             addSubjectBtn: document.getElementById('admin-add-subject-btn'),
             subjectsList: document.getElementById('admin-subjects-list'),
@@ -138,14 +141,34 @@ export const AdminApp = {
             newTextbookNameInput: document.getElementById('admin-new-textbook-name'),
             addTextbookBtn: document.getElementById('admin-add-textbook-btn'),
             textbooksList: document.getElementById('admin-textbooks-list'),
+
+            // Class
             newClassNameInput: document.getElementById('admin-new-class-name'),
             addClassBtn: document.getElementById('admin-add-class-btn'),
             classesList: document.getElementById('admin-classes-list'),
+            editClassModal: document.getElementById('admin-edit-class-modal'),
+            editClassName: document.getElementById('admin-edit-class-name'),
+            closeEditClassModalBtn: document.getElementById('admin-close-edit-class-modal-btn'),
+            cancelEditClassBtn: document.getElementById('admin-cancel-edit-class-btn'),
+            saveClassEditBtn: document.getElementById('admin-save-class-edit-btn'),
+            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'),
+            editClassTypeSelect: document.getElementById('admin-edit-class-type'),
+
+            // Student
             newStudentNameInput: document.getElementById('admin-new-student-name'),
             newStudentPhoneInput: document.getElementById('admin-new-student-phone'),
             newParentPhoneInput: document.getElementById('admin-new-parent-phone'),
             addStudentBtn: document.getElementById('admin-add-student-btn'),
             studentsList: document.getElementById('admin-students-list'),
+            editStudentModal: document.getElementById('admin-edit-student-modal'),
+            editStudentNameInput: document.getElementById('admin-edit-student-name'),
+            editStudentPhoneInput: document.getElementById('admin-edit-student-phone'),
+            editParentPhoneInput: document.getElementById('admin-edit-parent-phone'),
+            closeEditStudentModalBtn: document.getElementById('admin-close-edit-student-modal-btn'),
+            cancelEditStudentBtn: document.getElementById('admin-cancel-edit-student-btn'),
+            saveStudentEditBtn: document.getElementById('admin-save-student-edit-btn'),
+
+            // Teacher
             newTeacherNameInput: document.getElementById('admin-new-teacher-name'),
             newTeacherPhoneInput: document.getElementById('admin-new-teacher-phone'),
             addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
@@ -156,20 +179,8 @@ export const AdminApp = {
             closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
             cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
             saveTeacherEditBtn: document.getElementById('admin-save-teacher-edit-btn'),
-            editStudentModal: document.getElementById('admin-edit-student-modal'),
-            editStudentNameInput: document.getElementById('admin-edit-student-name'),
-            editStudentPhoneInput: document.getElementById('admin-edit-student-phone'),
-            editParentPhoneInput: document.getElementById('admin-edit-parent-phone'),
-            closeEditStudentModalBtn: document.getElementById('admin-close-edit-student-modal-btn'),
-            cancelEditStudentBtn: document.getElementById('admin-cancel-edit-student-btn'),
-            saveStudentEditBtn: document.getElementById('admin-save-student-edit-btn'),
-            editClassModal: document.getElementById('admin-edit-class-modal'),
-            editClassName: document.getElementById('admin-edit-class-name'),
-            closeEditClassModalBtn: document.getElementById('admin-close-edit-class-modal-btn'),
-            cancelEditClassBtn: document.getElementById('admin-cancel-edit-class-btn'),
-            saveClassEditBtn: document.getElementById('admin-save-class-edit-btn'),
-            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'),
-            editClassTypeSelect: document.getElementById('admin-edit-class-type'),
+
+            // Lesson
             subjectSelectForMgmt: document.getElementById('admin-subject-select-for-lesson'),
             lessonsManagementContent: document.getElementById('admin-lessons-management-content'),
             lessonPrompt: document.getElementById('admin-lesson-prompt'),
@@ -183,7 +194,6 @@ export const AdminApp = {
             lessonTitle: document.getElementById('admin-lesson-title'),
             video1Url: document.getElementById('admin-video1-url'),
             addVideo1RevBtn: document.getElementById('admin-add-video1-rev-btn'),
-            videoRevUrlsContainer: (type) => `admin-video${type}-rev-urls-container`,
             quizJsonInput: document.getElementById('admin-quiz-json-input'),
             previewQuizBtn: document.getElementById('admin-preview-quiz-btn'),
             questionsPreviewContainer: document.getElementById('admin-questions-preview-container'),
@@ -192,6 +202,8 @@ export const AdminApp = {
             saveLessonBtn: document.getElementById('admin-save-lesson-btn'),
             saveBtnText: document.getElementById('admin-save-btn-text'),
             saveLoader: document.getElementById('admin-save-loader'),
+
+            // Videos
             qnaVideoDateInput: document.getElementById('admin-qna-video-date'),
             qnaClassSelect: document.getElementById('admin-qna-class-select'),
             qnaVideoTitleInput: document.getElementById('admin-qna-video-title'),
@@ -204,6 +216,8 @@ export const AdminApp = {
             saveLectureVideoBtn: document.getElementById('admin-save-class-video-btn'),
             lectureVideoTitleInput: document.getElementById('admin-class-video-title'),
             lectureVideoUrlInput: document.getElementById('admin-class-video-url'),
+
+            // Homework
             homeworkClassSelect: document.getElementById('admin-homework-class-select'),
             homeworkMainContent: document.getElementById('admin-homework-main-content'),
             homeworkSelect: document.getElementById('admin-homework-select'),
@@ -223,12 +237,20 @@ export const AdminApp = {
             homeworkTextbookSelect: document.getElementById('admin-homework-textbook-select'),
             homeworkPagesInput: document.getElementById('admin-homework-pages'),
             homeworkDueDateInput: document.getElementById('admin-homework-due-date'),
+
+            // Report
             reportClassSelect: document.getElementById('admin-report-class-select'),
             reportDateInput: document.getElementById('admin-report-date'),
             reportFilesInput: document.getElementById('admin-report-files-input'),
             uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
             reportUploadStatus: document.getElementById('admin-report-upload-status'),
             uploadedReportsList: document.getElementById('admin-uploaded-reports-list'),
+
+            // Analysis ✨ [추가]
+            analysisClassSelect: document.getElementById("admin-analysis-class-select"),
+            analysisSubjectSelect: document.getElementById("admin-analysis-subject-select"),
+            analysisLessonSelect: document.getElementById("admin-analysis-lesson-select"),
+            analysisResultTable: document.getElementById("admin-analysis-result-table"),
         };
     },
 
@@ -250,6 +272,7 @@ export const AdminApp = {
             { key: "gotoClassVideoMgmtBtn", view: "classVideoMgmt" },
             { key: "gotoHomeworkMgmtBtn", view: "homeworkMgmt" },
             { key: "gotoReportMgmtBtn", view: "reportMgmt" },
+            { key: "gotoAnalysisMgmtBtn", view: "analysisMgmt" }, // ✨ [추가]
         ];
 
         menuButtons.forEach(({ key, view }) => {
@@ -303,24 +326,19 @@ export const AdminApp = {
     initializeAppUI(loadData = true) {
         if (this.isInitialized) return;
         try {
-            // 모든 매니저 초기화 (Store 사용 매니저들은 내부에서 init 시 리스너 등록됨)
             studentManager.init(this);
             classManager.init(this);
             subjectManager.init(this);
             teacherManager.init(this);
             
-            // Legacy 매니저들
             textbookManager.init(this);
             lessonManager.init(this);
             studentAssignmentManager.init(this);
             adminClassVideoManager.init(this);
             adminHomeworkDashboard.init(this);
+            adminAnalysisManager.init(this); // ✨ [추가]
 
             this.isInitialized = true;
-
-            // 초기 데이터 로드 트리거 (Store 기반 매니저들이 데이터를 가져옴)
-            // AdminApp에서는 더 이상 직접 listenFor...를 호출하지 않아도 됩니다.
-            // (각 매니저의 init()에서 listenFor...가 호출되므로)
         } catch (e) {
             console.error("초기화 오류", e);
         }
@@ -359,8 +377,9 @@ export const AdminApp = {
                     lessonManager.populateSubjectSelect?.(); 
                     lessonManager.handleSubjectSelectForLesson?.(this.elements.subjectSelectForMgmt.value || ''); 
                     break;
-                // subjectMgmt, classMgmt, studentMgmt, teacherMgmt는 
-                // Store 구독으로 자동 렌더링되므로 별도 호출 불필요
+                case "analysisMgmt": // ✨ [추가]
+                    adminAnalysisManager.initView?.();
+                    break;
             }
         } else {
             this.elements.dashboardView.style.display = "block";
@@ -368,12 +387,10 @@ export const AdminApp = {
         }
     },
 
-    // Report 관련 로직은 AdminApp UI에 종속적이므로 유지
     populateReportClassSelect() {
         const sel = this.elements.reportClassSelect;
         if (!sel) return;
         
-        // Store에서 가져온 데이터를 사용 (this.state.classes는 Bridge에 의해 최신 상태임)
         const classes = this.state.classes; 
         const currentSelection = sel.value;
         
@@ -391,7 +408,6 @@ export const AdminApp = {
         }
     },
     
-    // ... (handleReportUpload, loadAndRenderUploadedReports, tryDeleteReport는 이전과 동일)
     async handleReportUpload() {
         const dateInput = this.elements.reportDateInput;
         const filesInput = this.elements.reportFilesInput;
@@ -461,7 +477,6 @@ export const AdminApp = {
                 
                 li.querySelector('.del-btn').addEventListener('click', async () => {
                     if(confirm('삭제?')) {
-                        // Report 삭제 시도
                         const path = `reports/${cls}/${yyyymmdd}/${r.fileName}`;
                         await this.tryDeleteReport(cls, date, r.fileName, path);
                         this.loadAndRenderUploadedReports();
@@ -478,7 +493,6 @@ export const AdminApp = {
     async tryDeleteReport(classId, dateStr, fileName, primaryPath) {
         let success = await reportManager.deleteReport(primaryPath);
         if (!success) {
-             // 루트 경로 시도 (Fallback)
              const rootPath = `reports/${classId}/${fileName}`;
              success = await reportManager.deleteReport(rootPath);
         }

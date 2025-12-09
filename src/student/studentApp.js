@@ -251,12 +251,35 @@ const StudentApp = {
     const welcomeEl = this.elements.welcomeMessage;
     if (welcomeEl) { welcomeEl.textContent = `${this.state.className || ''} ${this.state.studentName || ''}님, 환영합니다!`; }
     this.renderSubjectList();
+    
     const classType = this.state.classType;
-    if(this.elements.startLessonCard) this.elements.startLessonCard.style.display = (classType === 'self-directed' && this.state.activeSubjects.length > 0) ? 'flex' : 'none';
+    const hasSubjects = this.state.activeSubjects.length > 0;
+
+    // ✨ [수정됨] 반 타입에 따라 학습 카드 표시 및 제목 변경
+    if(this.elements.startLessonCard) {
+        // 자기주도반이거나 현강반이면 카드 표시
+        if ((classType === 'self-directed' || classType === 'live-lecture') && hasSubjects) {
+            this.elements.startLessonCard.style.display = 'flex';
+            
+            // 제목 변경 로직
+            const titleEl = document.getElementById('student-start-lesson-title');
+            if (titleEl) {
+                if (classType === 'live-lecture') {
+                    titleEl.textContent = "오늘의 예습 하기";
+                } else {
+                    titleEl.textContent = "과목별 학습 시작";
+                }
+            }
+        } else {
+            this.elements.startLessonCard.style.display = 'none';
+        }
+    }
+
     if(this.elements.gotoClassVideoCard) this.elements.gotoClassVideoCard.style.display = classType === 'live-lecture' ? 'flex' : 'none';
     if(this.elements.gotoQnaVideoCard) this.elements.gotoQnaVideoCard.style.display = 'flex';
     if(this.elements.gotoHomeworkCard) this.elements.gotoHomeworkCard.style.display = 'flex';
     if(this.elements.gotoReportCard) this.elements.gotoReportCard.style.display = 'flex';
+    
     this.showScreen(this.elements.subjectSelectionScreen);
     console.log("[StudentApp] Subject selection screen shown.");
   },
@@ -267,7 +290,9 @@ const StudentApp = {
     if (!listEl) { console.error("[StudentApp.renderSubjectList] subjectsList element not found!"); return; }
     listEl.innerHTML = '';
     if (!this.state.activeSubjects || this.state.activeSubjects.length === 0) { listEl.innerHTML = '<p class="text-center text-sm text-slate-400 py-4">수강 중인 과목이 없습니다.</p>'; if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = 'none'; return; }
-    if (this.elements.startLessonCard && this.state.classType === 'self-directed') { this.elements.startLessonCard.style.display = 'flex'; }
+    
+    // 여기서는 display 설정하지 않음 (showSubjectSelectionScreen에서 일괄 처리)
+    
     this.state.activeSubjects.forEach(subject => {
       const button = document.createElement('button'); button.className = 'subject-btn w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left'; button.textContent = subject.name; button.dataset.id = subject.id; button.dataset.name = subject.name; listEl.appendChild(button);
     });
@@ -343,7 +368,7 @@ const StudentApp = {
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
-  // 모달에서 영상 재생 (✨ 수정됨: 디스플레이 로직 단순화)
+  // 모달에서 영상 재생
   playVideoInModal(video) {
     const modal = this.elements.videoDisplayModal;
     const content = this.elements.videoModalContent;
@@ -355,11 +380,9 @@ const StudentApp = {
       return;
     }
 
-    // 로딩 스피너 대신 바로 비워두고 iframe 추가 준비
     content.innerHTML = ''; 
     if (titleEl) titleEl.textContent = video.title || "영상 보기";
 
-    // ✨ URL 추출 (studentLesson.extractVideoId 사용)
     const videoId = studentLesson.extractVideoId(video.url);
     const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}` : null;
         
@@ -378,7 +401,6 @@ const StudentApp = {
       iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
       iframe.allowFullscreen = true;
       
-      // ✨ [수정] 바로 보여주기 (복잡한 onload 로직 제거)
       iframe.style.display = 'block'; 
       iframe.src = embedUrl;
 
