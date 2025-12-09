@@ -1,4 +1,5 @@
 // src/student/studentApp.js
+
 import {
   collection,
   doc,
@@ -11,8 +12,10 @@ import {
 import { db, ensureAnonymousAuth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
+// ✨ 스타일 파일 임포트 (화면 깨짐 방지)
 import "../shared/style.css";
 
+// 모듈 임포트
 import { studentAuth } from "./studentAuth.js";
 import { studentLesson } from "./studentLesson.js";
 import studentHomework from "./studentHomework.js"; 
@@ -50,9 +53,12 @@ const StudentApp = {
     passScore: 4,
 
     currentRevVideoIndex: 0,
-    isScoreInputMode: false, // 점수 입력 모드 플래그
+    
+    // ✨ 점수 입력 모드 플래그 (일일테스트용)
+    isScoreInputMode: false, 
   },
 
+  // 1. 초기화
   init() {
     console.log("[StudentApp.init] Initializing app...");
     if (this.isInitialized) {
@@ -69,6 +75,7 @@ const StudentApp = {
     console.log("[StudentApp.init] App initialization complete.");
   },
 
+  // 2. 과목 데이터 로드
   async loadAvailableSubjects() {
     console.log("[StudentApp.loadAvailableSubjects] called.");
     this.state.activeSubjects = []; 
@@ -102,18 +109,13 @@ const StudentApp = {
           if (subjectName) {
               return { id, name: subjectName };
           } else {
-              console.warn(`[StudentApp.loadAvailableSubjects] Subject name not found for ID: ${id}. Using ID as name.`);
+              console.warn(`Subject name not found for ID: ${id}`);
               return { id, name: `과목 ID: ${id}` };
           }
         })
         .filter(subject => subject !== null); 
 
       this.state.activeSubjects.sort((a, b) => a.name.localeCompare(b.name));
-
-      console.log(
-        "[StudentApp.loadAvailableSubjects] Successfully loaded subjects:",
-        this.state.activeSubjects
-      );
 
     } catch (error) {
       console.error("[StudentApp.loadAvailableSubjects] Error:", error);
@@ -124,6 +126,7 @@ const StudentApp = {
     }
   },
 
+  // 3. 요소 캐싱
   cacheElements() {
     this.elements = {
       loadingScreen: document.getElementById("student-loading-screen"),
@@ -134,17 +137,23 @@ const StudentApp = {
       loginBtn: document.getElementById("student-login-btn"),
       subjectSelectionScreen: document.getElementById("student-subject-selection-screen"),
       welcomeMessage: document.getElementById("student-welcome-message"),
+      
+      // 메인 메뉴 카드들
       startLessonCard: document.getElementById("student-start-lesson-card"),
-      dailyTestCard: document.getElementById("student-daily-test-card"), // 추가
+      dailyTestCard: document.getElementById("student-daily-test-card"), // ✨ 추가됨
       subjectsList: document.getElementById("student-subjects-list"),
       gotoClassVideoCard: document.getElementById("student-goto-class-video-card"),
       gotoQnaVideoCard: document.getElementById("student-goto-qna-video-card"),
       gotoHomeworkCard: document.getElementById("student-goto-homework-card"),
       gotoReportCard: document.getElementById("student-goto-report-card"),
+      
+      // 학습 목록 화면
       lessonSelectionScreen: document.getElementById("student-lesson-selection-screen"),
       selectedSubjectTitle: document.getElementById("student-selected-subject-title"),
       lessonsList: document.getElementById("student-lessons-list"),
       backToSubjectsBtn: document.getElementById("student-back-to-subjects-btn"),
+      
+      // 나머지 화면 요소들...
       backToLessonsFromVideoBtn: document.getElementById("student-back-to-lessons-from-video-btn"),
       homeworkScreen: document.getElementById('student-homework-screen'),
       homeworkList: document.getElementById('student-homework-list'),
@@ -199,32 +208,33 @@ const StudentApp = {
       reportListContainer: document.getElementById("student-report-list"),
       backToMenuFromReportListBtn: document.getElementById("student-back-to-menu-from-report-list-btn"),
     };
-    console.log("[StudentApp.cacheElements] Cached elements:", Object.keys(this.elements).length);
-    Object.keys(this.elements).forEach(key => { if (!this.elements[key]) { console.warn(`[StudentApp.cacheElements] Element with key '${key}' not found in DOM! Check HTML ID.`); } });
   },
 
+  // 4. 이벤트 리스너
   addEventListeners() {
     this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     this.elements.backToLessonsFromResultBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     this.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
 
-    // ✨ 일일테스트 카드 클릭 (점수 모드 ON)
+    // ✨ [신규] 일일테스트 카드 클릭 시 -> 점수 입력 모드 활성화
     this.elements.dailyTestCard?.addEventListener('click', () => {
-        this.state.isScoreInputMode = true;
-        this.showSubjectSelectionScreen(true);
+        this.state.isScoreInputMode = true; // 점수 입력 모드 ON
+        this.showSubjectSelectionScreen(true); // 과목 목록 다시 그림 (점수 모드 유지)
     });
 
-    // 과목 버튼 클릭 (점수 모드인지 확인)
+    // 과목 카드 클릭 시
     this.elements.subjectsList?.addEventListener('click', (e) => {
         if (e.target.closest('.subject-btn')) {
             const btn = e.target.closest('.subject-btn');
             const subjectId = btn.dataset.id;
             const subjectName = btn.dataset.name;
+            // 점수 모드 여부는 selectSubjectAndShowLessons 내부에서 처리
             this.selectSubjectAndShowLessons({ id: subjectId, name: subjectName });
         }
     });
 
+    // 기타 메뉴 카드 클릭 리스너
     this.elements.gotoClassVideoCard?.addEventListener('click', () => this.showClassVideoDateScreen());
     this.elements.gotoQnaVideoCard?.addEventListener('click', () => this.showQnaVideoDateScreen());
     this.elements.gotoHomeworkCard?.addEventListener('click', () => {
@@ -235,120 +245,220 @@ const StudentApp = {
     });
     this.elements.gotoReportCard?.addEventListener('click', () => this.showReportListScreen());
 
+    // 뒤로가기 버튼들
     this.elements.backToSubjectsFromClassVideoBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToSubjectsFromQnaBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToVideoDatesBtn?.addEventListener('click', () => this.backToVideoDatesScreen());
     this.elements.closeVideoModalBtn?.addEventListener('click', () => this.closeVideoModal());
-
     this.elements.backToMenuFromReportListBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
   },
 
+  // 5. 화면 전환 헬퍼
   showScreen(screenEl) {
     const screens = document.querySelectorAll(".student-screen");
     screens.forEach((el) => { if (el) el.style.display = "none"; });
     if (screenEl) screenEl.style.display = "flex";
-    else console.warn("[StudentApp.showScreen] Target screen element is null or undefined.");
+    else console.warn("Target screen element is null.");
   },
 
+  // 6. 메인 화면 (과목 선택) 표시
   showSubjectSelectionScreen(keepMode = false) {
+    // 일반 메뉴 진입 시 점수 모드 해제
     if (!keepMode) this.state.isScoreInputMode = false;
 
     const welcomeEl = this.elements.welcomeMessage;
-    if (welcomeEl) { welcomeEl.textContent = `${this.state.className || ''} ${this.state.studentName || ''}님, 환영합니다!`; }
-    this.renderSubjectList();
+    if (welcomeEl) { 
+        welcomeEl.textContent = `${this.state.className || ''} ${this.state.studentName || ''}님, 환영합니다!`; 
+    }
+    this.renderSubjectList(); // 리스트 렌더링 호출
     
     const classType = this.state.classType;
     const hasSubjects = this.state.activeSubjects.length > 0;
 
-    // 1. 학습 카드
+    // (1) 학습 시작 카드 (현강/자습 공통)
     if(this.elements.startLessonCard) {
         if ((classType === 'self-directed' || classType === 'live-lecture') && hasSubjects) {
-            this.elements.startLessonCard.style.display = 'flex';
+            this.elements.startLessonCard.style.display = 'block'; // flex -> block (디자인 변경)
+            
             const titleEl = document.getElementById('student-start-lesson-title');
             if (titleEl) {
+                // 현강반이면 '예습 하기', 아니면 '과목별 학습 시작'
                 titleEl.textContent = (classType === 'live-lecture') ? "오늘의 예습 하기" : "과목별 학습 시작";
             }
-            // 현강반이면 클릭 시 점수 모드 아님
-            this.elements.startLessonCard.onclick = () => { this.state.isScoreInputMode = false; };
+            
+            // 이 카드를 누르면 일반 학습 모드 (점수 모드 끔)
+            this.elements.startLessonCard.onclick = () => { 
+                this.state.isScoreInputMode = false; 
+                // subjectsList는 이미 펼쳐져 있으므로 별도 동작 불필요 (클릭 시 자동 처리)
+            };
         } else {
             this.elements.startLessonCard.style.display = 'none';
         }
     }
 
-    // 2. ✨ 일일테스트 카드 (자기주도반 전용)
+    // (2) ✨ 일일테스트 카드 (자기주도반 전용)
     if(this.elements.dailyTestCard) {
+        // 자기주도반이고 과목이 있을 때만 표시
         if (classType === 'self-directed' && hasSubjects) {
-            this.elements.dailyTestCard.style.display = 'flex';
+            this.elements.dailyTestCard.style.display = 'block'; // flex -> block
         } else {
             this.elements.dailyTestCard.style.display = 'none';
         }
     }
 
+    // 나머지 메뉴 카드들
     if(this.elements.gotoClassVideoCard) this.elements.gotoClassVideoCard.style.display = classType === 'live-lecture' ? 'flex' : 'none';
     if(this.elements.gotoQnaVideoCard) this.elements.gotoQnaVideoCard.style.display = 'flex';
     if(this.elements.gotoHomeworkCard) this.elements.gotoHomeworkCard.style.display = 'flex';
     if(this.elements.gotoReportCard) this.elements.gotoReportCard.style.display = 'flex';
     
     this.showScreen(this.elements.subjectSelectionScreen);
-    console.log("[StudentApp] Subject selection screen shown.");
   },
 
+  // 7. ✨ [디자인 적용] 과목 목록 렌더링 (예쁜 카드 스타일)
   renderSubjectList() {
     const listEl = this.elements.subjectsList;
-    if (!listEl) { console.error("[StudentApp.renderSubjectList] subjectsList element not found!"); return; }
+    if (!listEl) return;
+    
     listEl.innerHTML = '';
-    if (!this.state.activeSubjects || this.state.activeSubjects.length === 0) { listEl.innerHTML = '<p class="text-center text-sm text-slate-400 py-4">수강 중인 과목이 없습니다.</p>'; if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = 'none'; return; }
+    
+    if (!this.state.activeSubjects || this.state.activeSubjects.length === 0) { 
+        listEl.innerHTML = `
+            <div class="text-center py-8">
+                <span class="material-icons-round text-slate-300 text-4xl mb-2">sentiment_dissatisfied</span>
+                <p class="text-sm text-slate-400">수강 중인 과목이 없습니다.</p>
+            </div>`; 
+        // 과목 없으면 카드 자체를 숨김
+        if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = 'none'; 
+        return; 
+    }
     
     this.state.activeSubjects.forEach(subject => {
-      const button = document.createElement('button'); button.className = 'subject-btn w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left'; button.textContent = subject.name; button.dataset.id = subject.id; button.dataset.name = subject.name; listEl.appendChild(button);
+      const button = document.createElement('button'); 
+      // Tailwind CSS 적용된 버튼 스타일
+      button.className = 'subject-btn w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between hover:bg-white hover:border-indigo-200 hover:shadow-md transition-all group mb-2';
+      button.dataset.id = subject.id; 
+      button.dataset.name = subject.name;
+      
+      button.innerHTML = `
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-indigo-500 group-hover:border-indigo-100 transition-colors">
+                <span class="material-icons-round text-lg">class</span>
+            </div>
+            <span class="font-bold text-slate-700 text-sm group-hover:text-indigo-900 text-left">${subject.name}</span>
+        </div>
+        <span class="material-icons-round text-slate-300 group-hover:text-indigo-400 text-sm">arrow_forward_ios</span>
+      `;
+      
+      listEl.appendChild(button);
     });
   },
 
+  // 8. 과목 선택 후 학습 목록 로드
   async selectSubjectAndShowLessons(subject) {
     this.state.selectedSubject = subject;
-    // 제목 변경
+    
+    // 제목 변경 (점수 입력 모드인지 확인)
     const titleText = this.state.isScoreInputMode 
         ? `[점수 입력] 단원을 선택하세요` 
         : `${subject.name} 학습 목록`;
         
     if (this.elements.selectedSubjectTitle) { 
         this.elements.selectedSubjectTitle.textContent = titleText; 
-        if(this.state.isScoreInputMode) this.elements.selectedSubjectTitle.classList.add('text-rose-600');
-        else this.elements.selectedSubjectTitle.classList.remove('text-rose-600');
+        if(this.state.isScoreInputMode) {
+            this.elements.selectedSubjectTitle.classList.add('text-rose-600');
+        } else {
+            this.elements.selectedSubjectTitle.classList.remove('text-rose-600');
+        }
     }
+    
     await this.loadLessonsForSubject(subject.id);
     this.showScreen(this.elements.lessonSelectionScreen);
   },
 
+  // 9. ✨ [디자인 적용] 학습 목록 렌더링
+  async loadLessonsForSubject(subjectId) {
+    const listEl = this.elements.lessonsList; if (!listEl) return; 
+    
+    listEl.innerHTML = `
+        <div class="flex justify-center py-10">
+            <div class="w-8 h-8 border-4 border-indigo-100 border-t-indigo-500 rounded-full animate-spin"></div>
+        </div>`;
+        
+    try {
+      const q = query( collection(db, 'subjects', subjectId, 'lessons'), where('isActive', '==', true), orderBy('order', 'asc') );
+      const snapshot = await getDocs(q); 
+      this.state.lessons = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
+      
+      listEl.innerHTML = '';
+      
+      if (this.state.lessons.length === 0) { 
+          listEl.innerHTML = `
+            <div class="text-center py-12">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <span class="material-icons-round text-slate-300 text-3xl">inbox</span>
+                </div>
+                <p class="text-slate-400 text-sm">아직 등록된 학습이 없습니다.</p>
+            </div>`;
+          return; 
+      }
+      
+      this.state.lessons.forEach((lesson, index) => {
+        const button = document.createElement('button'); 
+        // 예쁜 리스트 스타일
+        button.className = 'w-full p-4 bg-white border border-slate-100 rounded-2xl mb-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex items-center gap-4 text-left group';
+        
+        // 인덱스 번호 (01, 02...)
+        const idx = (index + 1).toString().padStart(2, '0');
+        
+        // 모드에 따른 아이콘/텍스트 설정
+        let actionIcon = 'play_circle';
+        let actionText = '학습하기';
+        let iconColor = 'text-indigo-500';
+        let bgHover = 'group-hover:bg-indigo-50';
+
+        // 점수 입력 모드라면
+        if (this.state.isScoreInputMode) {
+            actionIcon = 'edit';
+            actionText = '점수 입력';
+            iconColor = 'text-rose-500';
+            bgHover = 'group-hover:bg-rose-50';
+        }
+
+        button.innerHTML = `
+            <span class="text-xs font-bold text-slate-300 font-mono">${idx}</span>
+            <div class="flex-grow">
+                <h3 class="font-bold text-slate-800 text-sm mb-0.5 group-hover:text-indigo-700 transition-colors">${lesson.title}</h3>
+                <p class="text-xs text-slate-400 flex items-center gap-1">
+                    <span class="material-icons-round text-[10px]">timer</span> 10분 소요
+                </p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center ${bgHover} transition-colors">
+                <span class="material-icons-round ${iconColor} text-xl">${actionIcon}</span>
+            </div>
+        `;
+        
+        // 클릭 이벤트 분기
+        if (this.state.isScoreInputMode) {
+            button.onclick = () => studentLesson.inputDailyTestScoreOnly(lesson);
+        } else {
+            button.onclick = () => studentLesson.startSelectedLesson(lesson);
+        }
+        
+        listEl.appendChild(button);
+      });
+    } catch (error) { 
+        console.error(error); 
+        listEl.innerHTML = '<p class="text-center text-red-400 py-8 text-sm">목록을 불러오지 못했습니다.</p>'; 
+    }
+  },
+
   showLessonSelectionScreen() {
-      if (!this.state.selectedSubject) { console.warn("[StudentApp] No subject selected. Cannot show lesson screen."); this.showSubjectSelectionScreen(); return; }
+      if (!this.state.selectedSubject) { console.warn("No subject selected."); this.showSubjectSelectionScreen(); return; }
       this.showScreen(this.elements.lessonSelectionScreen);
   },
 
-  async loadLessonsForSubject(subjectId) {
-    const listEl = this.elements.lessonsList; if (!listEl) return; listEl.innerHTML = '<div class="loader mx-auto my-4"></div>';
-    try {
-      const q = query( collection(db, 'subjects', subjectId, 'lessons'), where('isActive', '==', true), orderBy('order', 'asc') );
-      const snapshot = await getDocs(q); this.state.lessons = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); listEl.innerHTML = '';
-      if (this.state.lessons.length === 0) { listEl.innerHTML = '<p class="text-center text-slate-500 py-8">아직 학습할 내용이 없습니다.</p>'; return; }
-      
-      this.state.lessons.forEach(lesson => {
-        const button = document.createElement('button'); 
-        button.className = 'w-full p-4 border border-gray-200 rounded-lg text-left hover:bg-gray-50 transition flex justify-between items-center';
-        
-        // ✨ 모드에 따라 버튼 동작/모양 변경
-        if (this.state.isScoreInputMode) {
-            button.innerHTML = `<h3 class="font-semibold text-slate-800">${lesson.title}</h3><span class="text-xs font-bold text-rose-500 border border-rose-200 px-2 py-1 rounded bg-rose-50">점수 입력</span>`;
-            button.onclick = () => studentLesson.inputDailyTestScoreOnly(lesson);
-        } else {
-            button.innerHTML = `<h3 class="font-semibold text-slate-800">${lesson.title}</h3><p class="text-xs text-slate-500">학습 시작 &rarr;</p>`;
-            button.onclick = () => studentLesson.startSelectedLesson(lesson);
-        }
-        listEl.appendChild(button);
-      });
-    } catch (error) { console.error("[StudentApp] Error loading lessons:", error); listEl.innerHTML = '<p class="text-center text-red-500 py-8">학습 목록을 불러오는 중 오류 발생</p>'; showToast("학습 목록 로딩 실패", true); }
-  },
-
+  // 10. 영상 목록 (날짜별) 로직
   async showClassVideoDateScreen() { await this.loadAndRenderVideoDates("class"); this.showScreen(this.elements.classVideoDateScreen); },
   async showQnaVideoDateScreen() { await this.loadAndRenderVideoDates("qna"); this.showScreen(this.elements.qnaVideoDateScreen); },
   backToVideoDatesScreen() { if (this.state.currentVideoType === "qna") this.showScreen(this.elements.qnaVideoDateScreen); else this.showScreen(this.elements.classVideoDateScreen); },
@@ -356,7 +466,7 @@ const StudentApp = {
   async loadAndRenderVideoDates(videoType) {
     const isQna = videoType === "qna"; const collectionName = isQna ? "classVideos" : "classLectures"; const dateFieldName = isQna ? "videoDate" : "lectureDate";
     const listElement = isQna ? this.elements.qnaVideoDateList : this.elements.classVideoDateList; const stateKey = isQna ? "qnaVideosByDate" : "classVideosByDate";
-    if (!listElement) { console.error(`[StudentApp] listElement missing for ${videoType}`); return; } if (!this.state.classId) { listElement.innerHTML = `<p class="text-center text-gray-500 py-8">반 배정 정보가 없습니다.</p>`; return; }
+    if (!listElement) return; if (!this.state.classId) { listElement.innerHTML = `<p class="text-center text-slate-400 py-8">반 배정 정보가 없습니다.</p>`; return; }
     listElement.innerHTML = `<div class="loader mx-auto my-4"></div>`;
     try {
       const qCol = query( collection(db, collectionName), where("classId", "==", this.state.classId), orderBy(dateFieldName, "desc") );
@@ -367,84 +477,60 @@ const StudentApp = {
         else { const videosArray = Array.isArray(data.videos) ? data.videos : []; if (videosArray.length > 0) { if (!videosByDate[date]) videosByDate[date] = []; videosArray.forEach((videoItem, index) => { videosByDate[date].push({ id: `${docSnap.id}-${index}`, title: videoItem.title || `영상 ${index + 1}`, url: videoItem.url || "" }); }); } }
       });
       this.state[stateKey] = videosByDate; const datesFound = Object.keys(videosByDate); listElement.innerHTML = "";
-      if (datesFound.length === 0) { listElement.innerHTML = `<p class="text-center text-gray-500 py-8">영상이 없습니다.</p>`; return; }
+      if (datesFound.length === 0) { listElement.innerHTML = `<p class="text-center text-slate-400 py-8">영상이 없습니다.</p>`; return; }
       datesFound.sort((a, b) => b.localeCompare(a));
-      datesFound.forEach((date) => { const btn = document.createElement("button"); btn.className = "w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition"; btn.textContent = date; btn.addEventListener("click", () => this.showVideoTitlesForDate(videoType, date)); listElement.appendChild(btn); });
-    } catch (e) { console.error("[StudentApp] loadAndRenderVideoDates error:", e); listElement.innerHTML = `<p class="text-center text-red-500 py-8">영상 목록을 불러오는 중 오류가 발생했습니다.</p>`; }
+      datesFound.forEach((date) => { const btn = document.createElement("button"); btn.className = "w-full p-4 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:border-indigo-200 transition mb-2"; btn.textContent = date; btn.addEventListener("click", () => this.showVideoTitlesForDate(videoType, date)); listElement.appendChild(btn); });
+    } catch (e) { console.error(e); listElement.innerHTML = `<p class="text-center text-red-400 py-8">오류 발생</p>`; }
   },
 
   showVideoTitlesForDate(videoType, date) {
     this.state.currentVideoDate = date; this.state.currentVideoType = videoType; const stateKey = videoType === "qna" ? "qnaVideosByDate" : "classVideosByDate"; const videos = this.state[stateKey]?.[date] || [];
     if (this.elements.videoTitlesDate) { this.elements.videoTitlesDate.textContent = `${date} ${videoType === "qna" ? "질문" : "수업"} 영상`; }
     if (this.elements.videoTitlesList) {
-        this.elements.videoTitlesList.innerHTML = ""; if (videos.length === 0) { this.elements.videoTitlesList.innerHTML = "<p class='text-center text-gray-500 py-8'>영상이 없습니다.</p>"; }
-        else { videos.forEach((v) => { const btn = document.createElement("button"); btn.className = "w-full p-3 border border-gray-200 rounded-md text-sm font-medium text-slate-700 hover:bg-gray-50 transition text-left"; btn.textContent = v.title; btn.addEventListener("click", () => this.playVideoInModal(v)); this.elements.videoTitlesList.appendChild(btn); }); }
+        this.elements.videoTitlesList.innerHTML = ""; if (videos.length === 0) { this.elements.videoTitlesList.innerHTML = "<p class='text-center text-slate-400 py-8'>영상이 없습니다.</p>"; }
+        else { videos.forEach((v) => { const btn = document.createElement("button"); btn.className = "w-full p-4 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 hover:bg-indigo-50 hover:border-indigo-200 transition text-left mb-2 flex items-center justify-between"; btn.innerHTML = `<span>${v.title}</span><span class="material-icons-round text-indigo-400">play_circle_filled</span>`; btn.addEventListener("click", () => this.playVideoInModal(v)); this.elements.videoTitlesList.appendChild(btn); }); }
     }
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
   playVideoInModal(video) {
-    const modal = this.elements.videoDisplayModal;
-    const content = this.elements.videoModalContent;
-    const titleEl = this.elements.videoModalTitle;
-
-    if (!modal || !content) { console.error("[StudentApp] Video modal elements not found."); showToast("영상 모달을 여는 데 실패했습니다.", true); return; }
-
+    const modal = this.elements.videoDisplayModal; const content = this.elements.videoModalContent; const titleEl = this.elements.videoModalTitle;
+    if (!modal || !content) return;
     content.innerHTML = ''; 
     if (titleEl) titleEl.textContent = video.title || "영상 보기";
-
     const videoId = studentLesson.extractVideoId(video.url);
     const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}` : null;
-        
-    console.log(`[StudentApp] Trying to play video: ${video.title}, Embed URL: ${embedUrl}`);
-
     modal.style.display = "flex"; 
-
     if (embedUrl) {
-      const iframe = document.createElement("iframe");
-      iframe.style.position = 'absolute';
-      iframe.style.top = '0';
-      iframe.style.left = '0';
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = 'none';
-      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-      iframe.allowFullscreen = true;
-      iframe.style.display = 'block'; 
-      iframe.src = embedUrl;
-      content.appendChild(iframe);
-    } else {
-      content.innerHTML = `<p class="text-red-500 p-4">유효하지 않은 비디오 URL입니다.</p>`;
-    }
+      const iframe = document.createElement("iframe"); iframe.style.position = 'absolute'; iframe.style.top = '0'; iframe.style.left = '0'; iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = 'none'; iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"; iframe.allowFullscreen = true; iframe.style.display = 'block'; iframe.src = embedUrl; content.appendChild(iframe);
+    } else { content.innerHTML = `<p class="text-white text-center p-4">유효하지 않은 URL</p>`; }
   },
 
   closeVideoModal() {
-    const modal = this.elements.videoDisplayModal;
-    const content = this.elements.videoModalContent;
-    if (modal) modal.style.display = "none";
-    if (content) content.innerHTML = ""; 
+    const modal = this.elements.videoDisplayModal; const content = this.elements.videoModalContent;
+    if (modal) modal.style.display = "none"; if (content) content.innerHTML = ""; 
     this.showScreen(this.elements.videoTitlesScreen);
   },
 
   async showReportListScreen() {
       const container = this.elements.reportListContainer; if (!container) return;
-      if (!this.state.classId || !this.state.studentName) { container.innerHTML = '<p class="text-center text-red-500 py-8">학생 또는 반 정보가 없습니다.</p>'; this.showScreen(this.elements.reportListScreen); return; }
+      if (!this.state.classId || !this.state.studentName) { container.innerHTML = '<p class="text-center text-red-400 py-8">학생 정보 없음</p>'; this.showScreen(this.elements.reportListScreen); return; }
       container.innerHTML = '<div class="loader mx-auto my-4"></div>'; this.showScreen(this.elements.reportListScreen);
       try { const reportsByDate = await reportManager.listStudentReports(this.state.classId, this.state.studentName); this.state.reportsByDate = reportsByDate; this.renderReportList(); }
-      catch (error) { console.error("Error loading student reports:", error); container.innerHTML = '<p class="text-center text-red-500 py-8">시험 결과 목록 로딩 실패</p>'; }
+      catch (error) { console.error(error); container.innerHTML = '<p class="text-center text-red-400 py-8">로딩 실패</p>'; }
   },
 
   renderReportList() {
       const container = this.elements.reportListContainer; if (!container) return; container.innerHTML = ''; const dates = Object.keys(this.state.reportsByDate).sort((a, b) => b.localeCompare(a));
-      if (dates.length === 0) { container.innerHTML = '<p class="text-center text-slate-500 py-8">업로드된 시험 결과가 없습니다.</p>'; return; }
+      if (dates.length === 0) { container.innerHTML = '<p class="text-center text-slate-400 py-8">시험 결과가 없습니다.</p>'; return; }
       dates.forEach(date => {
           const reports = this.state.reportsByDate[date]; if (!reports || reports.length === 0) return;
           const dateSection = document.createElement('div'); dateSection.className = 'mb-6'; const dateHeader = document.createElement('h3');
-          const displayDate = date.length === 8 ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}` : date; dateHeader.textContent = displayDate; dateHeader.className = 'text-lg font-semibold text-slate-700 mb-2 border-b pb-1';
+          const displayDate = date.length === 8 ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}` : date; dateHeader.textContent = displayDate; dateHeader.className = 'text-lg font-bold text-slate-800 mb-3 ml-1';
           dateSection.appendChild(dateHeader); const ul = document.createElement('ul'); ul.className = 'space-y-2';
           reports.forEach(report => {
-              const li = document.createElement('li'); li.className = 'p-3 border rounded-md flex justify-between items-center text-sm bg-white hover:bg-slate-50';
-              li.innerHTML = `<span class="truncate mr-2">${report.title}</span> ${report.url ? `<a href="${report.url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:text-blue-700 text-xs font-bold flex-shrink-0">결과 보기</a>` : '<span class="text-xs text-slate-400 flex-shrink-0">열 수 없음</span>'}`; ul.appendChild(li);
+              const li = document.createElement('li'); li.className = 'p-4 bg-white border border-slate-100 rounded-2xl shadow-sm flex justify-between items-center';
+              li.innerHTML = `<span class="font-medium text-slate-700 truncate mr-2">${report.title}</span> ${report.url ? `<a href="${report.url}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-100 transition">결과 보기</a>` : '<span class="text-xs text-slate-300">열 수 없음</span>'}`; ul.appendChild(li);
           });
           dateSection.appendChild(ul); container.appendChild(dateSection);
       });
@@ -458,16 +544,16 @@ const StudentApp = {
   },
 };
 
+// 앱 시작
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("[StudentApp] DOMContentLoaded. Ensuring auth...");
+  console.log("[StudentApp] Starting...");
   ensureAnonymousAuth((user) => {
     if (user) {
-      console.log("[StudentApp] Anonymous auth successful (or cached). UID:", user.uid);
       StudentApp.state.authUid = user.uid;
       if (!StudentApp.isInitialized) StudentApp.init();
     } else {
-      console.error("[StudentApp] Anonymous auth failed.");
-      showToast("인증 초기화 실패. 새로고침 해주세요.", true);
+      console.error("Auth failed");
+      showToast("인증 실패. 새로고침 해주세요.", true);
       if (!StudentApp.isInitialized) StudentApp.init();
     }
   });
