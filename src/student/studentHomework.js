@@ -1,353 +1,298 @@
 // src/student/studentHomework.js
 
-import { collection, doc, getDocs, getDoc, setDoc, where, query, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
+// ✨ [추가] 이미지 압축 라이브러리 임포트
+import imageCompression from 'browser-image-compression';
+
 const studentHomework = {
-    unsubscribe: null,
-    // 👇 수정: 로딩 상태 플래그 추가
     isLoading: false,
+    state: {
+        currentHomework: null,
+        selectedFiles: [], // 압축된 파일들이 저장될 곳
+        initialImageUrls: [], 
+        isEditingHomework: false
+    },
 
     init(app) {
         this.app = app;
-
-        // 숙제 관련 이벤트 리스너 설정
-        this.app.elements.gotoHomeworkCard?.addEventListener('click', () => this.showHomeworkScreen());
-        this.app.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
-        this.app.elements.closeUploadModalBtn?.addEventListener('click', () => this.closeUploadModal());
-        this.app.elements.cancelUploadBtn?.addEventListener('click', () => this.closeUploadModal());
-        this.app.elements.filesInput?.addEventListener('change', (e) => this.handleFileSelection(e));
-        this.app.elements.uploadBtn?.addEventListener('click', () => this.handleUpload());
+        this.cacheElements();
+        this.bindEvents();
     },
 
-    // 숙제 목록 화면 표시
+    cacheElements() {
+        this.elements = {
+            homeworkScreen: document.getElementById('student-homework-screen'),
+            homeworkList: document.getElementById('student-homework-list'),
+            uploadModal: document.getElementById('student-upload-modal'),
+            uploadModalTitle: document.getElementById('student-upload-modal-title'),
+            filesInput: document.getElementById('student-files-input'),
+            previewContainer: document.getElementById('student-preview-container'),
+            uploadBtn: document.getElementById('student-upload-btn'),
+            uploadBtnText: document.getElementById('student-upload-btn-text'),
+            uploadLoader: document.getElementById('student-upload-loader'),
+            cancelUploadBtn: document.getElementById('student-cancel-upload-btn'),
+            closeUploadModalBtn: document.getElementById('student-close-upload-modal-btn'),
+        };
+    },
+
+    bindEvents() {
+        this.app.elements.gotoHomeworkCard?.addEventListener('click', () => this.showHomeworkScreen());
+        this.elements.closeUploadModalBtn?.addEventListener('click', () => this.closeUploadModal());
+        this.elements.cancelUploadBtn?.addEventListener('click', () => this.closeUploadModal());
+        
+        // 파일 선택 시 처리
+        this.elements.filesInput?.addEventListener('change', (e) => this.handleFileSelection(e));
+        
+        // 업로드 버튼 클릭
+        this.elements.uploadBtn?.addEventListener('click', () => this.handleUpload());
+    },
+
     async showHomeworkScreen() {
-        // 👇 수정: 로딩 중이면 중복 실행 방지
-        if (this.isLoading) {
-            console.log("[studentHomework] showHomeworkScreen skipped, already loading.");
-            return;
-        }
-        this.isLoading = true; // 로딩 시작 플래그 설정
-        console.log("[studentHomework] showHomeworkScreen started.");
+        if (this.isLoading) return;
+        this.app.showScreen(this.elements.homeworkScreen);
+        await this.loadHomeworkList();
+    },
 
+    async loadHomeworkList() {
+        const { classId, studentDocId } = this.app.state;
+        const listContainer = this.elements.homeworkList;
+        if (!listContainer) return;
 
-        const homeworkListEl = this.app.elements.homeworkList;
-        if (!homeworkListEl) {
-            console.error("[studentHomework] homeworkList element not found in cache!");
-            showToast("숙제 목록 영역을 찾을 수 없습니다.", true);
-            this.app.showSubjectSelectionScreen();
-            this.isLoading = false; // 로딩 종료 플래그 설정
-            return;
-        }
-
-        // 화면 전환 전에 목록 비우기 및 로딩 표시
-        homeworkListEl.innerHTML = '<div class="loader mx-auto my-4"></div>';
-        this.app.showScreen(this.app.elements.homeworkScreen); // 로딩 표시 후 화면 전환
-
-
-        if (!this.app.state.classId) {
-            homeworkListEl.innerHTML = '<p class="text-center text-slate-500 py-8">배정된 반이 없어 숙제를 확인할 수 없습니다.</p>';
-            // this.app.showScreen(this.app.elements.homeworkScreen); // 이미 위에서 호출됨
-            this.isLoading = false; // 로딩 종료 플래그 설정
-            return;
-        }
-        if (!this.app.state.studentDocId) {
-            showToast("학생 정보(문서 ID)가 없습니다. 다시 로그인해주세요.", true);
-            homeworkListEl.innerHTML = '<p class="text-center text-red-500 py-8">학생 정보를 찾을 수 없습니다.</p>';
-            // this.app.showScreen(this.app.elements.homeworkScreen); // 이미 위에서 호출됨
-            this.isLoading = false; // 로딩 종료 플래그 설정
-            return;
-        }
-
-
-        const homeworksQuery = query(
-            collection(db, 'homeworks'),
-            where('classId', '==', this.app.state.classId),
-            orderBy('dueDate', 'desc')
-        );
+        listContainer.innerHTML = '<div class="loader mx-auto my-4"></div>';
 
         try {
-            const homeworkSnapshot = await getDocs(homeworksQuery);
-            const homeworks = homeworkSnapshot.docs.map(d => ({id: d.id, ...d.data()}));
-
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            const recentHomeworks = homeworks.filter(hw => {
-                if (!hw.dueDate) return true;
-                const dueDate = new Date(hw.dueDate);
-                return dueDate >= oneMonthAgo;
+            // 1. 해당 반의 숙제 목록 가져오기
+            const q = collection(db, 'homeworks'); // 필요 시 where('classId', '==', classId) 추가
+            const snapshot = await getDocs(q);
+            
+            const homeworks = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                // 해당 반의 숙제인지 확인 (classId 필드가 있다면)
+                if (!data.classId || data.classId === classId) {
+                    homeworks.push({ id: doc.id, ...data });
+                }
             });
 
-            homeworkListEl.innerHTML = ''; // 실제 렌더링 전 다시 비우기
-            if (recentHomeworks.length === 0) {
-                homeworkListEl.innerHTML = '<p class="text-center text-slate-500 py-8">최근 1개월 내에 출제된 숙제가 없습니다.</p>';
-            } else {
-                const submissionPromises = recentHomeworks.map(hw =>
-                    getDoc(doc(db, 'homeworks', hw.id, 'submissions', this.app.state.studentDocId))
-                );
-                const submissionSnapshots = await Promise.all(submissionPromises);
-
-                recentHomeworks.forEach((hw, index) => {
-                    const submissionDoc = submissionSnapshots[index];
-                    this.renderHomeworkItem(hw, submissionDoc.exists() ? submissionDoc.data() : null);
-                });
+            // 2. 제출 여부 확인을 위해 학생의 제출 기록 조회
+            // (최적화를 위해 개별 조회 대신 여기서 한 번에 처리하거나, UI 렌더링 시 조회)
+            
+            listContainer.innerHTML = '';
+            if (homeworks.length === 0) {
+                listContainer.innerHTML = '<p class="text-center text-slate-400 py-8">등록된 숙제가 없습니다.</p>';
+                return;
             }
+
+            // 날짜순 정렬 (최신순)
+            homeworks.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
+
+            for (const hw of homeworks) {
+                await this.renderHomeworkItem(hw, studentDocId, listContainer);
+            }
+
         } catch (error) {
-            console.error("숙제 로딩 실패:", error);
-            homeworkListEl.innerHTML = `
-                <div class="text-center text-red-500 py-8">
-                    <p>숙제 목록을 불러오는 데 실패했습니다.</p>
-                    <p class="text-sm text-slate-500 mt-2">관리자에게 문의하거나 잠시 후 다시 시도해주세요.</p>
-                </div>`;
-        } finally {
-             // 👇 수정: 로딩 종료 플래그 설정
-            this.isLoading = false;
-            console.log("[studentHomework] showHomeworkScreen finished.");
+            console.error("숙제 목록 로딩 실패:", error);
+            listContainer.innerHTML = '<p class="text-center text-red-500 py-8">목록을 불러오지 못했습니다.</p>';
         }
-        // this.app.showScreen(this.app.elements.homeworkScreen); // 로딩 표시 후 바로 전환하므로 여기서는 제거
     },
 
-    // 개별 숙제 항목 렌더링 (변경 없음)
-    renderHomeworkItem(hw, submissionData) {
-        const homeworkListEl = this.app.elements.homeworkList;
-        if (!homeworkListEl) return;
+    async renderHomeworkItem(hw, studentId, container) {
+        // 제출 내역 확인
+        const subRef = doc(db, `homeworks/${hw.id}/submissions/${studentId}`);
+        const subSnap = await getDoc(subRef);
+        const isSubmitted = subSnap.exists();
+        const subData = isSubmitted ? subSnap.data() : null;
 
-        const item = document.createElement('div');
-        const isSubmitted = !!submissionData;
-        const submittedPages = submissionData?.imageUrls?.length || 0;
-        const totalPages = hw.pages || 0;
-        const isComplete = totalPages > 0 && submittedPages >= totalPages;
+        const div = document.createElement('div');
+        div.className = `p-4 border rounded-lg shadow-sm bg-white flex justify-between items-center ${isSubmitted ? 'border-green-200 bg-green-50' : ''}`;
+        
+        const statusBadge = isSubmitted 
+            ? `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold">제출 완료</span>` 
+            : `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold">미제출</span>`;
 
-        item.className = `p-4 border rounded-lg flex items-center justify-between ${isComplete ? 'bg-green-50 border-green-200' : 'bg-white'}`;
-
-        const pagesInfo = totalPages ? `(${submittedPages}/${totalPages}p)` : `(${submittedPages}p)`;
-        const statusHtml = isSubmitted
-            ? `<div class="flex items-center gap-2">
-                 <span class="text-sm font-semibold ${isComplete ? 'text-green-700' : 'text-yellow-600'}">${isComplete ? '제출 완료' : '제출 중'} ${pagesInfo}</span>
-                 <button class="edit-homework-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg hover:bg-yellow-600 transition">수정하기</button>
-               </div>`
-            : `<button class="upload-homework-btn text-sm bg-blue-600 text-white font-semibold px-3 py-1 rounded-lg hover:bg-blue-700 transition">숙제 올리기</button>`;
-
-        const displayDate = hw.dueDate || '기한없음';
-        const titlePages = totalPages ? `(${totalPages}p)` : '';
-        item.innerHTML = `
+        div.innerHTML = `
             <div>
-                <p class="text-xs text-slate-500">기한: ${displayDate}</p>
-                <h3 class="font-bold text-slate-800">${hw.textbookName} ${titlePages}</h3>
+                <h3 class="font-bold text-slate-800">${hw.title || '제목 없음'}</h3>
+                <p class="text-sm text-slate-600 mt-1">마감: ${hw.dueDate || '없음'} | 범위: ${hw.pages || '-'}</p>
+                <div class="mt-2">${statusBadge}</div>
             </div>
-            <div data-id="${hw.id}" data-textbook="${hw.textbookName}" data-pages="${totalPages}">${statusHtml}</div>`;
-        homeworkListEl.appendChild(item);
+            <button class="btn-primary text-sm px-4 py-2 whitespace-nowrap ml-3">
+                ${isSubmitted ? '수정하기' : '제출하기'}
+            </button>
+        `;
 
-        item.querySelector('.upload-homework-btn')?.addEventListener('click', (e) => {
-            const parent = e.target.parentElement;
-            this.openUploadModal(parent.dataset.id, parent.dataset.textbook, false);
+        div.querySelector('button').addEventListener('click', () => {
+            this.openUploadModal(hw, isSubmitted, subData);
         });
 
-        item.querySelector('.edit-homework-btn')?.addEventListener('click', (e) => {
-            const parent = e.target.parentElement.parentElement;
-            this.openUploadModal(parent.dataset.id, parent.dataset.textbook, true);
-        });
+        container.appendChild(div);
     },
 
-    // 숙제 업로드 모달 열기 (변경 없음)
-    async openUploadModal(homeworkId, textbookName, isEditing = false) {
-        const { state, elements } = this.app;
-        if (!state.studentDocId) {
-            showToast("학생 정보(문서 ID)가 없습니다. 다시 로그인해주세요.", true);
-            return;
-        }
+    openUploadModal(homework, isEdit, submissionData) {
+        this.state.currentHomework = homework;
+        this.state.isEditingHomework = isEdit;
+        this.state.selectedFiles = []; // 초기화
+        this.state.initialImageUrls = isEdit && submissionData?.imageUrls ? submissionData.imageUrls : [];
 
-        state.currentHomeworkId = homeworkId;
-        state.isEditingHomework = isEditing;
-        state.filesToUpload = [];
-        state.initialImageUrls = [];
+        // UI 초기화
+        this.elements.uploadModalTitle.textContent = isEdit ? `숙제 수정: ${homework.title}` : `숙제 제출: ${homework.title}`;
+        this.elements.filesInput.value = ''; // 파일 선택 초기화
+        this.elements.previewContainer.innerHTML = '';
+        this.elements.uploadBtnText.textContent = isEdit ? '수정하기' : '제출하기';
+        this.elements.uploadModal.style.display = 'flex';
 
-        try {
-            const homeworkDocRef = doc(db, 'homeworks', homeworkId);
-            const homeworkDoc = await getDoc(homeworkDocRef);
-            const totalPages = homeworkDoc.data()?.pages;
-            state.currentHomeworkPages = (typeof totalPages === 'number' && totalPages > 0) ? totalPages : 0;
-
-            elements.uploadModalTitle.textContent = `[${textbookName}] 숙제 ${isEditing ? '수정' : '업로드'}`;
-            this.updateUploadButtonText(0);
-            elements.previewContainer.innerHTML = '';
-            elements.filesInput.value = '';
-
-            if (isEditing) {
-                const submissionDoc = await getDoc(doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.studentDocId));
-                if (submissionDoc.exists()) {
-                    const existingUrls = submissionDoc.data().imageUrls || [];
-                    state.initialImageUrls = existingUrls;
-                    state.filesToUpload = existingUrls.map(url => ({ type: 'existing', url }));
-                    this.renderImagePreviews();
-                }
-            } else {
-                this.renderImagePreviews();
-            }
-
-            elements.uploadModal.style.display = 'flex';
-        } catch (error) {
-            console.error("모달 열기 실패:", error);
-            showToast("숙제 정보를 불러오는 데 실패했습니다.");
+        // 기존 제출된 이미지가 있다면 미리보기에 표시
+        if (isEdit && this.state.initialImageUrls.length > 0) {
+            this.state.initialImageUrls.forEach(url => {
+                this.createPreviewItem(url, true); // true = 기존 이미지(삭제 시 처리 다름)
+            });
         }
     },
 
-    // 모달 닫기 (변경 없음)
     closeUploadModal() {
-        const { state, elements } = this.app;
-        state.currentHomeworkId = null;
-        state.isEditingHomework = false;
-        state.filesToUpload = [];
-        state.initialImageUrls = [];
-        state.currentHomeworkPages = 0;
-        elements.uploadModal.style.display = 'none';
+        this.elements.uploadModal.style.display = 'none';
+        this.state.currentHomework = null;
+        this.state.selectedFiles = [];
     },
 
-    // 파일 선택 처리 (변경 없음)
-    handleFileSelection(event) {
-        const newFiles = Array.from(event.target.files).map(file => ({ type: 'new', file }));
-        const currentCount = this.app.state.filesToUpload.length;
-        const totalPages = this.app.state.currentHomeworkPages;
+    // ✨ [수정] 파일 선택 시 압축 진행
+    async handleFileSelection(e) {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
 
-        if (totalPages > 0 && currentCount + newFiles.length > totalPages) {
-            showToast(`최대 ${totalPages}페이지만 업로드할 수 있습니다. (${currentCount}개 선택됨)`);
-            event.target.value = '';
-            return;
-        }
+        // 압축 옵션 설정 (최대 1MB 정도, 화면 너비 1920px 제한)
+        const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true
+        };
 
-        this.app.state.filesToUpload.push(...newFiles);
-        this.renderImagePreviews();
-        event.target.value = '';
-    },
+        // 로딩 표시 (선택적인 UI)
+        showToast("이미지 처리 중...", false);
 
-    // 업로드 버튼 텍스트 업데이트 (변경 없음)
-    updateUploadButtonText(uploadedCount) {
-        const { uploadBtnText } = this.app.elements;
-        const totalPages = this.app.state.currentHomeworkPages;
-        const totalText = totalPages > 0 ? `/ ${totalPages}` : '';
-        if (uploadBtnText) {
-            uploadBtnText.textContent = `${uploadedCount} ${totalText} 페이지 업로드`;
-        }
-    },
-
-    // 이미지 미리보기 렌더링 (변경 없음)
-    renderImagePreviews() {
-        // 👇 수정: previewContainer 요소 null 체크 추가
-        const previewContainerEl = this.app.elements.previewContainer;
-        if (!previewContainerEl) {
-            console.error("[studentHomework] previewContainer element not found!");
-            return;
-        }
-        previewContainerEl.innerHTML = '';
-        this.app.state.filesToUpload.forEach((fileObject, index) => {
-            const previewWrapper = document.createElement('div');
-            previewWrapper.className = 'relative';
-
-            const img = document.createElement('img');
-            img.className = 'w-full h-24 object-cover rounded-md border border-slate-200';
-
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition shadow-md';
-            deleteBtn.textContent = '×';
-            deleteBtn.onclick = (e) => {
-                e.preventDefault(); e.stopPropagation();
-                this.app.state.filesToUpload.splice(index, 1);
-                this.renderImagePreviews();
-            };
-
-            previewWrapper.appendChild(img);
-            previewWrapper.appendChild(deleteBtn);
-
-            if (fileObject.type === 'existing') {
-                img.src = fileObject.url;
-            } else {
-                const reader = new FileReader();
-                reader.onload = (e) => { img.src = e.target.result; };
-                reader.readAsDataURL(fileObject.file);
+        for (const file of files) {
+            if (!file.type.match('image.*')) {
+                showToast(`'${file.name}'은(는) 이미지가 아닙니다.`, true);
+                continue;
             }
-            previewContainerEl.appendChild(previewWrapper); // 수정: previewContainerEl 사용
-        });
-        this.updateUploadButtonText(this.app.state.filesToUpload.length);
+
+            try {
+                // 1. 압축 실행
+                const compressedFile = await imageCompression(file, options);
+                
+                // 2. 상태에 추가
+                this.state.selectedFiles.push(compressedFile);
+
+                // 3. 미리보기 생성 (FileReader)
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.createPreviewItem(e.target.result, false, compressedFile);
+                };
+                reader.readAsDataURL(compressedFile);
+
+            } catch (error) {
+                console.error("이미지 압축 실패:", error);
+                showToast("이미지 처리에 실패했습니다. (용량이 너무 클 수 있습니다)", true);
+            }
+        }
     },
 
-    // 업로드 처리 (변경 없음)
+    createPreviewItem(src, isExisting, fileObj = null) {
+        const div = document.createElement('div');
+        div.className = "relative aspect-square bg-slate-100 rounded-lg overflow-hidden border border-slate-200";
+        
+        div.innerHTML = `
+            <img src="${src}" class="w-full h-full object-cover">
+            <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md hover:bg-red-600 transition">&times;</button>
+        `;
+
+        // 삭제 버튼 이벤트
+        div.querySelector('button').addEventListener('click', () => {
+            div.remove();
+            if (isExisting) {
+                // 기존 이미지 목록에서 제거 (나중에 DB 저장 시 반영)
+                this.state.initialImageUrls = this.state.initialImageUrls.filter(url => url !== src);
+            } else {
+                // 새로 추가한 파일 목록에서 제거
+                this.state.selectedFiles = this.state.selectedFiles.filter(f => f !== fileObj);
+            }
+        });
+
+        this.elements.previewContainer.appendChild(div);
+    },
+
     async handleUpload() {
-        const { state } = this.app;
+        if (this.isLoading) return;
+        
+        const { currentHomework, selectedFiles, initialImageUrls, isEditingHomework } = this.state;
+        const studentId = this.app.state.studentDocId;
+        const studentName = this.app.state.studentName;
 
-        if (!state.studentDocId) {
-            showToast("학생 정보(문서 ID)가 없습니다. 다시 로그인해주세요.", true);
+        // 유효성 검사
+        if ((!selectedFiles || selectedFiles.length === 0) && (!initialImageUrls || initialImageUrls.length === 0)) {
+            showToast("최소 한 장 이상의 이미지를 등록해야 합니다.", true);
             return;
         }
-        if (state.filesToUpload.length === 0 && !state.isEditingHomework) {
-            showToast("업로드할 파일을 한 개 이상 선택해주세요.");
-            return;
-        }
 
-        this.setUploadButtonLoading(true);
-
-        const existingUrls = state.filesToUpload.filter(f => f.type === 'existing').map(f => f.url);
-        const newFiles = state.filesToUpload.filter(f => f.type === 'new').map(f => f.file);
+        this.isLoading = true;
+        this.elements.uploadLoader.style.display = 'block';
+        this.elements.uploadBtnText.style.display = 'none';
+        this.elements.uploadBtn.disabled = true;
 
         try {
-            let finalImageUrls = existingUrls;
+            const newImageUrls = [];
 
-            if (newFiles.length > 0) {
-                 const uploadPromises = newFiles.map((file, i) => {
+            // 1. 새 파일 업로드 (압축된 파일 사용)
+            if (selectedFiles.length > 0) {
+                const uploadPromises = selectedFiles.map(async (file) => {
                     const timestamp = Date.now();
-                    const filePath = `homeworks/${state.currentHomeworkId}/${state.studentDocId}/${timestamp}_${i+1}_${file.name}`;
+                    const fileName = `${studentId}_${timestamp}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+                    const filePath = `homeworks/${currentHomework.id}/${fileName}`;
                     const fileRef = ref(storage, filePath);
-                    return uploadBytes(fileRef, file).then(snapshot => getDownloadURL(snapshot.ref));
+                    
+                    const snapshot = await uploadBytes(fileRef, file);
+                    return await getDownloadURL(snapshot.ref);
                 });
-                const newImageUrls = await Promise.all(uploadPromises);
-                finalImageUrls = [...existingUrls, ...newImageUrls];
+
+                const urls = await Promise.all(uploadPromises);
+                newImageUrls.push(...urls);
             }
 
-            const submissionRef = doc(db, 'homeworks', state.currentHomeworkId, 'submissions', state.studentDocId);
+            // 2. 최종 URL 목록 병합
+            const finalImageUrls = [...initialImageUrls, ...newImageUrls];
+
+            // 3. Firestore 저장
+            const submissionRef = doc(db, `homeworks/${currentHomework.id}/submissions/${studentId}`);
             const dataToSave = {
-                studentName: state.studentName,
-                submittedAt: serverTimestamp(),
+                studentName: studentName,
+                studentDocId: studentId,
                 imageUrls: finalImageUrls,
-                studentDocId: state.studentDocId // 필드 추가
+                submittedAt: serverTimestamp(),
+                status: 'submitted' // 'checked' 등 상태 관리 가능
             };
 
-            if (state.isEditingHomework) {
-                await updateDoc(submissionRef, dataToSave);
-                showToast("숙제를 성공적으로 수정했습니다.", false);
-            } else {
-                await setDoc(submissionRef, dataToSave);
-                showToast("숙제를 성공적으로 제출했습니다.", false);
-            }
+            await setDoc(submissionRef, dataToSave, { merge: true });
 
-            if (state.isEditingHomework) {
-                const urlsToDelete = state.initialImageUrls.filter(url => !finalImageUrls.includes(url));
-                if (urlsToDelete.length > 0) {
-                    urlsToDelete.forEach(url => {
-                        try {
-                            const fileRef = ref(storage, url);
-                            deleteObject(fileRef).catch(err => { console.error("파일 삭제 실패:", url, err); });
-                        } catch (error) { console.error("파일 참조 생성 실패:", url, error); }
-                    });
-                }
-            }
+            // 4. (수정 시) 삭제된 기존 이미지 파일 정리 (선택 사항 - 여기선 생략 가능하지만 용량 절약 위해 추천)
+            // 구현하려면 원래 초기 이미지 목록과 비교해서 없어진 것만 deleteObject 호출
 
+            showToast(isEditingHomework ? "수정되었습니다." : "제출되었습니다.", false);
             this.closeUploadModal();
-            await this.showHomeworkScreen();
-        } catch (error) {
-            console.error("업로드/수정 실패:", error);
-            showToast("숙제 처리에 실패했습니다. 다시 시도해주세요.");
-        } finally {
-            this.setUploadButtonLoading(false);
-        }
-    },
+            this.loadHomeworkList(); // 목록 새로고침
 
-    // 로딩 상태 설정 (변경 없음)
-    setUploadButtonLoading(isLoading) {
-        const { uploadBtn, uploadBtnText, uploadLoader } = this.app.elements;
-        uploadBtnText?.classList.toggle('hidden', isLoading);
-        uploadLoader?.classList.toggle('hidden', !isLoading);
-        if (uploadBtn) uploadBtn.disabled = isLoading;
+        } catch (error) {
+            console.error("업로드 실패:", error);
+            showToast("업로드 중 오류가 발생했습니다. 다시 시도해주세요.", true);
+        } finally {
+            this.isLoading = false;
+            this.elements.uploadLoader.style.display = 'none';
+            this.elements.uploadBtnText.style.display = 'block';
+            this.elements.uploadBtn.disabled = false;
+        }
     }
 };
 

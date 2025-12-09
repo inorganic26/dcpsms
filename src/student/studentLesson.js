@@ -1,6 +1,6 @@
 // src/student/studentLesson.js
 
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
@@ -51,8 +51,90 @@ export const studentLesson = {
     return match ? match[1] : null;
   },
 
-  startSelectedLesson(lesson) {
-    const { elements } = this.app;
+  // ✨ 점수 입력 전용 (자기주도반)
+  async inputDailyTestScoreOnly(lesson) {
+    const { state } = this.app;
+    const studentId = state.studentDocId;
+    const subjectId = state.selectedSubject.id;
+    const lessonId = lesson.id;
+
+    try {
+        const submissionRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
+        
+        const docSnap = await getDoc(submissionRef);
+        let defaultVal = "";
+        if (docSnap.exists() && docSnap.data().dailyTestScore !== undefined) {
+            defaultVal = docSnap.data().dailyTestScore;
+        }
+
+        let scoreInput = null;
+        while (true) {
+            scoreInput = prompt(`[${lesson.title}]\n일일테스트 점수를 입력하세요:`, defaultVal);
+            if (scoreInput === null) return; 
+            
+            if (scoreInput.trim() !== "" && !isNaN(scoreInput)) {
+                break;
+            }
+            alert("숫자만 입력해주세요.");
+        }
+
+        await setDoc(submissionRef, {
+            studentName: state.studentName,
+            studentDocId: studentId,
+            dailyTestScore: Number(scoreInput),
+            lastAttemptAt: serverTimestamp()
+        }, { merge: true });
+
+        showToast(`'${lesson.title}' 점수(${scoreInput}점) 저장 완료!`, false);
+        
+    } catch (error) {
+        console.error("점수 저장 실패:", error);
+        showToast("점수 저장 중 오류가 발생했습니다.", true);
+    }
+  },
+
+  // ✨ 학습 시작 (현강반 점수 입력 포함)
+  async startSelectedLesson(lesson) {
+    const { elements, state } = this.app;
+    
+    // 현강반(live-lecture) 일일테스트 체크
+    if (state.classType === 'live-lecture') {
+        const studentId = state.studentDocId;
+        const subjectId = state.selectedSubject.id;
+        const lessonId = lesson.id;
+
+        try {
+            const submissionRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
+            const docSnap = await getDoc(submissionRef);
+            
+            if (!docSnap.exists() || docSnap.data().dailyTestScore === undefined) {
+                let scoreInput = null;
+                while (true) {
+                    scoreInput = prompt("📝 [필수] 일일 학습 테스트 점수를 입력해주세요 (숫자만):");
+                    if (scoreInput === null) return; 
+                    
+                    if (scoreInput.trim() !== "" && !isNaN(scoreInput)) {
+                        break;
+                    }
+                    alert("올바른 숫자를 입력해주세요.");
+                }
+
+                await setDoc(submissionRef, {
+                    studentName: state.studentName,
+                    studentDocId: studentId,
+                    dailyTestScore: Number(scoreInput),
+                    lastAttemptAt: serverTimestamp()
+                }, { merge: true });
+                
+                showToast("점수가 저장되었습니다. 학습을 시작합니다.", false);
+            }
+        } catch (error) {
+            console.error(error);
+            showToast("데이터 확인 중 오류가 발생했습니다.", true);
+            return;
+        }
+    }
+
     this.app.state.activeLesson = lesson;
     this.app.state.currentRevVideoIndex = 0;
 
@@ -67,7 +149,6 @@ export const studentLesson = {
         return;
     }
 
-    // 1. 영상 초기화
     const iframe = elements.video1Iframe;
     if (iframe) {
         iframe.style.display = 'block'; 
@@ -78,7 +159,6 @@ export const studentLesson = {
         if(oldMsg) oldMsg.remove();
     }
 
-    // 2. 퀴즈 버튼 잠금
     if (elements.startQuizBtn) {
         elements.startQuizBtn.style.display = "none"; 
         elements.startQuizBtn.textContent = "퀴즈 시작 (영상을 끝까지 봐주세요)";
@@ -87,7 +167,6 @@ export const studentLesson = {
     }
     if (elements.gotoRev1Btn) elements.gotoRev1Btn.style.display = "none";
 
-    // 3. 플레이어 감시
     this.loadVideoWithMonitoring('student-video1-iframe', (playerStatus) => {
         if (playerStatus === 0) { 
             this.onVideoEnded();
@@ -118,6 +197,7 @@ export const studentLesson = {
     }
   },
 
+  // ✨ 영상 종료 시 화면 가리기 & 버튼 활성화
   onVideoEnded() {
     const { elements } = this.app;
     
@@ -175,6 +255,7 @@ export const studentLesson = {
 
     if (type === 1) {
       const iframe = elements.video1Iframe;
+      
       iframe.style.display = "block"; 
       const container = iframe.parentNode;
       const oldMsg = container?.querySelector('.video-complete-msg');
@@ -298,7 +379,6 @@ export const studentLesson = {
     const scoreText = `${totalQuizQuestions} 문제 중 ${score} 문제를 맞혔습니다.`;
     const revUrls = activeLesson.video2RevUrls || [];
 
-    // ✨ [수정] 현강반인지 확인
     const isLiveClass = this.app.state.classType === 'live-lecture';
 
     if (this.app.elements.successMessage) this.app.elements.successMessage.style.display = pass ? "block" : "none";
@@ -307,21 +387,19 @@ export const studentLesson = {
     if (pass) {
         if(this.app.elements.resultScoreTextSuccess) this.app.elements.resultScoreTextSuccess.textContent = scoreText;
         
-        // ✨ [핵심 분기] 현강반(예습) vs 자기주도반(풀코스)
         const resultVideoContainer = this.app.elements.reviewVideo2Iframe?.parentNode?.parentNode;
         
         if (isLiveClass) {
-            // 현강반: 예습 완료 (영상2 숨김)
+            // 현강반: 완료 (영상2 숨김)
             if(resultVideoContainer) resultVideoContainer.style.display = 'none';
             if(this.app.elements.showRev2BtnSuccess) this.app.elements.showRev2BtnSuccess.style.display = 'none';
             
-            // 메시지 변경
             const successHeader = this.app.elements.successMessage.querySelector('h1');
             if(successHeader) successHeader.textContent = "🎉 예습 완료! 🎉";
             if(this.app.elements.resultScoreTextSuccess) this.app.elements.resultScoreTextSuccess.textContent = `${scoreText}\n오늘 수업 준비가 완료되었습니다.`;
 
         } else {
-            // 자기주도반: 기존대로 영상2 표시
+            // 자기주도반: 영상2 표시
             if(resultVideoContainer) resultVideoContainer.style.display = 'block';
             const successHeader = this.app.elements.successMessage.querySelector('h1');
             if(successHeader) successHeader.textContent = "🎉 퀴즈 통과! 🎉";
