@@ -5,16 +5,17 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { db, storage } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
-// ✨ [추가] 이미지 압축 라이브러리 임포트
+// 이미지 압축 라이브러리
 import imageCompression from 'browser-image-compression';
 
 const studentHomework = {
     isLoading: false,
     state: {
         currentHomework: null,
-        selectedFiles: [], // 압축된 파일들이 저장될 곳
-        initialImageUrls: [], 
-        isEditingHomework: false
+        selectedFiles: [], // 새로 추가할 파일 객체들
+        initialImageUrls: [], // 이미 서버에 있는 파일 URL들
+        isEditingHomework: false,
+        uploadLimit: 0 // ✨ 최대 업로드 가능 장수 (0이면 무제한)
     },
 
     init(app) {
@@ -44,10 +45,10 @@ const studentHomework = {
         this.elements.closeUploadModalBtn?.addEventListener('click', () => this.closeUploadModal());
         this.elements.cancelUploadBtn?.addEventListener('click', () => this.closeUploadModal());
         
-        // 파일 선택 시 처리
+        // 파일 선택 시
         this.elements.filesInput?.addEventListener('change', (e) => this.handleFileSelection(e));
         
-        // 업로드 버튼 클릭
+        // 업로드(제출/저장) 버튼 클릭
         this.elements.uploadBtn?.addEventListener('click', () => this.handleUpload());
     },
 
@@ -65,21 +66,16 @@ const studentHomework = {
         listContainer.innerHTML = '<div class="loader mx-auto my-4"></div>';
 
         try {
-            // 1. 해당 반의 숙제 목록 가져오기
-            const q = collection(db, 'homeworks'); // 필요 시 where('classId', '==', classId) 추가
+            const q = collection(db, 'homeworks'); 
             const snapshot = await getDocs(q);
             
             const homeworks = [];
             snapshot.forEach(doc => {
                 const data = doc.data();
-                // 해당 반의 숙제인지 확인 (classId 필드가 있다면)
                 if (!data.classId || data.classId === classId) {
                     homeworks.push({ id: doc.id, ...data });
                 }
             });
-
-            // 2. 제출 여부 확인을 위해 학생의 제출 기록 조회
-            // (최적화를 위해 개별 조회 대신 여기서 한 번에 처리하거나, UI 렌더링 시 조회)
             
             listContainer.innerHTML = '';
             if (homeworks.length === 0) {
@@ -87,7 +83,7 @@ const studentHomework = {
                 return;
             }
 
-            // 날짜순 정렬 (최신순)
+            // 마감일 내림차순 정렬
             homeworks.sort((a, b) => (b.dueDate || '').localeCompare(a.dueDate || ''));
 
             for (const hw of homeworks) {
@@ -110,9 +106,13 @@ const studentHomework = {
         const div = document.createElement('div');
         div.className = `p-4 border rounded-lg shadow-sm bg-white flex justify-between items-center ${isSubmitted ? 'border-green-200 bg-green-50' : ''}`;
         
+        const count = subData?.imageUrls?.length || 0;
         const statusBadge = isSubmitted 
-            ? `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold">제출 완료</span>` 
+            ? `<span class="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-bold">제출 완료 (${count}장)</span>` 
             : `<span class="bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full font-bold">미제출</span>`;
+
+        const btnText = isSubmitted ? '추가 제출 / 수정' : '제출하기';
+        const btnClass = isSubmitted ? 'btn-secondary' : 'btn-primary';
 
         div.innerHTML = `
             <div>
@@ -120,8 +120,8 @@ const studentHomework = {
                 <p class="text-sm text-slate-600 mt-1">마감: ${hw.dueDate || '없음'} | 범위: ${hw.pages || '-'}</p>
                 <div class="mt-2">${statusBadge}</div>
             </div>
-            <button class="btn-primary text-sm px-4 py-2 whitespace-nowrap ml-3">
-                ${isSubmitted ? '수정하기' : '제출하기'}
+            <button class="${btnClass} text-sm px-4 py-2 whitespace-nowrap ml-3 rounded-lg font-bold shadow-sm transition">
+                ${btnText}
             </button>
         `;
 
@@ -135,21 +135,31 @@ const studentHomework = {
     openUploadModal(homework, isEdit, submissionData) {
         this.state.currentHomework = homework;
         this.state.isEditingHomework = isEdit;
-        this.state.selectedFiles = []; // 초기화
+        this.state.selectedFiles = []; 
         this.state.initialImageUrls = isEdit && submissionData?.imageUrls ? submissionData.imageUrls : [];
 
-        // UI 초기화
+        // ✨ [핵심] 제한 장수 계산 (숫자만 추출)
+        // 예: "3" -> 3, "5쪽" -> 5, "p.10~12" -> NaN(0, 무제한)
+        const parsedLimit = parseInt(homework.pages);
+        this.state.uploadLimit = isNaN(parsedLimit) ? 0 : parsedLimit;
+
+        // UI 설정
         this.elements.uploadModalTitle.textContent = isEdit ? `숙제 수정: ${homework.title}` : `숙제 제출: ${homework.title}`;
-        this.elements.filesInput.value = ''; // 파일 선택 초기화
+        this.elements.filesInput.value = ''; 
         this.elements.previewContainer.innerHTML = '';
-        this.elements.uploadBtnText.textContent = isEdit ? '수정하기' : '제출하기';
+        this.elements.uploadBtnText.textContent = isEdit ? '저장하기' : '제출하기';
         this.elements.uploadModal.style.display = 'flex';
 
-        // 기존 제출된 이미지가 있다면 미리보기에 표시
-        if (isEdit && this.state.initialImageUrls.length > 0) {
+        // 기존 이미지 표시
+        if (this.state.initialImageUrls.length > 0) {
             this.state.initialImageUrls.forEach(url => {
-                this.createPreviewItem(url, true); // true = 기존 이미지(삭제 시 처리 다름)
+                this.createPreviewItem(url, true);
             });
+        }
+        
+        // 제한 안내 메시지 띄우기 (선택 사항)
+        if (this.state.uploadLimit > 0) {
+            showToast(`이 숙제는 최대 ${this.state.uploadLimit}장까지 제출 가능합니다.`);
         }
     },
 
@@ -157,22 +167,33 @@ const studentHomework = {
         this.elements.uploadModal.style.display = 'none';
         this.state.currentHomework = null;
         this.state.selectedFiles = [];
+        this.state.initialImageUrls = [];
+        this.state.uploadLimit = 0;
     },
 
-    // ✨ [수정] 파일 선택 시 압축 진행
+    // ✨ 파일 선택 핸들러 (개수 제한 + 압축)
     async handleFileSelection(e) {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
-        // 압축 옵션 설정 (최대 1MB 정도, 화면 너비 1920px 제한)
+        // 1. 개수 제한 체크
+        if (this.state.uploadLimit > 0) {
+            const currentTotal = this.state.initialImageUrls.length + this.state.selectedFiles.length;
+            if (currentTotal + files.length > this.state.uploadLimit) {
+                alert(`🚫 장수 초과!\n\n이 숙제는 최대 ${this.state.uploadLimit}장까지만 제출할 수 있습니다.\n(현재 ${currentTotal}장 + 추가 ${files.length}장)`);
+                e.target.value = ''; // 선택 초기화
+                return;
+            }
+        }
+
+        showToast(`${files.length}개 파일 처리 중...`, false);
+
+        // 2. 압축 설정 (0.7MB, 1280px)
         const options = {
-            maxSizeMB: 1,
-            maxWidthOrHeight: 1920,
+            maxSizeMB: 0.7,
+            maxWidthOrHeight: 1280,
             useWebWorker: true
         };
-
-        // 로딩 표시 (선택적인 UI)
-        showToast("이미지 처리 중...", false);
 
         for (const file of files) {
             if (!file.type.match('image.*')) {
@@ -181,13 +202,13 @@ const studentHomework = {
             }
 
             try {
-                // 1. 압축 실행
+                // 압축
                 const compressedFile = await imageCompression(file, options);
                 
-                // 2. 상태에 추가
+                // 목록 추가
                 this.state.selectedFiles.push(compressedFile);
 
-                // 3. 미리보기 생성 (FileReader)
+                // 미리보기
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     this.createPreviewItem(e.target.result, false, compressedFile);
@@ -195,29 +216,32 @@ const studentHomework = {
                 reader.readAsDataURL(compressedFile);
 
             } catch (error) {
-                console.error("이미지 압축 실패:", error);
-                showToast("이미지 처리에 실패했습니다. (용량이 너무 클 수 있습니다)", true);
+                console.error("압축 실패:", error);
+                showToast("이미지 처리 실패 (메모리 부족 가능성)", true);
             }
         }
+        
+        // 입력값 초기화 (같은 파일 다시 선택 가능하게)
+        e.target.value = '';
     },
 
     createPreviewItem(src, isExisting, fileObj = null) {
         const div = document.createElement('div');
-        div.className = "relative aspect-square bg-slate-100 rounded-lg overflow-hidden border border-slate-200";
+        div.className = "relative aspect-square bg-slate-100 rounded-lg overflow-hidden border border-slate-200 group";
         
         div.innerHTML = `
             <img src="${src}" class="w-full h-full object-cover">
-            <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md hover:bg-red-600 transition">&times;</button>
+            <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
+            <button class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md hover:bg-red-600 transition scale-90 hover:scale-100">
+                &times;
+            </button>
         `;
 
-        // 삭제 버튼 이벤트
         div.querySelector('button').addEventListener('click', () => {
             div.remove();
             if (isExisting) {
-                // 기존 이미지 목록에서 제거 (나중에 DB 저장 시 반영)
                 this.state.initialImageUrls = this.state.initialImageUrls.filter(url => url !== src);
             } else {
-                // 새로 추가한 파일 목록에서 제거
                 this.state.selectedFiles = this.state.selectedFiles.filter(f => f !== fileObj);
             }
         });
@@ -232,9 +256,8 @@ const studentHomework = {
         const studentId = this.app.state.studentDocId;
         const studentName = this.app.state.studentName;
 
-        // 유효성 검사
         if ((!selectedFiles || selectedFiles.length === 0) && (!initialImageUrls || initialImageUrls.length === 0)) {
-            showToast("최소 한 장 이상의 이미지를 등록해야 합니다.", true);
+            showToast("제출할 이미지가 없습니다.", true);
             return;
         }
 
@@ -246,11 +269,11 @@ const studentHomework = {
         try {
             const newImageUrls = [];
 
-            // 1. 새 파일 업로드 (압축된 파일 사용)
+            // 새 파일 업로드
             if (selectedFiles.length > 0) {
                 const uploadPromises = selectedFiles.map(async (file) => {
                     const timestamp = Date.now();
-                    const fileName = `${studentId}_${timestamp}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+                    const fileName = `${studentId}_${timestamp}_${Math.random().toString(36).substr(2, 5)}.jpg`;
                     const filePath = `homeworks/${currentHomework.id}/${fileName}`;
                     const fileRef = ref(storage, filePath);
                     
@@ -262,31 +285,28 @@ const studentHomework = {
                 newImageUrls.push(...urls);
             }
 
-            // 2. 최종 URL 목록 병합
+            // URL 합치기
             const finalImageUrls = [...initialImageUrls, ...newImageUrls];
 
-            // 3. Firestore 저장
+            // DB 저장
             const submissionRef = doc(db, `homeworks/${currentHomework.id}/submissions/${studentId}`);
             const dataToSave = {
                 studentName: studentName,
                 studentDocId: studentId,
                 imageUrls: finalImageUrls,
                 submittedAt: serverTimestamp(),
-                status: 'submitted' // 'checked' 등 상태 관리 가능
+                status: 'submitted' 
             };
 
             await setDoc(submissionRef, dataToSave, { merge: true });
-
-            // 4. (수정 시) 삭제된 기존 이미지 파일 정리 (선택 사항 - 여기선 생략 가능하지만 용량 절약 위해 추천)
-            // 구현하려면 원래 초기 이미지 목록과 비교해서 없어진 것만 deleteObject 호출
-
-            showToast(isEditingHomework ? "수정되었습니다." : "제출되었습니다.", false);
+            
+            showToast("제출 완료!", false);
             this.closeUploadModal();
-            this.loadHomeworkList(); // 목록 새로고침
+            this.loadHomeworkList(); 
 
         } catch (error) {
             console.error("업로드 실패:", error);
-            showToast("업로드 중 오류가 발생했습니다. 다시 시도해주세요.", true);
+            showToast("업로드 실패 (네트워크 확인 필요)", true);
         } finally {
             this.isLoading = false;
             this.elements.uploadLoader.style.display = 'none';

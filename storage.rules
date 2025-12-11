@@ -2,49 +2,29 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // =========================================
-    // 공통 헬퍼
-    // =========================================
+    // 1. 로그인 여부 확인 함수
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isAdminOrTeacher() {
-      // TODO: 실제 운영에서는 custom claims 로 역할 체크 강화
-      return isAuthenticated();
+    // 2. [숙제 파일] 학생이 사진 올리는 곳
+    // 경로: homeworks/숙제ID/파일명
+    match /homeworks/{homeworkId}/{fileName} {
+      allow read: if isAuthenticated();  // 로그인하면 볼 수 있음
+      allow write: if isAuthenticated(); // 로그인하면 올릴 수 있음
     }
 
-    // =========================================
-    // 시험 결과 리포트 PDF
-    // 경로는 reports/{classId}/{dateStr}/{fileName}
-    // =========================================
-    match /reports/{classId}/{allPaths=**} {
-      // 로그인한 사용자 읽기 허용
+    // 3. [성적표 리포트] 관리자가 올리는 곳
+    // 경로: reports/반ID/날짜/파일명
+    match /reports/{classId}/{date}/{fileName} {
       allow read: if isAuthenticated();
-      // 교사/관리자 쓰기 허용
-      allow write: if isAdminOrTeacher();
+      allow write: if isAuthenticated();
     }
-
-    // =========================================
-    // 숙제 제출 이미지
-    // 경로는 homeworks/{homeworkId}/{studentDocId}/{fileName}
-    // =========================================
-    match /homeworks/{homeworkId}/{studentDocId}/{fileName} {
-      // 읽기: 교사/관리자만 허용 (학생은 다운로드 필요 없음)
-      allow read: if isAdminOrTeacher();
-
-      // 쓰기/삭제: 교사/관리자 또는 해당 학생 문서 ID와 일치하는 사용자
-      // (주의: request.auth.uid가 학생 문서 ID와 같다는 보장은 없음!
-      //       가장 안전한 방법은 메타데이터에 studentDocId를 넣고 검증하는 것이지만 복잡함.
-      //       여기서는 로그인한 사용자가 쓰기 가능하도록 단순화 (보안 약화))
-      allow write: if isAuthenticated(); // 또는 isAdminOrTeacher()만 허용할 수도 있음
-    }
-
-    // =========================================
-    // 기본 거부
-    // =========================================
+    
+    // 4. [기타] 그 외 모든 파일 (기본 차단 또는 필요시 허용)
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read: if isAuthenticated();
+      allow write: if false; // 기본적으로 아무대나 쓰는건 막음
     }
   }
 }

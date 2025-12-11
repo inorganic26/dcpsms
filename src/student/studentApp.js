@@ -12,10 +12,8 @@ import {
 import { db, ensureAnonymousAuth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
-// ✨ 스타일 파일 임포트 (화면 깨짐 방지)
 import "../shared/style.css";
 
-// 모듈 임포트
 import { studentAuth } from "./studentAuth.js";
 import { studentLesson } from "./studentLesson.js";
 import studentHomework from "./studentHomework.js"; 
@@ -53,12 +51,9 @@ const StudentApp = {
     passScore: 4,
 
     currentRevVideoIndex: 0,
-    
-    // ✨ 점수 입력 모드 플래그 (일일테스트용)
     isScoreInputMode: false, 
   },
 
-  // 1. 초기화
   init() {
     console.log("[StudentApp.init] Initializing app...");
     if (this.isInitialized) {
@@ -75,7 +70,6 @@ const StudentApp = {
     console.log("[StudentApp.init] App initialization complete.");
   },
 
-  // 2. 과목 데이터 로드
   async loadAvailableSubjects() {
     console.log("[StudentApp.loadAvailableSubjects] called.");
     this.state.activeSubjects = []; 
@@ -126,7 +120,6 @@ const StudentApp = {
     }
   },
 
-  // 3. 요소 캐싱
   cacheElements() {
     this.elements = {
       loadingScreen: document.getElementById("student-loading-screen"),
@@ -137,23 +130,17 @@ const StudentApp = {
       loginBtn: document.getElementById("student-login-btn"),
       subjectSelectionScreen: document.getElementById("student-subject-selection-screen"),
       welcomeMessage: document.getElementById("student-welcome-message"),
-      
-      // 메인 메뉴 카드들
       startLessonCard: document.getElementById("student-start-lesson-card"),
-      dailyTestCard: document.getElementById("student-daily-test-card"), // ✨ 추가됨
+      dailyTestCard: document.getElementById("student-daily-test-card"),
       subjectsList: document.getElementById("student-subjects-list"),
       gotoClassVideoCard: document.getElementById("student-goto-class-video-card"),
       gotoQnaVideoCard: document.getElementById("student-goto-qna-video-card"),
       gotoHomeworkCard: document.getElementById("student-goto-homework-card"),
       gotoReportCard: document.getElementById("student-goto-report-card"),
-      
-      // 학습 목록 화면
       lessonSelectionScreen: document.getElementById("student-lesson-selection-screen"),
       selectedSubjectTitle: document.getElementById("student-selected-subject-title"),
       lessonsList: document.getElementById("student-lessons-list"),
       backToSubjectsBtn: document.getElementById("student-back-to-subjects-btn"),
-      
-      // 나머지 화면 요소들...
       backToLessonsFromVideoBtn: document.getElementById("student-back-to-lessons-from-video-btn"),
       homeworkScreen: document.getElementById('student-homework-screen'),
       homeworkList: document.getElementById('student-homework-list'),
@@ -210,31 +197,26 @@ const StudentApp = {
     };
   },
 
-  // 4. 이벤트 리스너
   addEventListeners() {
     this.elements.backToSubjectsBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToLessonsFromVideoBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     this.elements.backToLessonsFromResultBtn?.addEventListener('click', () => this.showLessonSelectionScreen());
     this.elements.backToSubjectsFromHomeworkBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
 
-    // ✨ [신규] 일일테스트 카드 클릭 시 -> 점수 입력 모드 활성화
     this.elements.dailyTestCard?.addEventListener('click', () => {
-        this.state.isScoreInputMode = true; // 점수 입력 모드 ON
-        this.showSubjectSelectionScreen(true); // 과목 목록 다시 그림 (점수 모드 유지)
+        this.state.isScoreInputMode = true;
+        this.showSubjectSelectionScreen(true);
     });
 
-    // 과목 카드 클릭 시
     this.elements.subjectsList?.addEventListener('click', (e) => {
         if (e.target.closest('.subject-btn')) {
             const btn = e.target.closest('.subject-btn');
             const subjectId = btn.dataset.id;
             const subjectName = btn.dataset.name;
-            // 점수 모드 여부는 selectSubjectAndShowLessons 내부에서 처리
             this.selectSubjectAndShowLessons({ id: subjectId, name: subjectName });
         }
     });
 
-    // 기타 메뉴 카드 클릭 리스너
     this.elements.gotoClassVideoCard?.addEventListener('click', () => this.showClassVideoDateScreen());
     this.elements.gotoQnaVideoCard?.addEventListener('click', () => this.showQnaVideoDateScreen());
     this.elements.gotoHomeworkCard?.addEventListener('click', () => {
@@ -245,7 +227,6 @@ const StudentApp = {
     });
     this.elements.gotoReportCard?.addEventListener('click', () => this.showReportListScreen());
 
-    // 뒤로가기 버튼들
     this.elements.backToSubjectsFromClassVideoBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToSubjectsFromQnaBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
     this.elements.backToVideoDatesBtn?.addEventListener('click', () => this.backToVideoDatesScreen());
@@ -253,7 +234,6 @@ const StudentApp = {
     this.elements.backToMenuFromReportListBtn?.addEventListener('click', () => this.showSubjectSelectionScreen());
   },
 
-  // 5. 화면 전환 헬퍼
   showScreen(screenEl) {
     const screens = document.querySelectorAll(".student-screen");
     screens.forEach((el) => { if (el) el.style.display = "none"; });
@@ -261,52 +241,45 @@ const StudentApp = {
     else console.warn("Target screen element is null.");
   },
 
-  // 6. 메인 화면 (과목 선택) 표시
   showSubjectSelectionScreen(keepMode = false) {
-    // 일반 메뉴 진입 시 점수 모드 해제
     if (!keepMode) this.state.isScoreInputMode = false;
 
     const welcomeEl = this.elements.welcomeMessage;
     if (welcomeEl) { 
         welcomeEl.textContent = `${this.state.className || ''} ${this.state.studentName || ''}님, 환영합니다!`; 
     }
-    this.renderSubjectList(); // 리스트 렌더링 호출
+    this.renderSubjectList(); 
     
     const classType = this.state.classType;
     const hasSubjects = this.state.activeSubjects.length > 0;
 
-    // (1) 학습 시작 카드 (현강/자습 공통)
+    // 1. 학습 시작 카드 (예습용)
     if(this.elements.startLessonCard) {
         if ((classType === 'self-directed' || classType === 'live-lecture') && hasSubjects) {
-            this.elements.startLessonCard.style.display = 'block'; // flex -> block (디자인 변경)
+            this.elements.startLessonCard.style.display = 'block'; 
             
             const titleEl = document.getElementById('student-start-lesson-title');
             if (titleEl) {
-                // 현강반이면 '예습 하기', 아니면 '과목별 학습 시작'
                 titleEl.textContent = (classType === 'live-lecture') ? "오늘의 예습 하기" : "과목별 학습 시작";
             }
             
-            // 이 카드를 누르면 일반 학습 모드 (점수 모드 끔)
             this.elements.startLessonCard.onclick = () => { 
                 this.state.isScoreInputMode = false; 
-                // subjectsList는 이미 펼쳐져 있으므로 별도 동작 불필요 (클릭 시 자동 처리)
             };
         } else {
             this.elements.startLessonCard.style.display = 'none';
         }
     }
 
-    // (2) ✨ 일일테스트 카드 (자기주도반 전용)
+    // 2. ✨ 일일테스트 카드 (현강반도 보이게 수정됨)
     if(this.elements.dailyTestCard) {
-        // 자기주도반이고 과목이 있을 때만 표시
-        if (classType === 'self-directed' && hasSubjects) {
-            this.elements.dailyTestCard.style.display = 'block'; // flex -> block
+        if ((classType === 'self-directed' || classType === 'live-lecture') && hasSubjects) {
+            this.elements.dailyTestCard.style.display = 'block'; 
         } else {
             this.elements.dailyTestCard.style.display = 'none';
         }
     }
 
-    // 나머지 메뉴 카드들
     if(this.elements.gotoClassVideoCard) this.elements.gotoClassVideoCard.style.display = classType === 'live-lecture' ? 'flex' : 'none';
     if(this.elements.gotoQnaVideoCard) this.elements.gotoQnaVideoCard.style.display = 'flex';
     if(this.elements.gotoHomeworkCard) this.elements.gotoHomeworkCard.style.display = 'flex';
@@ -315,7 +288,6 @@ const StudentApp = {
     this.showScreen(this.elements.subjectSelectionScreen);
   },
 
-  // 7. ✨ [디자인 적용] 과목 목록 렌더링 (예쁜 카드 스타일)
   renderSubjectList() {
     const listEl = this.elements.subjectsList;
     if (!listEl) return;
@@ -328,14 +300,12 @@ const StudentApp = {
                 <span class="material-icons-round text-slate-300 text-4xl mb-2">sentiment_dissatisfied</span>
                 <p class="text-sm text-slate-400">수강 중인 과목이 없습니다.</p>
             </div>`; 
-        // 과목 없으면 카드 자체를 숨김
         if (this.elements.startLessonCard) this.elements.startLessonCard.style.display = 'none'; 
         return; 
     }
     
     this.state.activeSubjects.forEach(subject => {
       const button = document.createElement('button'); 
-      // Tailwind CSS 적용된 버튼 스타일
       button.className = 'subject-btn w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between hover:bg-white hover:border-indigo-200 hover:shadow-md transition-all group mb-2';
       button.dataset.id = subject.id; 
       button.dataset.name = subject.name;
@@ -354,11 +324,9 @@ const StudentApp = {
     });
   },
 
-  // 8. 과목 선택 후 학습 목록 로드
   async selectSubjectAndShowLessons(subject) {
     this.state.selectedSubject = subject;
     
-    // 제목 변경 (점수 입력 모드인지 확인)
     const titleText = this.state.isScoreInputMode 
         ? `[점수 입력] 단원을 선택하세요` 
         : `${subject.name} 학습 목록`;
@@ -376,7 +344,6 @@ const StudentApp = {
     this.showScreen(this.elements.lessonSelectionScreen);
   },
 
-  // 9. ✨ [디자인 적용] 학습 목록 렌더링
   async loadLessonsForSubject(subjectId) {
     const listEl = this.elements.lessonsList; if (!listEl) return; 
     
@@ -405,19 +372,15 @@ const StudentApp = {
       
       this.state.lessons.forEach((lesson, index) => {
         const button = document.createElement('button'); 
-        // 예쁜 리스트 스타일
         button.className = 'w-full p-4 bg-white border border-slate-100 rounded-2xl mb-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all flex items-center gap-4 text-left group';
         
-        // 인덱스 번호 (01, 02...)
         const idx = (index + 1).toString().padStart(2, '0');
         
-        // 모드에 따른 아이콘/텍스트 설정
         let actionIcon = 'play_circle';
         let actionText = '학습하기';
         let iconColor = 'text-indigo-500';
         let bgHover = 'group-hover:bg-indigo-50';
 
-        // 점수 입력 모드라면
         if (this.state.isScoreInputMode) {
             actionIcon = 'edit';
             actionText = '점수 입력';
@@ -438,7 +401,6 @@ const StudentApp = {
             </div>
         `;
         
-        // 클릭 이벤트 분기
         if (this.state.isScoreInputMode) {
             button.onclick = () => studentLesson.inputDailyTestScoreOnly(lesson);
         } else {
@@ -458,7 +420,6 @@ const StudentApp = {
       this.showScreen(this.elements.lessonSelectionScreen);
   },
 
-  // 10. 영상 목록 (날짜별) 로직
   async showClassVideoDateScreen() { await this.loadAndRenderVideoDates("class"); this.showScreen(this.elements.classVideoDateScreen); },
   async showQnaVideoDateScreen() { await this.loadAndRenderVideoDates("qna"); this.showScreen(this.elements.qnaVideoDateScreen); },
   backToVideoDatesScreen() { if (this.state.currentVideoType === "qna") this.showScreen(this.elements.qnaVideoDateScreen); else this.showScreen(this.elements.classVideoDateScreen); },
@@ -544,7 +505,6 @@ const StudentApp = {
   },
 };
 
-// 앱 시작
 document.addEventListener("DOMContentLoaded", () => {
   console.log("[StudentApp] Starting...");
   ensureAnonymousAuth((user) => {

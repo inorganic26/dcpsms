@@ -51,7 +51,7 @@ export const studentLesson = {
     return match ? match[1] : null;
   },
 
-  // ✨ 점수 입력 전용 (자기주도반)
+  // ✨ 점수 입력 함수 (독립형)
   async inputDailyTestScoreOnly(lesson) {
     const { state } = this.app;
     const studentId = state.studentDocId;
@@ -60,7 +60,6 @@ export const studentLesson = {
 
     try {
         const submissionRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
-        
         const docSnap = await getDoc(submissionRef);
         let defaultVal = "";
         if (docSnap.exists() && docSnap.data().dailyTestScore !== undefined) {
@@ -93,47 +92,11 @@ export const studentLesson = {
     }
   },
 
-  // ✨ 학습 시작 (현강반 점수 입력 포함)
-  async startSelectedLesson(lesson) {
-    const { elements, state } = this.app;
+  // ✨ 영상 재생 함수 (강제 점수 입력 제거됨)
+  startSelectedLesson(lesson) {
+    const { elements } = this.app;
     
-    // 현강반(live-lecture) 일일테스트 체크
-    if (state.classType === 'live-lecture') {
-        const studentId = state.studentDocId;
-        const subjectId = state.selectedSubject.id;
-        const lessonId = lesson.id;
-
-        try {
-            const submissionRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
-            const docSnap = await getDoc(submissionRef);
-            
-            if (!docSnap.exists() || docSnap.data().dailyTestScore === undefined) {
-                let scoreInput = null;
-                while (true) {
-                    scoreInput = prompt("📝 [필수] 일일 학습 테스트 점수를 입력해주세요 (숫자만):");
-                    if (scoreInput === null) return; 
-                    
-                    if (scoreInput.trim() !== "" && !isNaN(scoreInput)) {
-                        break;
-                    }
-                    alert("올바른 숫자를 입력해주세요.");
-                }
-
-                await setDoc(submissionRef, {
-                    studentName: state.studentName,
-                    studentDocId: studentId,
-                    dailyTestScore: Number(scoreInput),
-                    lastAttemptAt: serverTimestamp()
-                }, { merge: true });
-                
-                showToast("점수가 저장되었습니다. 학습을 시작합니다.", false);
-            }
-        } catch (error) {
-            console.error(error);
-            showToast("데이터 확인 중 오류가 발생했습니다.", true);
-            return;
-        }
-    }
+    // -- [삭제된 부분] 현강반 점수 강제 입력 로직 --
 
     this.app.state.activeLesson = lesson;
     this.app.state.currentRevVideoIndex = 0;
@@ -197,7 +160,6 @@ export const studentLesson = {
     }
   },
 
-  // ✨ 영상 종료 시 화면 가리기 & 버튼 활성화
   onVideoEnded() {
     const { elements } = this.app;
     
