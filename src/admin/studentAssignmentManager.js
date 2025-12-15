@@ -3,6 +3,7 @@
 import { doc, writeBatch } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
+// ✨ 경로 확인: ../store/ 가 맞습니다.
 import { getStudents } from "../store/studentStore.js";
 import { getClasses } from "../store/classStore.js";
 
@@ -11,14 +12,26 @@ export const studentAssignmentManager = {
         viewContainer: null,
     },
     state: {
-        leftClassId: 'unassigned', // 왼쪽 (보내는 곳)
-        rightClassId: '',          // 오른쪽 (받는 곳)
-        checkedStudentIds: new Set(), // 체크된 학생 ID들
+        leftClassId: 'unassigned',
+        rightClassId: '',
+        checkedStudentIds: new Set(),
     },
 
     init(app) {
         this.app = app;
         this.elements.viewContainer = document.getElementById('admin-student-assignment-view');
+
+        // ✨ [핵심 추가] 학생 데이터가 변경되면 자동으로 리스트 새로고침
+        document.addEventListener('studentsUpdated', () => {
+            console.log("학생 목록 변경 감지 -> 화면 갱신");
+            this.refreshLists();
+        });
+        
+        // ✨ [핵심 추가] 반 데이터가 변경되어도 새로고침 (반 이름 변경 등 반영)
+        document.addEventListener('classesUpdated', () => {
+            this.populateSelects(); // 드롭다운 갱신
+            this.refreshLists();    // 리스트 갱신
+        });
     },
 
     resetView() {
@@ -28,9 +41,9 @@ export const studentAssignmentManager = {
         this.refreshLists();
     },
     
-    populateClassSelects() {},
+    // ... (이하 populateClassSelects, renderLayout 등 나머지 코드는 기존과 동일하므로 유지) ...
+    // 아래 코드는 기존 코드 그대로 두시면 됩니다. (혹시 필요하면 이전에 드린 전체 코드를 참고하세요)
 
-    // 1. 레이아웃 그리기 (체크박스 & 이동 버튼 추가)
     renderLayout() {
         if (!this.elements.viewContainer) return;
 
@@ -63,7 +76,7 @@ export const studentAssignmentManager = {
                 </div>
 
                 <div class="flex md:flex-col justify-center items-center gap-2 p-2">
-                    <button id="btn-move-right" class="btn-primary flex items-center justify-center gap-1 py-3 px-4 shadow-lg w-full md:w-auto">
+                    <button id="btn-move-right" class="btn-primary flex items-center justify-center gap-1 py-3 px-4 shadow-lg w-full md:w-auto transform active:scale-95 transition">
                         <span>이동</span>
                         <span class="material-icons">arrow_forward</span>
                     </button>
@@ -89,17 +102,15 @@ export const studentAssignmentManager = {
             ?.addEventListener('click', () => this.app.showView('dashboard'));
     },
 
-    // 2. 이벤트 연결
     bindEvents() {
         const leftSelect = document.getElementById('assignment-left-select');
         const rightSelect = document.getElementById('assignment-right-select');
         const moveBtn = document.getElementById('btn-move-right');
         const checkAll = document.getElementById('check-all-left');
 
-        // 반 변경 시
         leftSelect?.addEventListener('change', (e) => {
             this.state.leftClassId = e.target.value;
-            this.state.checkedStudentIds.clear(); // 반 바꾸면 선택 초기화
+            this.state.checkedStudentIds.clear(); 
             if(checkAll) checkAll.checked = false;
             this.renderLeftList();
         });
@@ -109,10 +120,8 @@ export const studentAssignmentManager = {
             this.renderRightList();
         });
 
-        // 이동 버튼 클릭 시
         moveBtn?.addEventListener('click', () => this.handleBulkMove());
 
-        // 전체 선택 체크박스
         checkAll?.addEventListener('change', (e) => {
             const isChecked = e.target.checked;
             const students = this.getStudentsInClass(this.state.leftClassId);
@@ -128,9 +137,10 @@ export const studentAssignmentManager = {
 
     refreshLists() {
         const classes = getClasses();
-        if (!this.state.rightClassId && classes.length > 0) {
+        if ((!this.state.rightClassId || !classes.find(c => c.id === this.state.rightClassId)) && classes.length > 0) {
             this.state.rightClassId = classes[0].id;
         }
+
         this.populateSelects();
         this.renderLeftList();
         this.renderRightList();
@@ -162,16 +172,21 @@ export const studentAssignmentManager = {
 
     getStudentsInClass(classId) {
         const allStudents = getStudents();
+        const allClasses = getClasses();
+        const activeClassIds = new Set(allClasses.map(c => c.id));
+
         let targetStudents = [];
+
         if (classId === 'unassigned') {
-            targetStudents = allStudents.filter(s => !s.classId);
+            targetStudents = allStudents.filter(s => 
+                !s.classId || !activeClassIds.has(s.classId)
+            );
         } else {
             targetStudents = allStudents.filter(s => s.classId === classId);
         }
         return targetStudents.sort((a, b) => a.name.localeCompare(b.name));
     },
 
-    // 왼쪽 리스트 (체크박스 있음)
     renderLeftList() {
         const listEl = document.getElementById('assignment-left-list');
         const countEl = document.getElementById('assignment-left-count');
@@ -188,18 +203,23 @@ export const studentAssignmentManager = {
 
         students.forEach(student => {
             const isChecked = this.state.checkedStudentIds.has(student.id);
+            const allClasses = getClasses();
+            const isOrphan = student.classId && !allClasses.find(c => c.id === student.classId);
+            const orphanBadge = isOrphan ? `<span class="text-[10px] bg-red-100 text-red-600 px-1 rounded ml-1">삭제된 반 소속</span>` : '';
+
             const div = document.createElement('div');
             div.className = `p-3 border rounded-lg flex items-center gap-3 cursor-pointer transition ${isChecked ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'bg-white border-slate-200 hover:bg-slate-50'}`;
             
             div.innerHTML = `
                 <input type="checkbox" class="w-5 h-5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300" ${isChecked ? 'checked' : ''}>
                 <div class="flex-grow">
-                    <p class="font-bold text-slate-700 text-sm">${student.name}</p>
+                    <p class="font-bold text-slate-700 text-sm flex items-center">
+                        ${student.name} ${orphanBadge}
+                    </p>
                     <p class="text-xs text-slate-400 font-mono">${student.phone?.slice(-4) || ''}</p>
                 </div>
             `;
 
-            // 클릭 시 체크 토글
             div.addEventListener('click', (e) => {
                 if (e.target.tagName !== 'INPUT') {
                     const checkbox = div.querySelector('input');
@@ -222,7 +242,6 @@ export const studentAssignmentManager = {
         });
     },
 
-    // 오른쪽 리스트 (보여주기용)
     renderRightList() {
         const listEl = document.getElementById('assignment-right-list');
         const countEl = document.getElementById('assignment-right-count');
@@ -251,7 +270,6 @@ export const studentAssignmentManager = {
         });
     },
 
-    // ✨ 일괄 이동 처리 함수
     async handleBulkMove() {
         const selectedIds = Array.from(this.state.checkedStudentIds);
         const targetClassId = this.state.rightClassId;
@@ -262,19 +280,17 @@ export const studentAssignmentManager = {
             return;
         }
 
-        if (sourceClassId === targetClassId) {
+        if (sourceClassId === targetClassId && sourceClassId !== 'unassigned') {
             showToast("보내는 반과 받는 반이 같습니다.", true);
             return;
         }
 
-        // 반 이름 찾기 (메시지용)
         const targetClassName = targetClassId === 'unassigned' 
             ? '미배정 상태' 
             : getClasses().find(c => c.id === targetClassId)?.name || '해당 반';
 
         if (!confirm(`선택한 ${selectedIds.length}명의 학생을\n'${targetClassName}'(으)로 이동하시겠습니까?`)) return;
 
-        // DB 일괄 업데이트 (Batch 사용)
         const batch = writeBatch(db);
         const newClassIdValue = targetClassId === 'unassigned' ? null : targetClassId;
 
@@ -287,13 +303,15 @@ export const studentAssignmentManager = {
             await batch.commit();
             showToast(`${selectedIds.length}명 이동 완료!`, false);
             
-            // 상태 초기화 및 화면 갱신
+            // 이동 후 선택 초기화
             this.state.checkedStudentIds.clear();
             const checkAll = document.getElementById('check-all-left');
             if(checkAll) checkAll.checked = false;
             
-            // Store 자동 갱신 대기 후 리렌더링
-            setTimeout(() => this.refreshLists(), 300);
+            // ✨ 1번 파일(studentStore.js)이 잘 작동한다면, 
+            // 여기서 수동으로 refreshLists()를 부르지 않아도 자동으로 갱신됩니다.
+            // 하지만 안전을 위해 한 번 더 호출해도 상관없습니다.
+            setTimeout(() => this.refreshLists(), 500);
 
         } catch (error) {
             console.error("일괄 이동 실패:", error);

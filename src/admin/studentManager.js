@@ -1,263 +1,226 @@
 // src/admin/studentManager.js
-import { 
-    collection, 
-    getDocs, 
-    doc, 
-    deleteDoc, 
-    updateDoc, 
-    query, 
-    orderBy, 
-    limit, 
-    startAfter 
-} from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import app, { db } from "../shared/firebase.js";
+
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, orderBy, getDocs } from "firebase/firestore";
+import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
-// ✨ Store 임포트
-import { setStudents, getStudents, STUDENT_EVENTS } from "../store/studentStore.js";
+import { getClasses } from "../store/classStore.js"; 
+
+// ✨ [수정됨] setStudents 제거 (이제 필요 없음)
+import { getStudents } from "../store/studentStore.js"; 
 
 export const studentManager = {
-  editingStudentId: null,
-  
-  // 페이지네이션 상태
-  pageSize: 10,
-  currentPage: 1,
-  pageCursors: [], 
-  isLoading: false,
-  elements: {},
+    app: null,
+    elements: {},
+    state: {
+        students: [],
+    },
 
-  init(adminAppInstance) {
-    // this.app = adminAppInstance; // ❌ 의존성 제거
-    this.elements = adminAppInstance.elements;
+    init(app) {
+        this.app = app;
+        this.elements = app.elements;
+        this.addEventListeners();
 
-    this.elements.addStudentBtn?.addEventListener("click", () => this.addNewStudent());
-    this.elements.studentsList?.addEventListener("click", (e) => this.handleListClick(e));
-    this.elements.saveStudentEditBtn?.addEventListener("click", () => this.saveStudentChanges());
-    this.elements.closeEditStudentModalBtn?.addEventListener("click", () => this.closeEditModal());
-    this.elements.cancelEditStudentBtn?.addEventListener("click", () => this.closeEditModal());
+        // 1. 초기 목록 로드
+        this.renderStudentList();
 
-    this.createPaginationControls();
-    
-    // ✨ Store 변경 감지 -> 화면 갱신
-    document.addEventListener(STUDENT_EVENTS.UPDATED, () => {
-        const currentData = getStudents();
-        this.renderList(currentData);
-    });
+        // 2. ✨ 학생 데이터가 변경되면(추가/삭제 등) 자동으로 화면 갱신
+        document.addEventListener('studentsUpdated', () => {
+            console.log("학생 목록 변경 감지 -> 테이블 갱신");
+            this.renderStudentList();
+        });
 
-    this.loadPage('first'); 
-  },
+        // 3. 반 정보가 변경되어도(반 이름 수정 등) 학생 목록 갱신 필요
+        document.addEventListener('classesUpdated', () => {
+            this.renderStudentList();
+        });
+    },
 
-  createPaginationControls() {
-      if (document.getElementById('pagination-controls')) return;
-      
-      const container = document.createElement('div');
-      container.id = 'pagination-controls';
-      container.className = 'flex justify-between items-center mt-4 gap-2';
+    addEventListeners() {
+        this.elements.addStudentBtn?.addEventListener('click', () => this.createStudent());
+        this.elements.searchStudentInput?.addEventListener('input', () => this.renderStudentList()); // 검색 기능
+        
+        // 수정 모달
+        this.elements.closeEditStudentModalBtn?.addEventListener('click', () => this.closeEditModal());
+        this.elements.cancelEditStudentBtn?.addEventListener('click', () => this.closeEditModal());
+        this.elements.saveStudentEditBtn?.addEventListener('click', () => this.updateStudent());
+    },
 
-      const prevBtn = document.createElement('button');
-      prevBtn.className = 'px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed font-medium';
-      prevBtn.textContent = '< 이전';
-      prevBtn.disabled = true;
-      prevBtn.addEventListener('click', () => this.loadPage('prev'));
+    // 학생 생성 (DB에 추가)
+    async createStudent() {
+        const nameInput = this.elements.newStudentNameInput;
+        const phoneInput = this.elements.newStudentPhoneInput;
+        const classSelect = this.elements.newStudentClassSelect; // (HTML에 있다면)
 
-      const resetBtn = document.createElement('button');
-      resetBtn.className = 'px-3 py-2 text-sm text-slate-500 hover:text-slate-700 underline';
-      resetBtn.textContent = '처음으로';
-      resetBtn.addEventListener('click', () => this.loadPage('first'));
+        const name = nameInput.value.trim();
+        const phone = phoneInput.value.trim();
+        const classId = classSelect ? classSelect.value : null;
 
-      const nextBtn = document.createElement('button');
-      nextBtn.className = 'px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 disabled:opacity-50 disabled:cursor-not-allowed font-medium';
-      nextBtn.textContent = '다음 >';
-      nextBtn.addEventListener('click', () => this.loadPage('next'));
+        if (!name || !phone) {
+            showToast("이름과 전화번호를 입력하세요.", true);
+            return;
+        }
 
-      container.appendChild(prevBtn);
-      container.appendChild(resetBtn);
-      container.appendChild(nextBtn);
-      
-      this.elements.studentsList?.parentNode?.appendChild(container);
-      
-      this.prevBtn = prevBtn;
-      this.nextBtn = nextBtn;
-  },
+        try {
+            await addDoc(collection(db, "students"), {
+                name,
+                phone,
+                classId: classId === "unassigned" ? null : classId,
+                createdAt: new Date()
+            });
+            
+            showToast("학생이 등록되었습니다.", false);
+            nameInput.value = "";
+            phoneInput.value = "";
+            if(classSelect) classSelect.value = "";
+            
+            // Store가 자동 감지하므로 수동 갱신 불필요
+        } catch (error) {
+            console.error(error);
+            showToast("등록 실패", true);
+        }
+    },
 
-  async loadPage(direction) {
-    if (this.isLoading) return;
-    this.isLoading = true;
-    if(this.elements.studentsList) this.elements.studentsList.style.opacity = '0.5';
+    // 학생 목록 렌더링 (화면 그리기)
+    renderStudentList() {
+        const listEl = this.elements.studentsList; // tbody
+        const searchInput = this.elements.searchStudentInput;
+        if (!listEl) return;
 
-    try {
-      let q;
-      const studentsRef = collection(db, "students");
-      
-      if (direction === 'first') {
-          this.currentPage = 1;
-          this.pageCursors = [];
-          q = query(studentsRef, orderBy("name"), limit(this.pageSize));
-      } else if (direction === 'next') {
-          const lastDoc = this.pageCursors[this.currentPage - 1];
-          if (!lastDoc) { this.isLoading = false; return; }
-          q = query(studentsRef, orderBy("name"), startAfter(lastDoc), limit(this.pageSize));
-      } else if (direction === 'prev') {
-          if (this.currentPage <= 1) { this.isLoading = false; return; }
-          const targetPage = this.currentPage - 1;
-          const cursorIndex = targetPage - 2;
-          if (cursorIndex < 0) {
-              q = query(studentsRef, orderBy("name"), limit(this.pageSize));
-          } else {
-              const prevCursor = this.pageCursors[cursorIndex];
-              q = query(studentsRef, orderBy("name"), startAfter(prevCursor), limit(this.pageSize));
-          }
-      }
+        // Store에서 최신 데이터 가져오기
+        let students = getStudents(); 
+        const classes = getClasses();
 
-      const snapshot = await getDocs(q);
-      
-      if (snapshot.empty) {
-          if (direction === 'first') {
-              this.elements.studentsList.innerHTML = '<p class="text-sm text-slate-400">등록된 학생이 없습니다.</p>';
-              this.updateButtons(0);
-          } else {
-              showToast("더 이상 데이터가 없습니다.");
-              this.nextBtn.disabled = true;
-          }
-          return;
-      }
+        // 검색어 필터링
+        if (searchInput && searchInput.value.trim() !== "") {
+            const keyword = searchInput.value.trim().toLowerCase();
+            students = students.filter(s => 
+                s.name.toLowerCase().includes(keyword) || 
+                (s.phone && s.phone.includes(keyword))
+            );
+        }
 
-      const newStudents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // ✨ Store 업데이트
-      setStudents(newStudents);
+        listEl.innerHTML = "";
 
-      if (direction === 'next') {
-          if (this.pageCursors.length < this.currentPage) {
-               this.pageCursors.push(snapshot.docs[snapshot.docs.length - 1]);
-          } else {
-               this.pageCursors[this.currentPage - 1] = snapshot.docs[snapshot.docs.length - 1];
-          }
-          this.currentPage++;
-      } else if (direction === 'prev') {
-          this.currentPage--;
-      } else { 
-          this.currentPage = 1;
-          this.pageCursors = [snapshot.docs[snapshot.docs.length - 1]];
-      }
+        if (students.length === 0) {
+            listEl.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-400">등록된 학생이 없습니다.</td></tr>';
+            return;
+        }
 
-      this.updateButtons(snapshot.docs.length);
+        students.forEach(student => {
+            const tr = document.createElement("tr");
+            tr.className = "hover:bg-slate-50 border-b border-slate-100 transition";
 
-    } catch (error) {
-      console.error("학생 목록 로딩 실패:", error);
-      showToast("데이터를 불러오지 못했습니다.", true);
-    } finally {
-      this.isLoading = false;
-      if(this.elements.studentsList) this.elements.studentsList.style.opacity = '1';
+            // 반 이름 찾기
+            let className = "-";
+            let classBadgeColor = "bg-slate-100 text-slate-500";
+            
+            if (student.classId) {
+                const cls = classes.find(c => c.id === student.classId);
+                if (cls) {
+                    className = cls.name;
+                    classBadgeColor = cls.classType === 'live-lecture' 
+                        ? "bg-indigo-50 text-indigo-700" 
+                        : "bg-emerald-50 text-emerald-700";
+                } else {
+                    className = "삭제된 반";
+                    classBadgeColor = "bg-red-50 text-red-500";
+                }
+            } else {
+                className = "미배정";
+            }
+
+            tr.innerHTML = `
+                <td class="p-3 text-slate-800 font-bold">${student.name}</td>
+                <td class="p-3 text-slate-600 font-mono text-sm">${student.phone || '-'}</td>
+                <td class="p-3">
+                    <span class="text-xs px-2 py-1 rounded font-bold ${classBadgeColor}">
+                        ${className}
+                    </span>
+                </td>
+                <td class="p-3 text-right">
+                    <button class="edit-btn text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50 transition">
+                        <span class="material-icons text-sm">edit</span>
+                    </button>
+                    <button class="delete-btn text-slate-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition">
+                        <span class="material-icons text-sm">delete</span>
+                    </button>
+                </td>
+            `;
+
+            tr.querySelector(".edit-btn").addEventListener("click", () => this.openEditModal(student));
+            tr.querySelector(".delete-btn").addEventListener("click", () => this.deleteStudent(student.id, student.name));
+
+            listEl.appendChild(tr);
+        });
+    },
+
+    openEditModal(student) {
+        this.app.state.editingStudent = student;
+        const modal = this.elements.editStudentModal;
+        
+        this.elements.editStudentName.value = student.name;
+        this.elements.editStudentPhone.value = student.phone || "";
+
+        // 반 선택 드롭다운 채우기
+        const classSelect = this.elements.editStudentClassSelect;
+        if (classSelect) {
+            const classes = getClasses();
+            classSelect.innerHTML = '<option value="">(미배정)</option>';
+            classes.forEach(c => {
+                const selected = c.id === student.classId ? "selected" : "";
+                const typeLabel = c.classType === 'live-lecture' ? '[현강]' : '[자습]';
+                classSelect.innerHTML += `<option value="${c.id}" ${selected}>${typeLabel} ${c.name}</option>`;
+            });
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    },
+
+    closeEditModal() {
+        this.elements.editStudentModal.classList.add('hidden');
+        this.elements.editStudentModal.classList.remove('flex');
+        this.app.state.editingStudent = null;
+    },
+
+    // 학생 정보 수정 (DB 업데이트)
+    async updateStudent() {
+        const student = this.app.state.editingStudent;
+        if (!student) return;
+
+        const newName = this.elements.editStudentName.value.trim();
+        const newPhone = this.elements.editStudentPhone.value.trim();
+        const newClassId = this.elements.editStudentClassSelect?.value || null;
+
+        if (!newName || !newPhone) {
+            showToast("이름과 전화번호를 입력하세요.", true);
+            return;
+        }
+
+        try {
+            await updateDoc(doc(db, "students", student.id), {
+                name: newName,
+                phone: newPhone,
+                classId: newClassId
+            });
+            showToast("학생 정보가 수정되었습니다.", false);
+            this.closeEditModal();
+        } catch (error) {
+            console.error(error);
+            showToast("수정 실패", true);
+        }
+    },
+
+    // 학생 삭제 (DB 삭제)
+    async deleteStudent(studentId, studentName) {
+        if (!confirm(`'${studentName}' 학생을 삭제하시겠습니까?`)) return;
+
+        try {
+            await deleteDoc(doc(db, "students", studentId));
+            showToast("학생이 삭제되었습니다.", false);
+        } catch (error) {
+            console.error(error);
+            showToast("삭제 실패", true);
+        }
     }
-  },
-
-  updateButtons(loadedCount) {
-      if (this.prevBtn) this.prevBtn.disabled = (this.currentPage <= 1);
-      if (this.nextBtn) this.nextBtn.disabled = (loadedCount < this.pageSize);
-  },
-
-  // ✅ 서버 함수 호출 유지 (보안)
-  async addNewStudent() {
-    const name = this.elements.newStudentNameInput.value.trim();
-    const phone = this.elements.newStudentPhoneInput.value.trim();
-    const parentPhone = this.elements.newParentPhoneInput.value.trim();
-    
-    if (!name || !phone || phone.length < 4) {
-        showToast("이름과 전화번호(4자리 이상)를 입력해주세요.", true);
-        return;
-    }
-
-    showToast("학생 계정 생성 중...", false);
-
-    try {
-      const functions = getFunctions(app, 'asia-northeast3');
-      const createStudent = httpsCallable(functions, 'createStudentAccount');
-      
-      await createStudent({ name, phone, parentPhone });
-
-      showToast(`${name} 학생이 추가되었습니다.`, false);
-      
-      this.elements.newStudentNameInput.value = "";
-      this.elements.newStudentPhoneInput.value = "";
-      this.elements.newParentPhoneInput.value = "";
-      
-      this.loadPage('first');
-
-    } catch (e) {
-      console.error("학생 추가 실패:", e);
-      showToast(`추가 실패: ${e.message}`, true);
-    }
-  },
-
-  renderList(data) {
-    if(!this.elements.studentsList) return;
-    this.elements.studentsList.innerHTML = "";
-    data.forEach(s => this.renderStudent(s));
-  },
-
-  renderStudent(data) {
-    const div = document.createElement("div");
-    div.className = "p-3 border rounded-lg flex justify-between items-center";
-    div.innerHTML = `
-      <div>
-        <p class="font-medium text-slate-700">${data.name}</p>
-        <p class="text-xs text-slate-500">${data.phone || "번호없음"}</p>
-      </div>
-      <div class="flex gap-2">
-        <button data-id="${data.id}" class="edit-student-btn text-blue-500 hover:text-blue-700 text-sm font-semibold">수정</button>
-        <button data-id="${data.id}" class="delete-student-btn text-red-500 hover:text-red-700 text-sm font-semibold">삭제</button>
-      </div>`;
-    this.elements.studentsList.appendChild(div);
-  },
-
-  async handleListClick(e) {
-    const id = e.target.dataset.id;
-    if (e.target.classList.contains("delete-student-btn")) {
-      // ✨ Store에서 데이터 찾기
-      const studentName = getStudents().find(s => s.id === id)?.name || "이 학생";
-      if (confirm(`'${studentName}' 학생 정보를 삭제하시겠습니까?`)) {
-        await deleteDoc(doc(db, "students", id));
-        showToast("삭제되었습니다.", false);
-        this.loadPage('first');
-      }
-    } else if (e.target.classList.contains("edit-student-btn")) {
-      this.openEditModal(id);
-    }
-  },
-  
-  openEditModal(studentId) {
-      // ✨ Store에서 데이터 찾기
-      const studentData = getStudents().find(s => s.id === studentId);
-      if (!studentData) return showToast("정보를 찾을 수 없습니다.");
-      this.editingStudentId = studentId;
-      this.elements.editStudentNameInput.value = studentData.name || '';
-      this.elements.editStudentPhoneInput.value = studentData.phone || '';
-      this.elements.editParentPhoneInput.value = studentData.parentPhone || '';
-      this.elements.editStudentModal.style.display = "flex";
-  },
-
-  closeEditModal() {
-      this.editingStudentId = null;
-      this.elements.editStudentModal.style.display = "none";
-  },
-
-  async saveStudentChanges() {
-    if (!this.editingStudentId) return;
-    const name = this.elements.editStudentNameInput.value.trim();
-    const phone = this.elements.editStudentPhoneInput.value.trim();
-    const parentPhone = this.elements.editParentPhoneInput.value.trim();
-    if (!name || !phone) { showToast("필수 입력 항목 누락"); return; }
-
-    try {
-      await updateDoc(doc(db, "students", this.editingStudentId), {
-        name, phone, parentPhone: parentPhone || null
-      });
-      showToast("수정되었습니다.", false);
-      this.closeEditModal();
-      this.loadPage('first');
-    } catch (e) {
-      showToast("수정 실패", true);
-    }
-  }
 };
