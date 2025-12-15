@@ -190,6 +190,7 @@
         <h1 class="text-3xl font-bold text-slate-800">학생 관리</h1>
         <p class="text-slate-500 mt-2">학생 정보를 등록하고 관리합니다.</p>
       </header>
+
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
           <input type="text" id="admin-new-student-name" class="form-input" placeholder="이름">
@@ -198,7 +199,27 @@
         </div>
         <button id="admin-add-student-btn" class="btn-primary w-full">학생 등록</button>
       </div>
-      <div id="admin-students-list" class="space-y-2"></div>
+
+      <div class="mb-4">
+        <input type="text" id="search-student-input" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="학생 이름 또는 전화번호 뒷자리 검색...">
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <table class="w-full text-left border-collapse">
+              <thead class="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm">
+                  <tr>
+                      <th class="p-3 font-bold">이름</th>
+                      <th class="p-3 font-bold">전화번호</th>
+                      <th class="p-3 font-bold">배정 반</th>
+                      <th class="p-3 text-right font-bold">관리</th>
+                  </tr>
+              </thead>
+              <tbody id="admin-students-list" class="divide-y divide-slate-100">
+                  </tbody>
+          </table>
+      </div>
+
+      <div id="admin-student-pagination" class="flex justify-center items-center gap-2 mt-6"></div>
     </div>
 
     <div id="admin-teacher-mgmt-view" class="admin-view hidden p-6 max-w-4xl mx-auto" style="display: none;">
@@ -532,6 +553,14 @@
       <input type="text" id="admin-edit-student-name" class="form-input mb-3" placeholder="이름">
       <input type="text" id="admin-edit-student-phone" class="form-input mb-3" placeholder="전화번호">
       <input type="text" id="admin-edit-parent-phone" class="form-input mb-3" placeholder="부모님 전화번호">
+      
+      <div class="mb-3">
+        <label class="block text-sm text-slate-500 mb-1">배정 반</label>
+        <select id="admin-edit-student-class-select" class="form-input w-full">
+            <option value="">(미배정)</option>
+        </select>
+      </div>
+
       <div class="flex justify-end gap-2 mt-4">
         <button id="admin-cancel-edit-student-btn" class="btn-secondary">취소</button>
         <button id="admin-save-student-edit-btn" class="btn-primary">저장</button>
