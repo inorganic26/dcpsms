@@ -5,7 +5,6 @@ import { studentLesson } from "./studentLesson.js";
 import { studentHomework } from "./studentHomework.js";
 import { reportManager } from "../shared/reportManager.js";
 import { classVideoManager } from "./classVideoManager.js"; 
-// ⬇️ collection, getDocs 추가됨
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 
@@ -26,7 +25,6 @@ export const StudentApp = {
         videoTitlesScreen: 'student-video-titles-screen',
         videoDisplayModal: 'student-video-display-modal',
 
-        // ⬇️ 대시보드 컨테이너 ID 변경
         dashboardContainer: 'student-dashboard-grid', 
 
         welcomeMessage: 'student-welcome-message',
@@ -67,8 +65,6 @@ export const StudentApp = {
     addEventListeners() {
         const el = (id) => document.getElementById(this.elements[id]);
 
-        // 기존의 개별 카드 리스너 제거 (동적 생성으로 변경됨)
-        // 공통 뒤로가기 버튼들
         el('backToSubjectsBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
         el('backToSubjectsFromHomeworkBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
         el('backToMenuFromReportListBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
@@ -109,28 +105,23 @@ export const StudentApp = {
 
         if (studentData.classId) {
             try {
-                // 1. 반 정보 가져오기
                 const classDoc = await getDoc(doc(db, "classes", studentData.classId));
                 let classSubjectsMap = {};
                 
                 if (classDoc.exists()) {
                     const data = classDoc.data();
                     this.state.classType = data.classType;
-                    classSubjectsMap = data.subjects || {}; // { "subjectId": { ... }, ... }
+                    classSubjectsMap = data.subjects || {};
                 }
 
-                // 2. 전체 과목 정보 가져오기 (이름 매칭용)
                 const subjectsSnapshot = await getDocs(collection(db, "subjects"));
                 const allSubjects = subjectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-                // 3. 반에 설정된 과목 ID와 전체 과목 정보를 매칭하여 배열로 변환
-                // ⬇️ 여기서 forEach 오류가 해결됩니다.
                 this.state.subjects = Object.keys(classSubjectsMap).map(subjectId => {
                     const subjectInfo = allSubjects.find(s => s.id === subjectId);
                     return subjectInfo ? { id: subjectId, name: subjectInfo.name } : null;
                 }).filter(s => s !== null);
 
-                // 이름순 정렬
                 this.state.subjects.sort((a, b) => a.name.localeCompare(b.name));
 
             } catch (e) { 
@@ -144,18 +135,17 @@ export const StudentApp = {
             welcomeEl.textContent = `${studentData.name} 학생, 환영합니다!`;
         }
 
-        this.loadAvailableSubjects(); // 대시보드 그리기
+        this.loadAvailableSubjects(); 
         this.showSubjectSelectionScreen();
     },
 
-    // ⬇️ 관리자 대시보드 스타일로 변경된 함수
     async loadAvailableSubjects() {
         const container = document.getElementById(this.elements.dashboardContainer);
         if (!container) return;
         
         container.innerHTML = '';
         
-        // 1. 과목 카드 생성 (보라색 테마)
+        // 1. 영상 학습용 과목 카드
         if (this.state.subjects && this.state.subjects.length > 0) {
             this.state.subjects.forEach(subject => {
                 const card = this.createDashboardCard(
@@ -167,40 +157,40 @@ export const StudentApp = {
                 container.appendChild(card);
             });
         } else {
-            // 과목이 없을 때 표시
             const emptyMsg = document.createElement('div');
             emptyMsg.className = "col-span-full text-center text-slate-400 py-4";
             emptyMsg.textContent = "등록된 학습 과목이 없습니다.";
             container.appendChild(emptyMsg);
         }
 
-        // 2. 기능 카드 생성 (관리자 대시보드 스타일)
-        // 숙제 확인 (노란색)
+        // 2. 기능 카드들
         container.appendChild(this.createDashboardCard(
             'assignment', '숙제 확인', 'bg-yellow-50 text-yellow-600 group-hover:bg-yellow-100',
             () => this.showHomeworkScreen()
         ));
 
-        // 수업 영상 (인디고색)
+        // ⬇️ [수정됨] 일일 테스트: 클릭 시 '전체 테스트 목록 불러오기' 실행 (과목 선택 X)
+        container.appendChild(this.createDashboardCard(
+            'edit_note', '일일 테스트', 'bg-orange-50 text-orange-600 group-hover:bg-orange-100',
+            () => studentLesson.loadAllDailyTests()
+        ));
+
         container.appendChild(this.createDashboardCard(
             'ondemand_video', '수업 영상', 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100',
             () => classVideoManager.showDateSelectionScreen('class')
         ));
 
-        // 질문 영상 (청록색)
         container.appendChild(this.createDashboardCard(
             'question_answer', '질문 영상', 'bg-cyan-50 text-cyan-600 group-hover:bg-cyan-100',
             () => classVideoManager.showDateSelectionScreen('qna')
         ));
 
-        // 성적표 확인 (라임색)
         container.appendChild(this.createDashboardCard(
             'assessment', '성적표 확인', 'bg-lime-50 text-lime-600 group-hover:bg-lime-100',
             () => this.showReportListScreen()
         ));
     },
 
-    // 카드 생성 헬퍼 함수
     createDashboardCard(iconName, title, colorClass, onClickHandler) {
         const div = document.createElement('div');
         div.className = "cursor-pointer bg-white p-6 rounded-2xl shadow-sm hover:shadow-md transition border border-slate-100 flex flex-col items-center justify-center gap-3 group active:scale-95 duration-200";

@@ -1,34 +1,92 @@
 // src/student/studentLesson.js
 
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, orderBy, getDocs } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const studentLesson = {
   player: null, 
+  video2Player: null, // Video 2 전용 플레이어 변수 추가
   isYoutubeApiReady: false, 
+  app: null,
 
   init(app) {
     this.app = app;
 
+    // 기존 버튼 이벤트 연결
     this.app.elements.gotoRev1Btn?.addEventListener("click", () => this.showNextRevisionVideo(1));
     this.app.elements.startQuizBtn?.addEventListener("click", () => this.startQuiz());
     this.app.elements.retryQuizBtn?.addEventListener("click", () => this.startQuiz());
     this.app.elements.rewatchVideo1Btn?.addEventListener("click", () => this.rewatchVideo1());
     
-    // 성공/실패 시 추가 영상 보기 버튼 (자기주도반용)
     this.app.elements.showRev2BtnSuccess?.addEventListener("click", () => this.showNextRevisionVideo(2, true));
     this.app.elements.showRev2BtnFailure?.addEventListener("click", () => this.showNextRevisionVideo(2, false));
 
     this.loadYoutubeApi();
   },
 
-  convertYoutubeUrlToEmbed(url) {
-    const videoId = this.extractVideoId(url);
-    if (!videoId) return "";
-    return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
+  // ⬇️ [복구됨] 강의 목록 불러오기 (영상 목록이 안 뜨는 문제 해결)
+  async loadLessons(subjectId) {
+    this.app.state.lessons = [];
+    const container = document.getElementById('student-lesson-grid');
+    if(container) container.innerHTML = '<div class="col-span-full text-center py-10 text-slate-400">강의를 불러오는 중...</div>';
+
+    try {
+        const lessonsRef = collection(db, "subjects", subjectId, "lessons");
+        const q = query(lessonsRef, orderBy("createdAt", "asc"));
+        const querySnapshot = await getDocs(q);
+        
+        const lessons = [];
+        querySnapshot.forEach((doc) => {
+            lessons.push({ id: doc.id, ...doc.data() });
+        });
+        
+        this.app.state.lessons = lessons;
+        this.renderLessonList();
+
+    } catch (error) {
+        console.error("강의 로드 실패:", error);
+        if(container) container.innerHTML = '<div class="col-span-full text-center py-10 text-red-400">강의 정보를 불러오지 못했습니다.</div>';
+    }
   },
 
+  // ⬇️ [복구됨] 강의 목록 그리기
+  renderLessonList() {
+    const container = document.getElementById('student-lesson-grid');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    // 모바일/PC 반응형 그리드
+    container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4';
+
+    const lessons = this.app.state.lessons;
+    if (lessons.length === 0) {
+        container.innerHTML = '<div class="col-span-full text-center py-20 text-slate-400">등록된 강의가 없습니다.</div>';
+        return;
+    }
+
+    lessons.forEach((lesson, index) => {
+        const div = document.createElement('div');
+        div.className = "bg-white p-5 rounded-2xl border border-slate-100 shadow-sm cursor-pointer hover:shadow-md hover:-translate-y-1 transition-all group flex flex-col";
+        
+        div.innerHTML = `
+            <div class="flex items-start justify-between mb-3">
+                <div class="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    ${index + 1}
+                </div>
+                ${lesson.isCompleted ? '<span class="material-icons-round text-green-500">check_circle</span>' : ''}
+            </div>
+            <h3 class="font-bold text-slate-800 text-lg leading-tight mb-1 line-clamp-2">${lesson.title}</h3>
+            <p class="text-sm text-slate-500 line-clamp-2 flex-grow">${lesson.description || '설명 없음'}</p>
+        `;
+        
+        // 클릭 시 영상 재생 시작
+        div.onclick = () => this.startSelectedLesson(lesson);
+        container.appendChild(div);
+    });
+  },
+
+  // 유튜브 API 로드
   loadYoutubeApi() {
     if (window.YT && window.YT.Player) {
         this.isYoutubeApiReady = true;
@@ -51,44 +109,13 @@ export const studentLesson = {
     return match ? match[1] : null;
   },
 
-  // 점수 입력 (일일테스트용 - 별도 메뉴에서 사용)
-  async inputDailyTestScoreOnly(lesson) {
-    const { state } = this.app;
-    const studentId = state.studentDocId;
-    const subjectId = state.selectedSubject.id;
-    const lessonId = lesson.id;
-
-    try {
-        const submissionRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
-        const docSnap = await getDoc(submissionRef);
-        let defaultVal = "";
-        if (docSnap.exists() && docSnap.data().dailyTestScore !== undefined) {
-            defaultVal = docSnap.data().dailyTestScore;
-        }
-
-        let scoreInput = null;
-        while (true) {
-            scoreInput = prompt(`[${lesson.title}]\n일일테스트 점수를 입력하세요:`, defaultVal);
-            if (scoreInput === null) return; 
-            if (scoreInput.trim() !== "" && !isNaN(scoreInput)) break;
-            alert("숫자만 입력해주세요.");
-        }
-
-        await setDoc(submissionRef, {
-            studentName: state.studentName,
-            studentDocId: studentId,
-            dailyTestScore: Number(scoreInput),
-            lastAttemptAt: serverTimestamp()
-        }, { merge: true });
-
-        showToast(`점수(${scoreInput}점) 저장 완료!`, false);
-    } catch (error) {
-        console.error("점수 저장 실패:", error);
-        showToast("점수 저장 실패 (권한 오류일 수 있음)", true);
-    }
+  convertYoutubeUrlToEmbed(url) {
+    const videoId = this.extractVideoId(url);
+    if (!videoId) return "";
+    return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
   },
 
-  // 학습 시작 (영상 재생)
+  // 1. 학습 시작 (Video 1 재생)
   startSelectedLesson(lesson) {
     const { elements } = this.app;
     this.app.state.activeLesson = lesson;
@@ -99,14 +126,8 @@ export const studentLesson = {
 
     const videoId = this.extractVideoId(lesson.video1Url);
     if (!videoId) {
-        if(elements.video1Iframe) {
-            elements.video1Iframe.style.display = 'none';
-            // 메시지 표시
-            const container = elements.video1Iframe.parentNode;
-            if(!container.querySelector('.error-msg')) {
-                 container.innerHTML += `<div class="error-msg text-center py-10 text-slate-400">영상을 불러올 수 없습니다.</div>`;
-            }
-        }
+        // 영상 없음 처리
+        if(elements.video1Iframe) elements.video1Iframe.style.display = 'none';
         return;
     }
 
@@ -119,124 +140,54 @@ export const studentLesson = {
         const container = iframe.parentNode;
         const oldMsg = container?.querySelector('.video-complete-msg');
         if(oldMsg) oldMsg.remove();
-        const errorMsg = container?.querySelector('.error-msg');
-        if(errorMsg) errorMsg.remove();
     }
 
-    // 퀴즈/보충 버튼 초기화
-    if (elements.startQuizBtn) {
-        elements.startQuizBtn.style.display = "none"; 
-        elements.startQuizBtn.disabled = true;
-    }
+    // 버튼 초기화 (숨김)
+    if (elements.startQuizBtn) elements.startQuizBtn.style.display = "none"; 
     if (elements.gotoRev1Btn) elements.gotoRev1Btn.style.display = "none";
 
-    // 영상 종료 감지 시작
+    // Video 1 모니터링 시작
     this.loadVideoWithMonitoring('student-video1-iframe', (status) => {
-        if (status === 0) this.onVideoEnded(); // 0 is YT.PlayerState.ENDED
+        if (status === 0) this.onVideo1Ended(); // 0 = 종료됨
     });
   },
 
-  loadVideoWithMonitoring(iframeId, onStateChangeCallback) {
-    if (!this.isYoutubeApiReady) {
-        setTimeout(() => this.loadVideoWithMonitoring(iframeId, onStateChangeCallback), 500);
-        return;
-    }
-    try {
-        this.player = new YT.Player(iframeId, {
-            playerVars: { 'rel': 0, 'origin': window.location.origin },
-            events: {
-                'onStateChange': (event) => onStateChangeCallback(event.data),
-                'onError': () => this.onVideoEnded() // 에러 시에도 다음 단계 진행 허용
-            }
-        });
-    } catch (e) { console.warn("YT Player Warning", e); }
-  },
-
-  onVideoEnded() {
+  // Video 1 종료 시 처리
+  onVideo1Ended() {
     const { elements } = this.app;
     
-    // 영상 숨기고 완료 메시지 표시
+    // 1. 영상 숨기고 완료 메시지
     if (elements.video1Iframe) {
         elements.video1Iframe.style.display = 'none';
         const container = elements.video1Iframe.parentNode;
         if (container && !container.querySelector('.video-complete-msg')) {
             const msg = document.createElement('div');
             msg.className = 'video-complete-msg w-full h-full flex flex-col items-center justify-center text-white bg-slate-800 rounded-xl';
-            msg.innerHTML = `<span class="material-icons text-4xl mb-2 text-green-400">check_circle</span><span class="text-xl font-bold mb-1">영상 시청 완료!</span><span class="text-sm text-slate-300">다음 단계로 진행하세요.</span>`;
+            msg.innerHTML = `<span class="material-icons text-4xl mb-2 text-green-400">check_circle</span><span class="text-xl font-bold mb-1">영상 시청 완료!</span><span class="text-sm text-slate-300">퀴즈를 풀어보세요.</span>`;
             container.appendChild(msg);
         }
     }
 
     const lesson = this.app.state.activeLesson;
-    const revUrls = lesson.video1RevUrls;
-
-    // 보충 영상이 있으면 보충 영상 버튼 표시, 없으면 퀴즈 시작 버튼 표시
-    if (revUrls && revUrls.length > 0) {
-        if (elements.gotoRev1Btn) {
-            elements.gotoRev1Btn.style.display = "block";
-            elements.gotoRev1Btn.textContent = `보충 영상 보기 (1/${revUrls.length})`;
-        }
-    } else {
-        if (elements.startQuizBtn) {
-            elements.startQuizBtn.style.display = "block";
-            elements.startQuizBtn.disabled = false;
-            elements.startQuizBtn.textContent = "퀴즈 시작";
-            elements.startQuizBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-        }
+    
+    // 2. 퀴즈 시작 버튼 표시 (보충 영상 로직은 일단 배제하고 바로 퀴즈로)
+    if (elements.startQuizBtn) {
+        elements.startQuizBtn.style.display = "block";
+        elements.startQuizBtn.disabled = false;
+        elements.startQuizBtn.textContent = "퀴즈 시작";
+        elements.startQuizBtn.classList.remove('opacity-50', 'cursor-not-allowed');
     }
   },
 
-  // 보충 영상(Video 1 Rev) 또는 해설 영상(Video 2 Rev) 재생
-  showNextRevisionVideo(type, isSuccess = null) {
-    const { state, elements } = this.app;
-    const revUrls = type === 1 ? state.activeLesson?.video1RevUrls : state.activeLesson?.video2RevUrls;
-    
-    if (!state.activeLesson || !revUrls || revUrls.length === 0) return;
-    if (state.currentRevVideoIndex >= revUrls.length) return;
-    
-    const url = revUrls[state.currentRevVideoIndex];
-    const videoId = this.extractVideoId(url);
-    if (!videoId) return;
-    
-    const embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
-
-    if (type === 1) {
-      // Video 1 보충
-      const iframe = elements.video1Iframe;
-      iframe.style.display = "block"; 
-      iframe.src = embedUrl;
-      
-      const container = iframe.parentNode;
-      const oldMsg = container.querySelector('.video-complete-msg');
-      if(oldMsg) oldMsg.remove();
-
-      state.currentRevVideoIndex++;
-      if (state.currentRevVideoIndex < revUrls.length) { 
-          elements.gotoRev1Btn.textContent = `보충 영상 보기 (${state.currentRevVideoIndex + 1}/${revUrls.length})`; 
-      } else { 
-          elements.gotoRev1Btn.style.display = "none"; 
-          if(elements.startQuizBtn) {
-              elements.startQuizBtn.style.display = "block"; 
-              elements.startQuizBtn.disabled = false;
-              elements.startQuizBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-          }
-      }
-    } else {
-      // Video 2 해설 (사용 안함)
-    }
-  },
-
+  // 퀴즈 시작
   startQuiz() {
-    if (this.player && typeof this.player.pauseVideo === 'function') {
-        try { this.player.pauseVideo(); } catch(e) {}
-    }
     this.app.state.currentQuestionIndex = 0; 
     this.app.state.score = 0;
     
     const questionBank = this.app.state.activeLesson.questionBank || [];
     if (questionBank.length === 0) { showToast("문항이 없습니다."); return; }
     
-    // 퀴즈 랜덤 섞기 및 5문제 자르기
+    // 랜덤 5문제
     this.app.state.quizQuestions = [...questionBank].sort(() => 0.5 - Math.random()).slice(0, this.app.state.totalQuizQuestions);
     
     this.app.showScreen(this.app.elements.quizScreen); 
@@ -251,14 +202,16 @@ export const studentLesson = {
     }
     const question = quizQuestions[currentQuestionIndex];
     
+    // 진행률 표시
     const progressPercent = ((currentQuestionIndex + 1) / this.app.state.totalQuizQuestions) * 100;
     if (this.app.elements.progressBar) this.app.elements.progressBar.style.width = `${progressPercent}%`;
     if (this.app.elements.progressText) this.app.elements.progressText.textContent = `문제 ${currentQuestionIndex + 1} / ${this.app.state.totalQuizQuestions}`;
 
+    // 문제 렌더링
     this.app.elements.questionText.innerHTML = question.question || "질문 없음";
     const optionsContainer = this.app.elements.optionsContainer;
     optionsContainer.innerHTML = "";
-    optionsContainer.classList.remove("disabled"); // 잠금 해제
+    optionsContainer.classList.remove("disabled");
     
     const options = question.options || [];
     [...options].sort(() => 0.5 - Math.random()).forEach((option) => {
@@ -277,11 +230,9 @@ export const studentLesson = {
   selectAnswer(e, selectedText) {
     const optionsContainer = this.app.elements.optionsContainer;
     if(optionsContainer.classList.contains("disabled")) return;
-    optionsContainer.classList.add("disabled"); // 중복 클릭 방지
+    optionsContainer.classList.add("disabled");
 
     const currentQuestion = this.app.state.quizQuestions[this.app.state.currentQuestionIndex]; 
-    
-    // 정답 텍스트 비교 (공백 제거)
     const isCorrect = String(selectedText).trim() === String(currentQuestion.answer).trim();
     const selectedBtn = e.target;
 
@@ -293,7 +244,6 @@ export const studentLesson = {
       selectedBtn.classList.remove("border-slate-300", "hover:bg-slate-100");
       selectedBtn.classList.add("bg-red-100", "border-red-500", "text-red-800");
       
-      // 정답 표시
       Array.from(optionsContainer.children).forEach(btn => {
           if(String(btn.innerHTML).trim() === String(currentQuestion.answer).trim()) {
               btn.classList.remove("border-slate-300");
@@ -302,65 +252,79 @@ export const studentLesson = {
       });
     }
 
-    // 1.5초 후 다음 문제
     setTimeout(() => { 
         this.app.state.currentQuestionIndex++; 
         this.displayQuestion(); 
     }, 1500);
   },
 
+  // ✨ 결과 화면 (핵심 로직 수정됨)
   showResults() {
     const { score, passScore, totalQuizQuestions, activeLesson, classType } = this.app.state;
     const isPass = score >= passScore;
     
+    // 결과 저장
     this.updateStudentProgress(isPass ? "퀴즈 통과" : "퀴즈 실패", score);
     
     this.app.showScreen(this.app.elements.resultScreen);
     
     const scoreText = `${totalQuizQuestions} 문제 중 ${score} 문제를 맞혔습니다.`;
-    const isLive = classType === 'live-lecture'; // 현강반 여부
+    // classType 확인 (반 정보에 따라 분기)
+    // ⚠️ 주의: DB에 'live-lecture' 또는 'self-directed'로 저장되어 있어야 함
+    const isSelfDirected = classType === 'self-directed'; 
 
+    // 성공 메시지 표시
     if (isPass) {
         this.app.elements.successMessage.style.display = "block";
         this.app.elements.failureMessage.style.display = "none";
         this.app.elements.resultScoreTextSuccess.innerHTML = scoreText;
 
-        const resultVideoContainer = document.getElementById('student-review-video2-container') || this.app.elements.reviewVideo2Iframe?.parentNode;
+        const resultVideoContainer = document.getElementById('student-review-video2-container');
         
-        // ✨ [핵심 분기 처리]
-        if (!isLive) {
-            // [자기주도반] -> Video 2 (응용 영상) 보여주기
+        // 버튼 컨테이너 초기화 (기존 버튼 삭제)
+        const btnContainer = this.app.elements.successMessage.querySelector('.nav-buttons-container');
+        if(btnContainer) btnContainer.remove();
+
+        // 🟢 [자기주도반] -> Video 2 보여주기 & 시청 후 버튼 표시
+        if (isSelfDirected) {
             if (resultVideoContainer) {
                 resultVideoContainer.style.display = 'block';
-                // 기존 내용(메시지 등) 초기화는 필요 없음
+                resultVideoContainer.innerHTML = `
+                    <p class="text-sm font-bold text-slate-600 mb-3 text-left">📖 심화 학습 (Video 2)</p>
+                    <div class="aspect-video bg-black rounded-lg overflow-hidden mb-3">
+                        <iframe id="student-review-video2-iframe" class="w-full h-full" src="" frameborder="0" allowfullscreen></iframe>
+                    </div>
+                `;
             }
-            
+
+            // Video 2 URL 결정
             const video2List = activeLesson.video2List || [];
             const defaultUrl = video2List.length > 0 ? video2List[0].url : activeLesson.video2Url;
             
-            // Video 2 선택/재생 로직
-            if (video2List.length > 1) {
-                this.showVideo2Selection(video2List, this.app.elements.reviewVideo2Iframe);
-            } else if (defaultUrl) {
+            if (defaultUrl) {
                 const embedUrl = this.convertYoutubeUrlToEmbed(defaultUrl);
-                const iframe = this.app.elements.reviewVideo2Iframe;
+                const iframe = document.getElementById('student-review-video2-iframe');
                 if(iframe) {
                     iframe.src = embedUrl;
-                    iframe.style.display = 'block';
-                    // 선택 버튼 컨테이너가 있다면 숨김
-                    const sel = document.getElementById('video2SelectionContainer');
-                    if(sel) sel.style.display = 'none';
+                    
+                    // ✨ Video 2 종료 감지하여 버튼 표시
+                    this.loadVideoWithMonitoring('student-review-video2-iframe', (status) => {
+                        if (status === 0) { // 종료됨
+                            this.renderNavigationButtons(this.app.elements.successMessage);
+                        }
+                    });
                 }
             } else {
-                if(resultVideoContainer) resultVideoContainer.innerHTML = '<p class="text-center text-slate-400 py-4">등록된 응용 영상이 없습니다.</p>';
+                // 영상이 없으면 바로 버튼 표시
+                if(resultVideoContainer) resultVideoContainer.innerHTML = '<p class="text-center text-slate-400 py-4">등록된 심화 영상이 없습니다.</p>';
+                this.renderNavigationButtons(this.app.elements.successMessage);
             }
-        } else {
-            // [현강반] -> Video 2 숨김
-            if (resultVideoContainer) resultVideoContainer.style.display = 'none';
-        }
 
-        // 메뉴로 돌아가기 버튼 (현강반, 자기주도반 모두 표시)
-        this.renderMenuButton(this.app.elements.successMessage);
+        } else {
+            // 🔴 [현강반] -> Video 2 숨김 & 바로 버튼 표시
+            if (resultVideoContainer) resultVideoContainer.style.display = 'none';
+            this.renderNavigationButtons(this.app.elements.successMessage);
+        }
 
     } else {
         // [실패 시]
@@ -368,56 +332,58 @@ export const studentLesson = {
         this.app.elements.failureMessage.style.display = "block";
         this.app.elements.resultScoreTextFailure.textContent = scoreText;
         
-        // 실패 시에는 Video 2 숨김 (재시도 유도)
-        const resultVideoContainer = this.app.elements.reviewVideo2Iframe?.parentNode;
+        const resultVideoContainer = document.getElementById('student-review-video2-container');
         if(resultVideoContainer) resultVideoContainer.style.display = 'none';
     }
   },
 
-  renderMenuButton(container) {
-      let btn = container.querySelector('.go-to-menu-btn');
-      if (!btn) {
-          btn = document.createElement('button');
-          btn.className = 'go-to-menu-btn btn-primary w-full mt-6 py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 transition flex items-center justify-center gap-2';
-          btn.innerHTML = `<span class="material-icons">list</span> 학습 목록으로 돌아가기`;
-          btn.onclick = () => {
-              if (this.app.state.selectedSubject) {
-                  this.app.showLessonSelectionScreen(this.app.state.selectedSubject.id);
-              } else {
-                  this.app.showSubjectSelectionScreen();
-              }
-          };
-          container.appendChild(btn);
-      }
-      btn.style.display = 'flex';
+  // ⬇️ [신규] 네비게이션 버튼 렌더링 (대시보드 / 목록)
+  renderNavigationButtons(container) {
+      // 중복 생성 방지
+      if (container.querySelector('.nav-buttons-container')) return;
+
+      const btnWrapper = document.createElement('div');
+      btnWrapper.className = 'nav-buttons-container mt-6 flex flex-col gap-3 w-full';
+      
+      // 1. 목록으로 가기 버튼
+      const backToListBtn = document.createElement('button');
+      backToListBtn.className = 'btn-primary w-full py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 transition flex items-center justify-center gap-2';
+      backToListBtn.innerHTML = `<span class="material-icons">list</span> 학습 목록으로 돌아가기`;
+      backToListBtn.onclick = () => {
+          if (this.app.state.selectedSubject) {
+              this.app.showLessonSelectionScreen(this.app.state.selectedSubject.id);
+          } else {
+              this.app.showSubjectSelectionScreen();
+          }
+      };
+
+      // 2. 대시보드로 가기 버튼
+      const backToHomeBtn = document.createElement('button');
+      backToHomeBtn.className = 'w-full py-3 bg-white border-2 border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition flex items-center justify-center gap-2';
+      backToHomeBtn.innerHTML = `<span class="material-icons">home</span> 대시보드로 이동`;
+      backToHomeBtn.onclick = () => {
+          this.app.showSubjectSelectionScreen();
+      };
+
+      btnWrapper.appendChild(backToListBtn);
+      btnWrapper.appendChild(backToHomeBtn);
+      container.appendChild(btnWrapper);
   },
 
-  showVideo2Selection(videoList, iframeElement) {
-    iframeElement.style.display = 'none'; 
-    let container = document.getElementById('video2SelectionContainer');
-    if (!container) {
-        container = document.createElement('div');
-        container.id = 'video2SelectionContainer';
-        container.className = 'flex flex-col gap-3 mt-4 w-full';
-        iframeElement.parentNode.insertBefore(container, iframeElement);
-    } else {
-        container.style.display = 'flex';
+  // 유튜브 모니터링 헬퍼
+  loadVideoWithMonitoring(iframeId, onStateChangeCallback) {
+    if (!this.isYoutubeApiReady) {
+        setTimeout(() => this.loadVideoWithMonitoring(iframeId, onStateChangeCallback), 500);
+        return;
     }
-    container.innerHTML = '<p class="text-center font-bold text-slate-700 mb-2">학습할 교재 영상 선택</p>';
-
-    videoList.forEach(item => {
-        const btn = document.createElement('button');
-        btn.className = 'w-full py-3 px-4 bg-white border border-indigo-100 hover:bg-indigo-50 text-indigo-900 rounded-xl font-bold shadow-sm text-left flex items-center gap-2 transition-all';
-        btn.innerHTML = `<span class="material-icons text-indigo-500">play_circle</span> ${item.name}`;
-        btn.onclick = () => {
-            const embedUrl = this.convertYoutubeUrlToEmbed(item.url);
-            iframeElement.src = embedUrl;
-            iframeElement.style.display = 'block';
-            container.style.display = 'none'; // 선택 후 버튼 목록 숨김
-            iframeElement.scrollIntoView({ behavior: 'smooth' });
-        };
-        container.appendChild(btn);
-    });
+    try {
+        new YT.Player(iframeId, {
+            playerVars: { 'rel': 0, 'origin': window.location.origin },
+            events: {
+                'onStateChange': (event) => onStateChangeCallback(event.data),
+            }
+        });
+    } catch (e) { console.warn("YT Player Warning", e); }
   },
 
   async updateStudentProgress(status, score) {
@@ -435,10 +401,20 @@ export const studentLesson = {
           totalQuestions: totalQuizQuestions
         };
         await setDoc(submissionRef, data, { merge: true });
-        console.log("Progress saved successfully");
     } catch (error) { 
         console.error("Progress save failed:", error);
-        showToast("결과 저장 실패 (관리자 문의)", true); 
     }
+  },
+  
+  // Video 1 다시보기 (실패 시)
+  rewatchVideo1() {
+      this.app.showScreen(this.app.elements.video1Screen);
+      const iframe = this.app.elements.video1Iframe;
+      if(iframe) {
+        iframe.style.display = 'block';
+        const container = iframe.parentNode;
+        const msg = container.querySelector('.video-complete-msg');
+        if(msg) msg.remove();
+      }
   }
 };
