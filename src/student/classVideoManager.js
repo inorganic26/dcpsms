@@ -28,16 +28,24 @@ export const classVideoManager = {
     addEventListeners() {
         const el = (id) => document.getElementById(this.elements[id]);
         
+        // 날짜 선택 화면에서 과목 목록으로 나갈 때
         el('backToSubjectsFromClass')?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
         el('backToSubjectsFromQna')?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
         
-        // ✨ [수정됨] 뒤로가기 시 영상 목록을 비워서 재생 중단
+        // ✨ [강력 수정] 영상 목록에서 날짜 목록으로 뒤로가기 시 (영상이 재생 중일 수 있음)
         el('backToDates')?.addEventListener('click', () => {
-            // 1. 영상 목록 컨테이너 비우기 (iframe 삭제 -> 재생 중단)
             const videoContainer = document.getElementById(this.elements.videoTitleList);
-            if (videoContainer) videoContainer.innerHTML = "";
 
-            // 2. 화면 전환
+            if (videoContainer) {
+                // 1. 컨테이너 안의 모든 iframe을 찾아서 주소(src)를 먼저 끊어버림 (소리 즉시 차단)
+                const iframes = videoContainer.querySelectorAll('iframe');
+                iframes.forEach(iframe => { iframe.src = ""; });
+                
+                // 2. 그 다음 내용을 비움 (화면에서 제거)
+                videoContainer.innerHTML = "";
+            }
+
+            // 3. 화면 전환
             this.app.showScreen(this.state.currentType === 'class' ? this.elements.dateScreen : this.elements.qnaDateScreen);
         });
     },

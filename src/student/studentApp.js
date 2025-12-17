@@ -103,7 +103,13 @@ export const StudentApp = {
         // 일일 테스트 뒤로가기
         el('backToSubjectsFromDailyTestBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
 
+        // ✨ [수정됨] 강의 영상 뒤로가기 시 영상 강제 종료 (소리 끊기)
         document.getElementById('student-back-to-lessons-from-video-btn')?.addEventListener('click', () => {
+            const videoIframe = document.getElementById(this.elements.video1Iframe);
+            if (videoIframe) {
+                videoIframe.src = ""; // 주소를 빈 값으로 설정하여 재생 중지
+            }
+
             this.state.selectedSubject ? this.showLessonSelectionScreen(this.state.selectedSubject.id) : this.showSubjectSelectionScreen();
         });
         
@@ -207,7 +213,7 @@ export const StudentApp = {
             () => this.showHomeworkScreen()
         ));
 
-        // ✨ [핵심 수정] 클릭 시 '화면 전환' 및 '과목 목록 채우기(initDailyTestScreen)' 호출
+        // 클릭 시 '화면 전환' 및 '과목 목록 채우기(initDailyTestScreen)' 호출
         container.appendChild(this.createDashboardCard(
             'edit_note', '일일 테스트', 'bg-orange-50 text-orange-600 group-hover:bg-orange-100',
             () => {
