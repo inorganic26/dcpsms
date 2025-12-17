@@ -33,7 +33,7 @@ export const studentLesson = {
     }
   },
 
-  // 1. 강의 목록 불러오기 (수정됨)
+  // 1. 강의 목록 불러오기
   async loadLessons(subjectId) {
     this.app.state.lessons = [];
     const container = document.getElementById(this.app.elements.lessonGrid || 'student-lesson-grid');
@@ -42,7 +42,7 @@ export const studentLesson = {
     try {
         const lessonsRef = collection(db, "subjects", subjectId, "lessons");
         
-        // ✨ [수정 1] 정렬 기준 변경: 생성일(createdAt) -> 관리자 설정 순서(order)
+        // 정렬 기준: 관리자 설정 순서(order)
         const q = query(lessonsRef, orderBy("order", "asc")); 
         
         const querySnapshot = await getDocs(q);
@@ -50,7 +50,7 @@ export const studentLesson = {
         const lessons = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            // ✨ [수정 2] 비활성화된 강의는 목록에서 제외
+            // 비활성화된 강의는 목록에서 제외
             if (data.isActive === true) {
                 lessons.push({ id: doc.id, ...data });
             }
@@ -364,10 +364,13 @@ export const studentLesson = {
       this.loadAllDailyTests();
   },
 
+  // ✨ [수정] 반(Class) 정보도 함께 저장하도록 개선
   async addDailyTest() {
       const studentId = this.app.state.studentDocId;
       const studentName = this.app.state.studentName;
-      
+      // 현재 학생의 반 정보(classId) 가져오기
+      const classId = this.app.state.studentData?.classId || null;
+
       const subjectSelect = document.getElementById('daily-test-subject-select');
       const dateEl = document.getElementById('daily-test-date');
       const scoreEl = document.getElementById('daily-test-score');
@@ -388,9 +391,11 @@ export const studentLesson = {
       if(!confirm(`${subjectName} ${scoreEl.value}점을 등록하시겠습니까?`)) return;
 
       try {
+          // classId 필드를 추가하여 저장
           await addDoc(collection(db, "daily_tests"), {
               studentId,
               studentName: studentName || '이름 없음',
+              classId: classId, // ✨ 핵심: 반 정보 저장
               subjectId: subjectSelect.value, 
               subjectName: subjectName,       
               date: dateEl.value,
@@ -406,7 +411,7 @@ export const studentLesson = {
 
       } catch (e) {
           console.error(e);
-          showToast("저장 실패 (권한 문제일 수 있습니다)", true);
+          showToast("저장 실패", true);
       }
   },
 
@@ -459,7 +464,7 @@ export const studentLesson = {
 
       } catch (error) {
           console.error(error);
-          container.innerHTML = '<div class="text-red-500 text-center p-4">데이터를 불러오지 못했습니다.<br>(인덱스 생성 또는 권한 확인 필요)</div>';
+          container.innerHTML = '<div class="text-red-500 text-center p-4">데이터를 불러오지 못했습니다.</div>';
       }
   },
 

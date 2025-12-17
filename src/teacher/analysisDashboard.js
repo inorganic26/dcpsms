@@ -1,11 +1,14 @@
 // src/teacher/analysisDashboard.js
 
-import { collection, getDocs, doc, getDoc, query, where, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const analysisDashboard = {
     elements: {},
+    // 실시간 감시 취소 함수 저장용
+    unsubscribeDailyTest: null,
+
     state: {
         students: [],
         
@@ -40,6 +43,11 @@ export const analysisDashboard = {
         this.elements.learningLessonSelect?.addEventListener('change', (e) => this.handleLearningLessonChange(e.target.value));
         
         document.addEventListener('class-changed', () => {
+            // 반이 바뀌면 기존 감시 해제 및 화면 초기화
+            if (this.unsubscribeDailyTest) {
+                this.unsubscribeDailyTest();
+                this.unsubscribeDailyTest = null;
+            }
             this.initDailyTestView();
             this.initLearningStatusView();
         });
@@ -87,53 +95,65 @@ export const analysisDashboard = {
     async handleDailyTestSubjectChange(subjectId) {
         this.state.dailyTestSubjectId = subjectId;
         const container = this.elements.dailyTestResultTable;
-        
+        const currentClassId = this.app.state.selectedClassId; 
+
+        // 기존 리스너가 있다면 해제 (다른 과목 선택 시 중복 방지)
+        if (this.unsubscribeDailyTest) {
+            this.unsubscribeDailyTest();
+            this.unsubscribeDailyTest = null;
+        }
+
         if (!subjectId) {
             container.innerHTML = '<p class="text-center text-slate-400 py-10">과목을 선택해주세요.</p>';
             return;
         }
 
-        container.innerHTML = '<div class="loader-small mx-auto"></div><p class="text-center mt-2 text-slate-400">데이터를 불러오는 중...</p>';
+        container.innerHTML = '<div class="loader-small mx-auto"></div><p class="text-center mt-2 text-slate-400">실시간 데이터 연결 중...</p>';
 
         try {
-            // ✨ [핵심 수정] lessons/submissions 대신 'daily_tests' 컬렉션을 직접 조회하도록 변경
+            // ✨ [핵심 수정] getDocs -> onSnapshot (실시간)
+            // 성능 최적화(where classId)와 실시간성(onSnapshot)을 모두 적용
             const q = query(
                 collection(db, "daily_tests"), 
                 where("subjectId", "==", subjectId),
+                where("classId", "==", currentClassId), // 우리 반 데이터만
                 orderBy("date", "desc")
             );
             
-            const snapshot = await getDocs(q);
-            const allRecords = [];
-            
-            // 현재 반(class)에 있는 학생들의 기록만 필터링
-            // (DB 쿼리로는 classId 필터가 어려우므로 가져와서 거름)
-            const studentIds = new Set(this.state.students.map(s => s.id));
-            
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if (studentIds.has(data.studentId)) {
-                    allRecords.push({ id: doc.id, ...data });
+            this.unsubscribeDailyTest = onSnapshot(q, (snapshot) => {
+                const allRecords = [];
+                snapshot.forEach(doc => {
+                    allRecords.push({ id: doc.id, ...doc.data() });
+                });
+
+                this.state.dailyTestRecords = allRecords;
+                
+                const dates = [...new Set(allRecords.map(r => r.date))].sort((a, b) => b.localeCompare(a));
+                this.state.uniqueDates = dates;
+                this.state.matrixPage = 0;
+
+                if (dates.length === 0) {
+                    container.innerHTML = '<p class="text-center text-slate-400 py-10">등록된 테스트 점수가 없습니다.</p>';
+                } else {
+                    this.renderDailyMatrix();
+                }
+            }, (error) => {
+                console.error("실시간 업데이트 오류:", error);
+                
+                if (error.code === 'failed-precondition') {
+                     container.innerHTML = `<div class="text-red-500 text-center p-4">
+                        데이터베이스 색인(Index) 생성이 필요합니다.<br>
+                        <a href="${error.message.match(/https?:\/\/[^\s]+/)[0]}" target="_blank" class="underline font-bold text-blue-600">여기(링크)를 클릭하여 생성해주세요.</a>
+                        <br><span class="text-xs text-slate-500">(생성 후 몇 분 뒤부터 정상 작동합니다)</span>
+                     </div>`;
+                } else {
+                    container.innerHTML = '<div class="text-red-500 text-center p-4">데이터 로드 실패</div>';
                 }
             });
 
-            this.state.dailyTestRecords = allRecords;
-            
-            // 날짜 목록 추출 (중복 제거)
-            const dates = [...new Set(allRecords.map(r => r.date))].sort((a, b) => b.localeCompare(a)); // 최신순
-            this.state.uniqueDates = dates;
-            this.state.matrixPage = 0;
-
-            if (dates.length === 0) {
-                container.innerHTML = '<p class="text-center text-slate-400 py-10">등록된 테스트 점수가 없습니다.</p>';
-                return;
-            }
-
-            this.renderDailyMatrix();
-
         } catch (error) {
             console.error(error);
-            container.innerHTML = '<div class="text-red-500 text-center p-4">데이터 로드 실패<br><span class="text-xs text-slate-400">(인덱스 설정이 필요할 수 있습니다)</span></div>';
+            container.innerHTML = '<div class="text-red-500 text-center p-4">초기화 실패</div>';
         }
     },
 
@@ -151,6 +171,9 @@ export const analysisDashboard = {
     renderDailyMatrix() {
         const { uniqueDates, dailyTestRecords, matrixPage, itemsPerPage, students } = this.state;
         const container = this.elements.dailyTestResultTable;
+
+        // 데이터가 없으면 렌더링 중단
+        if (uniqueDates.length === 0) return;
 
         const startIdx = matrixPage * itemsPerPage;
         const endIdx = startIdx + itemsPerPage;
@@ -222,13 +245,13 @@ export const analysisDashboard = {
         html += `</tr></tbody></table>`;
         container.innerHTML = html;
 
-        // 버튼 이벤트 연결
+        // 버튼 이벤트 연결 (DOM이 재생성되었으므로 다시 연결)
         container.querySelector('#teacher-daily-prev-btn').onclick = () => this.changeMatrixPage(-1);
         container.querySelector('#teacher-daily-next-btn').onclick = () => this.changeMatrixPage(1);
     },
 
     // ----------------------------------------
-    // [View 2] Learning Status (기존 유지)
+    // [View 2] Learning Status (기존 로직 유지)
     // ----------------------------------------
     async initLearningStatusView() {
         const subjectSelect = this.elements.learningSubjectSelect;

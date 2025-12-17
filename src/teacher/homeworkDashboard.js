@@ -1,17 +1,17 @@
 // src/teacher/homeworkDashboard.js
 
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const homeworkDashboard = {
-    managerInstance: null, // TeacherApp에서 접근 가능하도록
+    managerInstance: null,
+    unsubscribe: null, // ✨ 실시간 감시 취소용 변수 추가
 
-    // 선생님 앱용 HTML ID 매핑
     config: {
         elements: {
             modal: 'teacher-assign-homework-modal',
-            modalTitle: 'teacher-homework-modal-title', // ✨ 선생님 앱 ID
+            modalTitle: 'teacher-homework-modal-title',
             titleInput: 'teacher-homework-title',
             subjectSelect: 'teacher-homework-subject-select',
             textbookSelect: 'teacher-homework-textbook-select',
@@ -22,7 +22,6 @@ export const homeworkDashboard = {
             closeBtn: 'teacher-close-homework-modal-btn',
             cancelBtn: 'teacher-cancel-homework-btn',
             
-            // Dashboard controls
             homeworkSelect: 'teacher-homework-select',
             assignBtn: 'teacher-assign-homework-btn',
             
@@ -44,7 +43,7 @@ export const homeworkDashboard = {
 
     init(app) {
         this.app = app;
-        this.managerInstance = this; // Self reference
+        this.managerInstance = this;
         this.addEventListeners();
     },
 
@@ -63,7 +62,6 @@ export const homeworkDashboard = {
 
         el('subjectSelect')?.addEventListener('change', (e) => this.handleSubjectChange(e.target.value));
         
-        // 반 변경 감지 (TeacherApp에서 이벤트 발생시킴)
         document.addEventListener('class-changed', () => {
             this.state.selectedClassId = this.app.state.selectedClassId;
             this.resetUIState();
@@ -72,6 +70,12 @@ export const homeworkDashboard = {
     },
 
     resetUIState() {
+        // 기존 감시(리스너)가 있다면 해제
+        if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+
         const el = (id) => document.getElementById(this.config.elements[id]);
         if(el('homeworkContent')) el('homeworkContent').style.display = 'none';
         if(el('homeworkManagementButtons')) el('homeworkManagementButtons').style.display = 'none';
@@ -103,33 +107,44 @@ export const homeworkDashboard = {
         }
     },
 
-    async loadHomeworkDetails(homeworkId) {
+    // ✨ [핵심 수정] 실시간 데이터 감시(onSnapshot) 적용
+    loadHomeworkDetails(homeworkId) {
         if (!homeworkId) return;
+        
+        // 기존 리스너 해제 (다른 숙제 클릭 시)
+        if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+
         this.state.selectedHomeworkId = homeworkId;
         
         const el = (id) => document.getElementById(this.config.elements[id]);
         
         el('homeworkContent').style.display = 'block';
-        el('homeworkContent').classList.remove('hidden'); // Tailwind hidden 제거
+        el('homeworkContent').classList.remove('hidden');
         
         el('homeworkManagementButtons').style.display = 'flex';
         el('homeworkManagementButtons').classList.remove('hidden');
 
-        el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">로딩 중...</td></tr>';
+        el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터 연결 중...</td></tr>';
 
-        try {
-            const docRef = doc(db, 'homeworks', homeworkId);
-            const docSnap = await getDoc(docRef);
-            
-            if (!docSnap.exists()) return;
+        const docRef = doc(db, 'homeworks', homeworkId);
+
+        // onSnapshot을 사용하여 실시간 업데이트
+        this.unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (!docSnap.exists()) {
+                el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
+                return;
+            }
+
             const hwData = docSnap.data();
             this.state.editingHomework = { id: homeworkId, ...hwData };
             
             el('selectedHomeworkTitle').textContent = hwData.title;
 
-            // 학생 데이터 로드 (현재 반 학생들)
-            // TeacherApp의 state에 이미 학생 정보가 있다면 활용 가능
-            const studentsInClass = this.app.state.studentsInClass; // Map(id -> name)
+            // 학생 데이터와 제출 데이터 매칭
+            const studentsInClass = this.app.state.studentsInClass; 
             const submissions = hwData.submissions || {};
             
             const tbody = el('homeworkTableBody');
@@ -140,27 +155,37 @@ export const homeworkDashboard = {
                 return;
             }
 
-            studentsInClass.forEach((name, id) => {
+            // 학생 목록을 이름순 정렬
+            const sortedStudents = Array.from(studentsInClass.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+
+            sortedStudents.forEach(([id, name]) => {
                 const sub = submissions[id];
                 const isDone = sub && sub.status === 'completed';
                 const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                 
+                // 파일 다운로드 버튼 (URL이 있을 경우)
+                let downloadBtn = '';
+                if (sub?.fileUrl) {
+                    downloadBtn = `<a href="${sub.fileUrl}" target="_blank" class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100 ml-2">다운로드</a>`;
+                }
+
                 const tr = document.createElement('tr');
-                tr.className = "border-b hover:bg-slate-50";
+                tr.className = "border-b hover:bg-slate-50 transition duration-300"; // 애니메이션 효과 추가
                 tr.innerHTML = `
                     <td class="py-3 px-4">${name}</td>
                     <td class="py-3 px-4 font-bold ${isDone ? 'text-green-600' : 'text-red-500'}">
                         ${isDone ? '완료' : '미완료'}
                     </td>
-                    <td class="py-3 px-4 text-xs text-slate-500">${date}</td>
+                    <td class="py-3 px-4 text-xs text-slate-500">
+                        ${date} ${downloadBtn}
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
-
-        } catch (e) {
-            console.error(e);
-            el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">오류 발생</td></tr>';
-        }
+        }, (error) => {
+            console.error("실시간 업데이트 실패:", error);
+            el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">실시간 연결 끊김</td></tr>';
+        });
     },
 
     // --- Modal Functions ---
@@ -169,10 +194,7 @@ export const homeworkDashboard = {
         const modal = el('modal');
         const titleEl = el('modalTitle');
 
-        if (!modal || !titleEl) {
-            console.error("Homework modal elements missing");
-            return;
-        }
+        if (!modal || !titleEl) return;
 
         const isEdit = mode === 'edit';
         titleEl.textContent = isEdit ? '숙제 수정' : '새 숙제 출제';
@@ -200,7 +222,7 @@ export const homeworkDashboard = {
             this.state.editingHomework = null;
         }
 
-        modal.style.display = 'flex'; // Show modal
+        modal.style.display = 'flex';
     },
 
     closeModal() {
@@ -211,7 +233,7 @@ export const homeworkDashboard = {
 
     async populateSubjectsForHomeworkModal() {
         const select = document.getElementById(this.config.elements.subjectSelect);
-        const subjects = this.app.state.subjects || []; // TeacherApp has cached subjects
+        const subjects = this.app.state.subjects || [];
         
         select.innerHTML = '<option value="">과목 선택</option>';
         subjects.forEach(sub => {
@@ -276,7 +298,7 @@ export const homeworkDashboard = {
                 showToast("출제되었습니다.", false);
             }
             this.closeModal();
-            this.populateHomeworkSelect(); // 리스트 갱신
+            this.populateHomeworkSelect(); 
         } catch (e) {
             console.error(e);
             showToast("저장 실패", true);

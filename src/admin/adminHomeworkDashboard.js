@@ -41,11 +41,14 @@ export const adminHomeworkDashboard = {
     init(app) {
         this.app = app;
         this.addEventListeners();
+        // ✨ [수정] 앱이 시작될 때 반 목록을 불러오도록 이 줄을 반드시 추가해야 합니다!
+        this.populateClassSelect(); 
     },
 
     initView() {
         this.populateClassSelect();
         const el = (id) => document.getElementById(this.elements[id]);
+        // 초기화 시 메인 콘텐츠 숨김 (반 선택 전)
         if (el('homeworkMainContent')) el('homeworkMainContent').style.display = 'none';
         if (el('homeworkContent')) el('homeworkContent').style.display = 'none';
     },
@@ -69,6 +72,9 @@ export const adminHomeworkDashboard = {
         const select = document.getElementById(this.elements.classSelect);
         if (!select) return;
         
+        // 이미 로딩 중이면 중복 실행 방지
+        if (select.options.length > 1 && select.options[1].value !== "") return;
+
         select.innerHTML = '<option value="">로딩 중...</option>';
         try {
             const q = query(collection(db, 'classes'), orderBy('name'));
@@ -78,6 +84,7 @@ export const adminHomeworkDashboard = {
                 select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
             });
         } catch (e) {
+            console.error(e);
             select.innerHTML = '<option value="">로드 실패</option>';
         }
     },
@@ -87,13 +94,17 @@ export const adminHomeworkDashboard = {
         this.state.selectedHomeworkId = null;
         
         const mainContent = document.getElementById(this.elements.homeworkMainContent);
+        
         if (classId) {
+            // ✨ 반이 선택되면 메인 콘텐츠(숙제 목록+버튼)를 보여줌
             if(mainContent) mainContent.style.display = 'block';
             this.loadHomeworkList(classId);
         } else {
+            // 반 선택이 해제되면 숨김
             if(mainContent) mainContent.style.display = 'none';
         }
         
+        // 우측 상세 화면 초기화
         const el = (id) => document.getElementById(this.elements[id]);
         if(el('homeworkContent')) el('homeworkContent').style.display = 'none';
         if(el('placeholder')) el('placeholder').style.display = 'flex';
@@ -109,23 +120,21 @@ export const adminHomeworkDashboard = {
             const q = query(collection(db, 'homeworks'), where('classId', '==', classId), orderBy('createdAt', 'desc'));
             const snap = await getDocs(q);
             
-            select.innerHTML = '';
+            select.innerHTML = ''; // 기존 목록 초기화
             if (snap.empty) {
-                const opt = document.createElement('option');
-                opt.text = "(등록된 숙제 없음)";
-                opt.disabled = true;
-                select.add(opt);
+                // select에 option을 추가하는 방식으로 변경 (innerHTML 덮어쓰기 문제 방지)
+                select.innerHTML = '<option disabled>(등록된 숙제 없음)</option>';
             } else {
                 snap.forEach(doc => {
                     const data = doc.data();
                     const opt = document.createElement('option');
                     opt.value = doc.id;
-                    // ✨ [수정] 제목이 없으면 (제목 없음) 표시
                     opt.text = data.title ? data.title : "(제목 없음)";
                     select.add(opt);
                 });
             }
         } catch (e) {
+            console.error(e);
             select.innerHTML = '<option>로드 실패</option>';
         }
     },
@@ -147,14 +156,15 @@ export const adminHomeworkDashboard = {
             const docRef = doc(db, 'homeworks', homeworkId);
             const docSnap = await getDoc(docRef);
             
-            if (!docSnap.exists()) return;
+            if (!docSnap.exists()) {
+                el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
+                return;
+            }
             const hwData = docSnap.data();
             this.state.editingHomework = { id: homeworkId, ...hwData };
             
             el('selectedHomeworkTitle').textContent = hwData.title || "(제목 없음)";
 
-            // ✨ [핵심 수정] 학생 불러오기 로직 강화 (구버전/신버전 데이터 호환)
-            // 1. 모든 학생을 일단 불러옵니다. (데이터 양이 많지 않으므로 안전함)
             const studentsSnap = await getDocs(collection(db, 'students'));
             
             const submissions = hwData.submissions || {};
@@ -166,7 +176,6 @@ export const adminHomeworkDashboard = {
             studentsSnap.forEach(sDoc => {
                 const student = sDoc.data();
                 
-                // ✨ 필터링: classId(단일 문자열) 또는 classIds(배열)에 현재 반 ID가 있는지 확인
                 let isInClass = false;
                 if (student.classIds && Array.isArray(student.classIds)) {
                     if (student.classIds.includes(currentClassId)) isInClass = true;
@@ -180,7 +189,6 @@ export const adminHomeworkDashboard = {
                     const isDone = sub && sub.status === 'completed';
                     const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                     
-                    // 파일 보기 링크
                     let checkHtml = `<span class="text-slate-400">-</span>`;
                     if (isDone && sub.fileUrl) {
                         checkHtml = `<a href="${sub.fileUrl}" target="_blank" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 font-bold">확인</a>`;

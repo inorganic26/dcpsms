@@ -1,11 +1,14 @@
 // src/admin/adminAnalysisManager.js
 
-import { collection, getDocs, doc, getDoc, query, where, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const adminAnalysisManager = {
     elements: {},
+    // 실시간 감시 취소용
+    unsubscribeDailyTest: null,
+
     state: {
         students: [],
         studentMap: new Map(), // ID -> 이름 매핑용
@@ -69,8 +72,6 @@ export const adminAnalysisManager = {
 
     async loadStudents(classId) {
         try {
-            // classIds 배열 포함 또는 단일 classId 일치
-            // (간단하게 단일 classId 기준으로 조회하거나, 전체 학생 중 필터링)
             const q = query(collection(db, "students"), where("classId", "==", classId));
             const snapshot = await getDocs(q);
             
@@ -95,6 +96,13 @@ export const adminAnalysisManager = {
     async handleDailyClassChange(classId) {
         this.state.selectedDailyClassId = classId;
         this.resetDailySelectors('subject');
+        
+        // 반이 변경되면 기존 감시 해제
+        if (this.unsubscribeDailyTest) {
+            this.unsubscribeDailyTest();
+            this.unsubscribeDailyTest = null;
+        }
+
         if (!classId) return;
 
         await this.loadStudents(classId);
@@ -117,53 +125,65 @@ export const adminAnalysisManager = {
         const container = this.elements.dailyResultTable;
         this.elements.dailyPagination.classList.add('hidden');
 
+        // 기존 감시 해제
+        if (this.unsubscribeDailyTest) {
+            this.unsubscribeDailyTest();
+            this.unsubscribeDailyTest = null;
+        }
+
         if (!subjectId) {
             container.innerHTML = '';
             return;
         }
 
-        container.innerHTML = '<div class="loader-small mx-auto"></div> <p class="text-center mt-2">데이터 로딩 중...</p>';
+        container.innerHTML = '<div class="loader-small mx-auto"></div> <p class="text-center mt-2">실시간 데이터 로딩 중...</p>';
 
         try {
-            // 1. 해당 과목의 일일 테스트 기록 가져오기 (전체 학생 대상은 비효율적일 수 있으나 현재 구조상 최선)
-            // -> daily_tests 컬렉션에는 classId 필드가 없으므로, studentId로 필터링해야 함.
-            // -> 하지만 학생이 많으면 쿼리가 복잡해지므로, 우선 '과목'으로 필터링하고 메모리에서 학생(classId) 매칭
-            
-            // 인덱스 필요: subjectId asc, date desc
+            // ✨ [핵심 수정] getDocs -> onSnapshot (실시간)
+            // 성능 최적화(where classId)와 실시간성(onSnapshot) 동시 적용
             const q = query(
                 collection(db, "daily_tests"), 
                 where("subjectId", "==", subjectId),
+                where("classId", "==", this.state.selectedDailyClassId), 
                 orderBy("date", "desc")
             );
             
-            const snapshot = await getDocs(q);
-            const allRecords = [];
-            
-            // 현재 반에 속한 학생들의 기록만 필터링
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                if (this.state.studentMap.has(data.studentId)) {
-                    allRecords.push({ id: doc.id, ...data });
+            this.unsubscribeDailyTest = onSnapshot(q, (snapshot) => {
+                const allRecords = [];
+                snapshot.forEach(doc => {
+                    allRecords.push({ id: doc.id, ...doc.data() });
+                });
+
+                this.state.dailyTestRecords = allRecords;
+                
+                // 날짜 목록 추출
+                const dates = [...new Set(allRecords.map(r => r.date))].sort((a, b) => b.localeCompare(a)); // 최신순
+                this.state.uniqueDates = dates;
+                this.state.matrixPage = 0;
+
+                if (dates.length === 0) {
+                    container.innerHTML = '<p class="text-center text-slate-400 py-10">등록된 테스트 기록이 없습니다.</p>';
+                    this.elements.dailyPagination.classList.add('hidden');
+                } else {
+                    this.renderDailyMatrix();
+                }
+
+            }, (error) => {
+                console.error(error);
+                if (error.code === 'failed-precondition') {
+                     container.innerHTML = `<div class="text-red-500 text-center p-4">
+                        데이터베이스 색인(Index) 생성이 필요합니다.<br>
+                        <a href="${error.message.match(/https?:\/\/[^\s]+/)[0]}" target="_blank" class="underline font-bold text-blue-600">여기(링크)를 클릭하여 생성해주세요.</a>
+                        <br><span class="text-xs text-slate-500">(생성 후 몇 분 뒤부터 정상 작동합니다)</span>
+                     </div>`;
+                } else {
+                    container.innerHTML = '<div class="text-red-500 text-center p-4">데이터 로드 실패</div>';
                 }
             });
 
-            this.state.dailyTestRecords = allRecords;
-            
-            // 2. 날짜 목록 추출 (중복 제거 및 정렬)
-            const dates = [...new Set(allRecords.map(r => r.date))].sort((a, b) => b.localeCompare(a)); // 최신순
-            this.state.uniqueDates = dates;
-            this.state.matrixPage = 0;
-
-            if (dates.length === 0) {
-                container.innerHTML = '<p class="text-center text-slate-400 py-10">등록된 테스트 기록이 없습니다.</p>';
-                return;
-            }
-
-            this.renderDailyMatrix();
-
         } catch (error) {
             console.error(error);
-            container.innerHTML = '<div class="text-red-500 text-center p-4">데이터 로드 실패<br><span class="text-xs text-slate-400">(subjectId, date 복합 인덱스가 필요할 수 있습니다)</span></div>';
+            container.innerHTML = '<div class="text-red-500 text-center p-4">초기화 오류</div>';
         }
     },
 
@@ -185,6 +205,8 @@ export const adminAnalysisManager = {
         const prevBtn = this.elements.dailyPrevBtn;
         const nextBtn = this.elements.dailyNextBtn;
         const pageInfo = this.elements.dailyPageInfo;
+
+        if (uniqueDates.length === 0) return;
 
         // 페이지네이션 처리
         const startIdx = matrixPage * itemsPerPage;
@@ -218,7 +240,6 @@ export const adminAnalysisManager = {
 
         // 학생별 행 생성
         students.forEach(student => {
-            // 해당 학생의 모든 기록 (평균 계산용)
             const studentRecords = dailyTestRecords.filter(r => r.studentId === student.id);
             const totalScore = studentRecords.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
             const avg = studentRecords.length > 0 ? Math.round(totalScore / studentRecords.length) : '-';
@@ -229,8 +250,6 @@ export const adminAnalysisManager = {
 
             // 각 날짜별 점수 매핑
             visibleDates.forEach(date => {
-                // 같은 날짜에 여러 기록이 있을 수 있으나, 보통 하나라고 가정. (여러개면 첫번째꺼 또는 평균?)
-                // 여기서는 가장 최신(또는 첫번째) 기록을 사용
                 const record = studentRecords.find(r => r.date === date);
                 
                 if (!record) {
@@ -241,8 +260,7 @@ export const adminAnalysisManager = {
                     if (score >= 90) bgClass = "bg-blue-50 text-blue-700";
                     else if (score < 70) bgClass = "bg-red-50 text-red-600";
                     
-                    // 메모가 있으면 툴팁으로 표시
-                    const tooltip = record.memo ? `title="${record.memo}"` : "";
+                    const tooltip = record.memo ? `title="메모: ${record.memo}"` : "";
                     html += `<td class="p-3 border font-bold ${bgClass} cursor-help" ${tooltip}>${score}</td>`;
                 }
             });
