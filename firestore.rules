@@ -22,8 +22,15 @@ service cloud.firestore {
     // classes 컬렉션 (반 목록)
     // =========================================
     match /classes/{classId} {
-      // 로그인 전에도 반을 선택해야 하므로 read 허용
-      allow read: if true; 
+      allow read: if true;
+      allow write: if isAdminOrTeacher();
+    }
+
+    // =========================================
+    // teachers 컬렉션 (선생님 목록) - ✨ [추가됨] 이 부분이 없어서 오류 발생
+    // =========================================
+    match /teachers/{teacherId} {
+      allow read: if true;
       allow write: if isAdminOrTeacher();
     }
 
@@ -31,8 +38,7 @@ service cloud.firestore {
     // students 컬렉션 (학생 목록)
     // =========================================
     match /students/{studentId} {
-      // 반 선택 후 이름을 찾아야 하므로 read 허용
-      allow read: if true; 
+      allow read: if true;
       allow write: if isAdminOrTeacher();
     }
 
@@ -40,20 +46,19 @@ service cloud.firestore {
     // textbooks / subjects / lessons (학습 데이터)
     // =========================================
     match /textbooks/{textbookId} {
-      allow read: if true; 
+      allow read: if true;
       allow write: if isAdminOrTeacher();
     }
 
     match /subjects/{subjectId} {
-      allow read: if true; 
+      allow read: if true;
       allow write: if isAdminOrTeacher();
 
       match /lessons/{lessonId} {
-        allow read: if true; 
+        allow read: if true;
         allow write: if isAdminOrTeacher();
 
         match /submissions/{studentDocId} {
-          // 제출물은 본인 혹은 관리자만
           allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
           allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
           allow delete: if isAdminOrTeacher();
@@ -87,6 +92,14 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
+    }
+
+    // =========================================
+    // 일일 테스트 (daily_tests)
+    // =========================================
+    match /daily_tests/{testId} {
+      // 학생 및 관리자 모두 접근 가능하게 설정
+      allow read, write: if isAuthenticated();
     }
 
     // 기본 거부

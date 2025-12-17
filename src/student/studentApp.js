@@ -18,6 +18,11 @@ export const StudentApp = {
         quizScreen: 'student-quiz-screen',
         resultScreen: 'student-result-screen',
         homeworkScreen: 'student-homework-screen',
+        
+        // 일일 테스트 화면 요소
+        dailyTestScreen: 'student-daily-test-screen',
+        backToSubjectsFromDailyTestBtn: 'student-back-to-subjects-from-daily-test-btn',
+
         reportListScreen: 'student-report-list-screen',
         
         classVideoDateScreen: 'student-class-video-date-screen',
@@ -26,19 +31,44 @@ export const StudentApp = {
         videoDisplayModal: 'student-video-display-modal',
 
         dashboardContainer: 'student-dashboard-grid', 
+        lessonGrid: 'student-lesson-grid',
 
         welcomeMessage: 'student-welcome-message',
         selectedSubjectTitle: 'student-selected-subject-title',
+        
+        // 버튼류
         backToSubjectsBtn: 'student-back-to-subjects-btn',
         backToSubjectsFromHomeworkBtn: 'student-back-to-subjects-from-homework-btn',
         backToMenuFromReportListBtn: 'student-back-to-menu-from-report-list-btn',
+
+        // 결과 화면 및 퀴즈 관련
+        successMessage: 'student-result-success-msg',
+        failureMessage: 'student-result-failure-msg',
+        resultScoreTextSuccess: 'student-result-score-text-success',
+        resultScoreTextFailure: 'student-result-score-text-failure',
+        
+        // 퀴즈 화면 요소
+        progressBar: 'student-quiz-progress-bar',
+        progressText: 'student-quiz-progress-text',
+        questionText: 'student-quiz-question-text',
+        optionsContainer: 'student-quiz-options-container',
+
+        // 비디오/퀴즈 제어 버튼
+        gotoRev1Btn: 'gotoRev1Btn',
+        startQuizBtn: 'startQuizBtn',
+        retryQuizBtn: 'student-retry-quiz-btn',
+        rewatchVideo1Btn: 'student-rewatch-video1-btn',
+        
+        // Video 1 화면 요소
+        video1Title: 'student-video1-title',
+        video1Iframe: 'student-video1-iframe',
     },
 
     state: {
         studentData: null,
         studentDocId: null,
         studentName: null,
-        classType: null,
+        classType: null, // 'self-directed' or 'live-lecture'
         subjects: [],
         selectedSubject: null,
         lessons: [],
@@ -59,6 +89,7 @@ export const StudentApp = {
         classVideoManager.init(this);
         this.addEventListeners();
 
+        // 초기 화면
         this.showScreen(this.elements.loginScreen);
     },
 
@@ -68,6 +99,9 @@ export const StudentApp = {
         el('backToSubjectsBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
         el('backToSubjectsFromHomeworkBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
         el('backToMenuFromReportListBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
+        
+        // 일일 테스트 뒤로가기
+        el('backToSubjectsFromDailyTestBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
 
         document.getElementById('student-back-to-lessons-from-video-btn')?.addEventListener('click', () => {
             this.state.selectedSubject ? this.showLessonSelectionScreen(this.state.selectedSubject.id) : this.showSubjectSelectionScreen();
@@ -79,19 +113,22 @@ export const StudentApp = {
     },
 
     showScreen(screenId) {
-        const screens = [
-            this.elements.loadingScreen, this.elements.loginScreen, this.elements.subjectSelectionScreen,
-            this.elements.lessonSelectionScreen, this.elements.video1Screen, this.elements.quizScreen,
-            this.elements.resultScreen, this.elements.homeworkScreen, this.elements.reportListScreen,
-            this.elements.classVideoDateScreen, this.elements.qnaVideoDateScreen, this.elements.videoTitlesScreen
-        ];
-        screens.forEach(id => {
+        // 모든 화면 숨김
+        Object.values(this.elements).forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.style.display = 'none';
+            if (el && id.includes('screen')) el.style.display = 'none';
         });
+
+        // 타겟 화면 표시
         const target = document.getElementById(screenId);
         if (target) {
-            const flexScreens = ['student-loading-screen', 'student-login-screen', 'student-video1-screen', 'student-quiz-screen', 'student-result-screen'];
+            const flexScreens = [
+                this.elements.loadingScreen, 
+                this.elements.loginScreen, 
+                this.elements.video1Screen, 
+                this.elements.quizScreen, 
+                this.elements.resultScreen
+            ];
             target.style.display = flexScreens.includes(screenId) ? 'flex' : 'block';
         }
     },
@@ -110,13 +147,14 @@ export const StudentApp = {
                 
                 if (classDoc.exists()) {
                     const data = classDoc.data();
-                    this.state.classType = data.classType;
+                    this.state.classType = data.classType || 'live-lecture'; 
                     classSubjectsMap = data.subjects || {};
                 }
 
                 const subjectsSnapshot = await getDocs(collection(db, "subjects"));
                 const allSubjects = subjectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
+                // 반에 설정된 과목만 필터링하여 state에 저장
                 this.state.subjects = Object.keys(classSubjectsMap).map(subjectId => {
                     const subjectInfo = allSubjects.find(s => s.id === subjectId);
                     return subjectInfo ? { id: subjectId, name: subjectInfo.name } : null;
@@ -169,10 +207,13 @@ export const StudentApp = {
             () => this.showHomeworkScreen()
         ));
 
-        // ⬇️ [수정됨] 일일 테스트: 클릭 시 '전체 테스트 목록 불러오기' 실행 (과목 선택 X)
+        // ✨ [핵심 수정] 클릭 시 '화면 전환' 및 '과목 목록 채우기(initDailyTestScreen)' 호출
         container.appendChild(this.createDashboardCard(
             'edit_note', '일일 테스트', 'bg-orange-50 text-orange-600 group-hover:bg-orange-100',
-            () => studentLesson.loadAllDailyTests()
+            () => {
+                this.showScreen(this.elements.dailyTestScreen); // 화면 전환
+                studentLesson.initDailyTestScreen(); // 과목 목록 채우기 + 데이터 로드
+            }
         ));
 
         container.appendChild(this.createDashboardCard(

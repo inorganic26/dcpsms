@@ -27,9 +27,17 @@ export const classVideoManager = {
 
     addEventListeners() {
         const el = (id) => document.getElementById(this.elements[id]);
+        
         el('backToSubjectsFromClass')?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
         el('backToSubjectsFromQna')?.addEventListener('click', () => this.app.showSubjectSelectionScreen());
+        
+        // ✨ [수정됨] 뒤로가기 시 영상 목록을 비워서 재생 중단
         el('backToDates')?.addEventListener('click', () => {
+            // 1. 영상 목록 컨테이너 비우기 (iframe 삭제 -> 재생 중단)
+            const videoContainer = document.getElementById(this.elements.videoTitleList);
+            if (videoContainer) videoContainer.innerHTML = "";
+
+            // 2. 화면 전환
             this.app.showScreen(this.state.currentType === 'class' ? this.elements.dateScreen : this.elements.qnaDateScreen);
         });
     },

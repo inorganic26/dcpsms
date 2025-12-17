@@ -1,7 +1,9 @@
 // src/student/studentAuth.js
 
 import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
-import { db } from "../shared/firebase.js";
+// ✨ [수정] signInAnonymously와 auth 가져오기
+import { signInAnonymously } from "firebase/auth";
+import { db, auth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const studentAuth = {
@@ -87,17 +89,33 @@ export const studentAuth = {
         document.getElementById(this.elements.passwordInput).focus();
     },
 
-    handleLogin() {
+    // ✨ [핵심 수정] 실제 Firebase Auth 로그인을 수행하여 권한 획득
+    async handleLogin() {
         const student = this.state.selectedStudent;
-        const pw = document.getElementById(this.elements.passwordInput).value.trim();
+        const pwInput = document.getElementById(this.elements.passwordInput);
+        const pw = pwInput.value.trim();
+        
         if (!student || !pw) { showToast("정보를 입력해주세요.", true); return; }
         
+        // 전화번호 뒷 4자리 확인
         if (pw === (student.phone || "").slice(-4)) {
-            showToast(`${student.name}님 환영합니다!`, false);
-            const activeData = { ...student, classId: document.getElementById(this.elements.classSelect).value };
-            this.app.onLoginSuccess(activeData, student.id);
+            try {
+                // 1. Firebase 인증 시스템에 '익명'으로 로그인
+                // (이 과정을 거쳐야 firestore.rules의 isAuthenticated()가 true가 됩니다)
+                await signInAnonymously(auth);
+
+                showToast(`${student.name}님 환영합니다!`, false);
+                const activeData = { ...student, classId: document.getElementById(this.elements.classSelect).value };
+                
+                this.app.onLoginSuccess(activeData, student.id);
+            } catch (error) {
+                console.error("Firebase 로그인 실패:", error);
+                showToast("로그인 처리 중 오류가 발생했습니다.", true);
+            }
         } else {
             showToast("비밀번호가 일치하지 않습니다.", true);
+            pwInput.value = '';
+            pwInput.focus();
         }
     }
 };

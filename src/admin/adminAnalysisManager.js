@@ -7,16 +7,17 @@ import { showToast } from "../shared/utils.js";
 export const adminAnalysisManager = {
     elements: {},
     state: {
-        students: [], 
+        students: [],
+        studentMap: new Map(), // ID -> 이름 매핑용
         
         // 일일 테스트
         selectedDailyClassId: null,
         selectedDailySubjectId: null,
-        matrixLessons: [],
+        dailyTestRecords: [], // 불러온 전체 기록
+        uniqueDates: [],      // 날짜 목록 (컬럼용)
         matrixPage: 0,
-        itemsPerPage: 4,
-        matrixData: {}, // 데이터 캐싱
-
+        itemsPerPage: 5,      // 한 페이지에 보여줄 날짜 수
+        
         // 학습 현황
         selectedLearningClassId: null,
         selectedLearningSubjectId: null,
@@ -68,15 +69,23 @@ export const adminAnalysisManager = {
 
     async loadStudents(classId) {
         try {
+            // classIds 배열 포함 또는 단일 classId 일치
+            // (간단하게 단일 classId 기준으로 조회하거나, 전체 학생 중 필터링)
             const q = query(collection(db, "students"), where("classId", "==", classId));
             const snapshot = await getDocs(q);
+            
             this.state.students = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             this.state.students.sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Map 생성 (ID로 이름 찾기용)
+            this.state.studentMap.clear();
+            this.state.students.forEach(s => this.state.studentMap.set(s.id, s.name));
+            
         } catch (e) { console.error("학생 로딩 실패", e); }
     },
 
     // =========================================
-    // [View 1] 일일 테스트 (Matrix + Pagination)
+    // [View 1] 일일 테스트 (Daily Tests Collection 사용)
     // =========================================
     initDailyTestView() {
         this.loadClassesToSelect(this.elements.dailyClassSelect);
@@ -115,88 +124,86 @@ export const adminAnalysisManager = {
 
         container.innerHTML = '<div class="loader-small mx-auto"></div> <p class="text-center mt-2">데이터 로딩 중...</p>';
 
-        const lessonsQ = query(collection(db, `subjects/${subjectId}/lessons`), orderBy("order"));
-        const lessonsSnap = await getDocs(lessonsQ);
-        
-        this.state.matrixLessons = lessonsSnap.docs.map((d, index) => {
-            const data = d.data();
-            let dateLabel = `${index + 1}회`;
-            if (data.createdAt) {
-                try {
-                    const date = data.createdAt.toDate();
-                    const mm = String(date.getMonth() + 1).padStart(2, '0');
-                    const dd = String(date.getDate()).padStart(2, '0');
-                    dateLabel = `${mm}.${dd}`;
-                } catch (e) {}
+        try {
+            // 1. 해당 과목의 일일 테스트 기록 가져오기 (전체 학생 대상은 비효율적일 수 있으나 현재 구조상 최선)
+            // -> daily_tests 컬렉션에는 classId 필드가 없으므로, studentId로 필터링해야 함.
+            // -> 하지만 학생이 많으면 쿼리가 복잡해지므로, 우선 '과목'으로 필터링하고 메모리에서 학생(classId) 매칭
+            
+            // 인덱스 필요: subjectId asc, date desc
+            const q = query(
+                collection(db, "daily_tests"), 
+                where("subjectId", "==", subjectId),
+                orderBy("date", "desc")
+            );
+            
+            const snapshot = await getDocs(q);
+            const allRecords = [];
+            
+            // 현재 반에 속한 학생들의 기록만 필터링
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (this.state.studentMap.has(data.studentId)) {
+                    allRecords.push({ id: doc.id, ...data });
+                }
+            });
+
+            this.state.dailyTestRecords = allRecords;
+            
+            // 2. 날짜 목록 추출 (중복 제거 및 정렬)
+            const dates = [...new Set(allRecords.map(r => r.date))].sort((a, b) => b.localeCompare(a)); // 최신순
+            this.state.uniqueDates = dates;
+            this.state.matrixPage = 0;
+
+            if (dates.length === 0) {
+                container.innerHTML = '<p class="text-center text-slate-400 py-10">등록된 테스트 기록이 없습니다.</p>';
+                return;
             }
-            return { id: d.id, dateLabel, ...data };
-        });
 
-        this.state.matrixPage = 0;
+            this.renderDailyMatrix();
 
-        if (this.state.matrixLessons.length === 0) {
-            container.innerHTML = '<p class="text-center text-slate-400 py-10">등록된 학습이 없습니다.</p>';
-            return;
+        } catch (error) {
+            console.error(error);
+            container.innerHTML = '<div class="text-red-500 text-center p-4">데이터 로드 실패<br><span class="text-xs text-slate-400">(subjectId, date 복합 인덱스가 필요할 수 있습니다)</span></div>';
         }
-
-        this.state.matrixData = {}; 
-        const students = this.state.students;
-        
-        await Promise.all(students.map(async (student) => {
-            this.state.matrixData[student.id] = {};
-            for (const lesson of this.state.matrixLessons) {
-                 const subRef = doc(db, `subjects/${subjectId}/lessons/${lesson.id}/submissions/${student.id}`);
-                 const subSnap = await getDoc(subRef);
-                 if (subSnap.exists()) {
-                     this.state.matrixData[student.id][lesson.id] = subSnap.data();
-                 }
-            }
-        }));
-
-        this.renderMatrix();
     },
 
     changeMatrixPage(delta) {
-        const newPage = this.state.matrixPage + delta;
-        const maxPage = Math.ceil(this.state.matrixLessons.length / this.state.itemsPerPage) - 1;
+        const { uniqueDates, itemsPerPage, matrixPage } = this.state;
+        const maxPage = Math.ceil(uniqueDates.length / itemsPerPage) - 1;
+        const newPage = matrixPage + delta;
         
         if (newPage >= 0 && newPage <= maxPage) {
             this.state.matrixPage = newPage;
-            this.renderMatrix();
+            this.renderDailyMatrix();
         }
     },
 
-    renderMatrix() {
-        const { matrixLessons, matrixPage, itemsPerPage, students, matrixData } = this.state;
+    renderDailyMatrix() {
+        const { uniqueDates, dailyTestRecords, matrixPage, itemsPerPage, students } = this.state;
         const container = this.elements.dailyResultTable;
         const pagination = this.elements.dailyPagination;
         const prevBtn = this.elements.dailyPrevBtn;
         const nextBtn = this.elements.dailyNextBtn;
         const pageInfo = this.elements.dailyPageInfo;
 
+        // 페이지네이션 처리
         const startIdx = matrixPage * itemsPerPage;
         const endIdx = startIdx + itemsPerPage;
-        const visibleLessons = matrixLessons.slice(startIdx, endIdx);
-        const totalPages = Math.ceil(matrixLessons.length / itemsPerPage);
+        const visibleDates = uniqueDates.slice(startIdx, endIdx);
+        const totalPages = Math.ceil(uniqueDates.length / itemsPerPage);
 
         pagination.classList.remove('hidden');
         prevBtn.disabled = matrixPage === 0;
         nextBtn.disabled = matrixPage >= totalPages - 1;
         pageInfo.textContent = `${matrixPage + 1} / ${totalPages} 페이지`;
 
-        const lessonStats = {}; 
-        visibleLessons.forEach(l => lessonStats[l.id] = { total: 0, count: 0 });
-
-        students.forEach(student => {
-            const scores = matrixData[student.id];
-            visibleLessons.forEach(l => {
-                if (scores[l.id]?.dailyTestScore !== undefined && scores[l.id]?.dailyTestScore !== "") {
-                    lessonStats[l.id].total += Number(scores[l.id].dailyTestScore);
-                    lessonStats[l.id].count++;
-                }
-            });
+        // 날짜 포맷팅 (YYYY-MM-DD -> MM.DD)
+        const dateLabels = visibleDates.map(d => {
+            const parts = d.split('-');
+            return parts.length === 3 ? `${parts[1]}.${parts[2]}` : d;
         });
 
+        // 테이블 헤더 생성
         let html = `
             <table class="w-full text-sm text-center border-collapse whitespace-nowrap">
                 <thead class="bg-slate-100 text-slate-700 sticky top-0 z-10 shadow-sm">
@@ -204,51 +211,54 @@ export const adminAnalysisManager = {
                         <th class="p-3 border sticky left-0 bg-slate-100 z-20 min-w-[80px]">이름</th>
                         <th class="p-3 border bg-slate-50 min-w-[60px] text-blue-700">개인평균</th>
         `;
-
-        visibleLessons.forEach(lesson => {
-            html += `<th class="p-3 border font-bold text-slate-600">${lesson.dateLabel}</th>`;
+        dateLabels.forEach(label => {
+            html += `<th class="p-3 border font-bold text-slate-600">${label}</th>`;
         });
         html += `</tr></thead><tbody>`;
 
+        // 학생별 행 생성
         students.forEach(student => {
-            const scores = matrixData[student.id];
-            
-            let totalAll = 0, countAll = 0;
-            matrixLessons.forEach(l => {
-                if (scores[l.id]?.dailyTestScore) {
-                    totalAll += Number(scores[l.id].dailyTestScore);
-                    countAll++;
-                }
-            });
-            const avg = countAll > 0 ? Math.round(totalAll / countAll) : '-';
+            // 해당 학생의 모든 기록 (평균 계산용)
+            const studentRecords = dailyTestRecords.filter(r => r.studentId === student.id);
+            const totalScore = studentRecords.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
+            const avg = studentRecords.length > 0 ? Math.round(totalScore / studentRecords.length) : '-';
 
             html += `<tr class="border-b hover:bg-slate-50 transition">
                 <td class="p-3 border font-bold sticky left-0 bg-white z-10">${student.name}</td>
                 <td class="p-3 border font-bold text-blue-600 bg-slate-50">${avg}</td>`;
 
-            visibleLessons.forEach(lesson => {
-                const data = scores[lesson.id];
-                if (!data || data.dailyTestScore === undefined || data.dailyTestScore === "") {
+            // 각 날짜별 점수 매핑
+            visibleDates.forEach(date => {
+                // 같은 날짜에 여러 기록이 있을 수 있으나, 보통 하나라고 가정. (여러개면 첫번째꺼 또는 평균?)
+                // 여기서는 가장 최신(또는 첫번째) 기록을 사용
+                const record = studentRecords.find(r => r.date === date);
+                
+                if (!record) {
                     html += `<td class="p-3 border text-slate-300">-</td>`;
                 } else {
-                    const score = Number(data.dailyTestScore);
+                    const score = Number(record.score);
                     let bgClass = "";
                     if (score >= 90) bgClass = "bg-blue-50 text-blue-700";
                     else if (score < 70) bgClass = "bg-red-50 text-red-600";
-                    html += `<td class="p-3 border font-bold ${bgClass}">${score}</td>`;
+                    
+                    // 메모가 있으면 툴팁으로 표시
+                    const tooltip = record.memo ? `title="${record.memo}"` : "";
+                    html += `<td class="p-3 border font-bold ${bgClass} cursor-help" ${tooltip}>${score}</td>`;
                 }
             });
             html += `</tr>`;
         });
 
+        // 반 평균 행 추가
         html += `<tr class="bg-slate-100 font-bold border-t-2 border-slate-300">
             <td class="p-3 border sticky left-0 bg-slate-100 z-10">반 평균</td>
             <td class="p-3 border text-slate-400">-</td>`;
 
-        visibleLessons.forEach(lesson => {
-            const stats = lessonStats[lesson.id];
-            const classAvg = stats.count > 0 ? Math.round(stats.total / stats.count) : '-';
-            html += `<td class="p-3 border text-indigo-700">${classAvg}</td>`;
+        visibleDates.forEach(date => {
+            const dateRecords = dailyTestRecords.filter(r => r.date === date);
+            const dateTotal = dateRecords.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
+            const dateAvg = dateRecords.length > 0 ? Math.round(dateTotal / dateRecords.length) : '-';
+            html += `<td class="p-3 border text-indigo-700">${dateAvg}</td>`;
         });
 
         html += `</tr></tbody></table>`;
@@ -268,7 +278,7 @@ export const adminAnalysisManager = {
     },
 
     // =========================================
-    // [View 2] 학습 현황 상세
+    // [View 2] 학습 현황 상세 (기존 로직 유지)
     // =========================================
     initLearningStatusView() {
         this.loadClassesToSelect(this.elements.learningClassSelect);
