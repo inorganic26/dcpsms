@@ -1,139 +1,103 @@
 // src/student/studentAuth.js
 
-// ✅ [수정됨] 'where' 포함, 필요한 모든 모듈 import
-import { collection, getDocs, query, getDoc, doc, orderBy, where } from "firebase/firestore";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { db, auth } from "../shared/firebase.js";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const studentAuth = {
-  init(app) {
-    this.app = app;
-    this.app.elements.loginBtn?.addEventListener("click", () => this.handleLogin());
-    this.app.elements.passwordInput?.addEventListener("keyup", (e) => {
-      if (e.key === "Enter") this.handleLogin();
-    });
-    this.app.elements.classSelect?.addEventListener("change", (e) =>
-      this.populateStudentNameSelect(e.target.value)
-    );
-  },
+    app: null,
+    elements: {
+        classSelect: 'student-class-select',
+        nameSelect: 'student-name-select',
+        passwordInput: 'student-password',
+        loginBtn: 'student-login-btn'
+    },
+    state: { classes: [], studentsInClass: [], selectedStudent: null },
 
-  showLoginScreen() {
-    this.populateClassSelect();
-    if (this.app.elements.nameSelect) {
-        this.app.elements.nameSelect.innerHTML = '<option value="">-- 이름을 선택하세요 --</option>';
-        this.app.elements.nameSelect.disabled = true;
-    }
-    if (this.app.elements.passwordInput) {
-        this.app.elements.passwordInput.value = "";
-    }
-    this.app.showScreen(this.app.elements.loginScreen);
-  },
+    init(app) {
+        this.app = app;
+        this.addEventListeners();
+        this.loadClasses();
+    },
 
-  async populateClassSelect() {
-    const classSelect = this.app.elements.classSelect;
-    if (!classSelect) return;
-    classSelect.innerHTML = `<option value="">-- 반을 선택하세요 --</option>`;
+    addEventListeners() {
+        const el = (id) => document.getElementById(this.elements[id]);
+        el('classSelect')?.addEventListener('change', (e) => this.handleClassChange(e.target.value));
+        el('nameSelect')?.addEventListener('change', (e) => this.handleNameChange(e.target.value));
+        el('loginBtn')?.addEventListener('click', () => this.handleLogin());
+        el('passwordInput')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') this.handleLogin(); });
+    },
 
-    try {
-      const q = query(collection(db, "classes"), orderBy("name"));
-      const snapshot = await getDocs(q);
-      const classes = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-      classes.forEach((cls) => {
-        const opt = document.createElement("option");
-        opt.value = cls.id;
-        opt.textContent = cls.name || "(이름 없음)";
-        classSelect.appendChild(opt);
-      });
-    } catch (e) {
-      console.error("[studentAuth] populateClassSelect error:", e);
-    }
-  },
-
-  async populateStudentNameSelect(classId) {
-    const nameSelect = this.app.elements.nameSelect;
-    if (!nameSelect) return;
-    nameSelect.innerHTML = `<option value="">-- 이름을 선택하세요 --</option>`;
-    nameSelect.disabled = true;
-    if (!classId) return;
-
-    try {
-      // ✅ 'where' 함수 사용
-      const q = query(collection(db, "students"), where("classId", "==", classId), orderBy("name"));
-      const snapshot = await getDocs(q);
-      const students = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-      students.forEach((s) => {
-        const opt = document.createElement("option");
-        opt.value = s.id; // 학생 문서 ID
-        opt.textContent = s.name;
-        nameSelect.appendChild(opt);
-      });
-      nameSelect.disabled = false;
-    } catch (e) {
-      console.error("[studentAuth] populateStudentNameSelect error:", e);
-    }
-  },
-
-  async handleLogin() {
-    const { nameSelect, passwordInput } = this.app.elements;
-    const studentDocId = nameSelect?.value || "";
-    const inputPassword = passwordInput?.value?.trim() || "";
-
-    if (!studentDocId || !inputPassword) {
-      showToast("이름을 선택하고 비밀번호를 입력해주세요.");
-      return;
-    }
-
-    this.app.showScreen(this.app.elements.loadingScreen);
-
-    const salt = "dcpsms_secure_key";
-    const shadowEmail = `${studentDocId}@dcpsms.student`;
-    const shadowPassword = `${inputPassword}${salt}`;
-
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, shadowEmail, shadowPassword);
-      const user = userCredential.user;
-
-      console.log("✅ 보안 로그인 성공! UID:", user.uid);
-
-      const studentDocRef = doc(db, "students", user.uid);
-      const studentDocSnap = await getDoc(studentDocRef);
-
-      if (!studentDocSnap.exists()) {
-          throw new Error("학생 데이터가 존재하지 않습니다.");
-      }
-
-      const studentData = { id: studentDocSnap.id, ...studentDocSnap.data() };
-
-      this.app.state.studentName = studentData.name;
-      this.app.state.studentDocId = studentData.id;
-      this.app.state.classId = studentData.classId;
-
-      if (studentData.classId) {
-        const classDocRef = doc(db, "classes", studentData.classId);
-        const classDocSnap = await getDoc(classDocRef);
-        if (classDocSnap.exists()) {
-          this.app.state.selectedClassData = { id: classDocSnap.id, ...classDocSnap.data() };
-          this.app.state.className = classDocSnap.data().name;
-          this.app.state.classType = classDocSnap.data().classType || "self-directed";
+    async loadClasses() {
+        const select = document.getElementById(this.elements.classSelect);
+        if (!select) return;
+        select.innerHTML = '<option value="">로딩 중...</option>';
+        try {
+            const q = query(collection(db, "classes"), orderBy("name"));
+            const snapshot = await getDocs(q);
+            select.innerHTML = '<option value="">반을 선택해주세요</option>';
+            snapshot.forEach(doc => {
+                const opt = document.createElement('option');
+                opt.value = doc.id;
+                opt.textContent = doc.data().name;
+                select.appendChild(opt);
+            });
+        } catch (e) {
+            console.error(e);
+            select.innerHTML = '<option value="">로드 실패</option>';
         }
-      }
+    },
 
-      await this.app.loadAvailableSubjects();
-      this.app.showSubjectSelectionScreen();
+    async handleClassChange(classId) {
+        const nameSelect = document.getElementById(this.elements.nameSelect);
+        nameSelect.innerHTML = '<option value="">이름을 선택해주세요</option>';
+        nameSelect.disabled = true;
+        this.state.selectedStudent = null;
+        if (!classId) return;
 
-    } catch (error) {
-      console.error("로그인 실패:", error);
-      let msg = "로그인 중 오류가 발생했습니다.";
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
-          msg = "이름이나 비밀번호가 올바르지 않습니다. (관리자에게 재등록 요청)";
-      }
-      showToast(msg, true);
-      
-      // ✅ [수정됨] this.app.showLoginScreen() -> this.showLoginScreen()
-      this.showLoginScreen(); 
+        try {
+            // classIds(신규) 또는 classId(구형) 호환
+            const q1 = query(collection(db, "students"), where("classIds", "array-contains", classId));
+            const snap1 = await getDocs(q1);
+            const q2 = query(collection(db, "students"), where("classId", "==", classId));
+            const snap2 = await getDocs(q2);
+
+            const studentsMap = new Map();
+            [...snap1.docs, ...snap2.docs].forEach(d => studentsMap.set(d.id, { id: d.id, ...d.data() }));
+            
+            this.state.studentsInClass = Array.from(studentsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+            
+            if (this.state.studentsInClass.length === 0) {
+                nameSelect.innerHTML = '<option value="">학생이 없습니다</option>';
+            } else {
+                this.state.studentsInClass.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.id;
+                    opt.textContent = s.name;
+                    nameSelect.appendChild(opt);
+                });
+                nameSelect.disabled = false;
+            }
+        } catch (e) { showToast("학생 로드 실패", true); }
+    },
+
+    handleNameChange(studentId) {
+        this.state.selectedStudent = this.state.studentsInClass.find(s => s.id === studentId);
+        document.getElementById(this.elements.passwordInput).value = '';
+        document.getElementById(this.elements.passwordInput).focus();
+    },
+
+    handleLogin() {
+        const student = this.state.selectedStudent;
+        const pw = document.getElementById(this.elements.passwordInput).value.trim();
+        if (!student || !pw) { showToast("정보를 입력해주세요.", true); return; }
+        
+        if (pw === (student.phone || "").slice(-4)) {
+            showToast(`${student.name}님 환영합니다!`, false);
+            const activeData = { ...student, classId: document.getElementById(this.elements.classSelect).value };
+            this.app.onLoginSuccess(activeData, student.id);
+        } else {
+            showToast("비밀번호가 일치하지 않습니다.", true);
+        }
     }
-  },
 };

@@ -5,13 +5,13 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db, auth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
-// Stores (데이터 금고)
+// Stores
 import { getClasses, CLASS_EVENTS } from "../store/classStore.js";
 import { getSubjects, SUBJECT_EVENTS } from "../store/subjectStore.js";
 import { getStudents, STUDENT_EVENTS } from "../store/studentStore.js";
 import { getTeachers, TEACHER_EVENTS } from "../store/teacherStore.js";
 
-// Managers (로직 담당)
+// Managers
 import { studentManager } from "./studentManager.js";
 import { classManager } from "./classManager.js";
 import { subjectManager } from "./subjectManager.js"; 
@@ -22,27 +22,18 @@ import { studentAssignmentManager } from "./studentAssignmentManager.js";
 import { adminClassVideoManager } from "./adminClassVideoManager.js";
 import { adminHomeworkDashboard } from "./adminHomeworkDashboard.js";
 import { reportManager } from "../shared/reportManager.js";
-import { adminAnalysisManager } from "./adminAnalysisManager.js"; // ✨ [추가]
-
-const adminClassVideoManagerConfig = {
-    elements: {
-        qnaClassSelect: 'admin-qna-class-select',
-        lectureClassSelect: 'admin-class-video-class-select',
-    }
-};
+import { adminAnalysisManager } from "./adminAnalysisManager.js"; 
 
 export const AdminApp = {
     isInitialized: false,
     elements: {},
     state: {
         currentView: "dashboard",
-        // Bridge: Store 데이터 동기화
         teachers: [], 
         students: [], 
         subjects: [],
         classes: [],
         
-        // UI 상태들
         selectedSubjectIdForTextbook: null,
         editingClass: null,
         selectedClassIdForHomework: null,
@@ -77,13 +68,11 @@ export const AdminApp = {
     setupStoreBridges() {
         document.addEventListener(CLASS_EVENTS.UPDATED, () => {
             this.state.classes = getClasses();
-            document.dispatchEvent(new CustomEvent('classesUpdated'));
             if (this.state.currentView === 'reportMgmt') this.populateReportClassSelect();
         });
 
         document.addEventListener(SUBJECT_EVENTS.UPDATED, () => {
             this.state.subjects = getSubjects();
-            document.dispatchEvent(new CustomEvent('subjectsUpdated'));
         });
 
         document.addEventListener(STUDENT_EVENTS.UPDATED, () => {
@@ -116,7 +105,8 @@ export const AdminApp = {
             classVideoMgmtView: document.getElementById("admin-class-video-mgmt-view"),
             homeworkMgmtView: document.getElementById("admin-homework-mgmt-view"),
             reportMgmtView: document.getElementById("admin-report-mgmt-view"),
-            analysisMgmtView: document.getElementById("admin-analysis-mgmt-view"), // ✨ [추가]
+            dailyTestMgmtView: document.getElementById("admin-daily-test-mgmt-view"),
+            learningStatusMgmtView: document.getElementById("admin-learning-status-mgmt-view"),
 
             // Menu Buttons
             gotoSubjectMgmtBtn: document.getElementById("goto-subject-mgmt-btn"),
@@ -130,8 +120,10 @@ export const AdminApp = {
             gotoClassVideoMgmtBtn: document.getElementById("goto-class-video-mgmt-btn"),
             gotoHomeworkMgmtBtn: document.getElementById("goto-homework-mgmt-btn"),
             gotoReportMgmtBtn: document.getElementById("goto-report-mgmt-btn"),
-            gotoAnalysisMgmtBtn: document.getElementById("goto-analysis-mgmt-btn"), // ✨ [추가]
+            gotoDailyTestMgmtBtn: document.getElementById("goto-daily-test-mgmt-btn"),
+            gotoLearningStatusMgmtBtn: document.getElementById("goto-learning-status-mgmt-btn"),
 
+            // ... (기존 요소 매핑 유지) ...
             // Subject & Textbook
             newSubjectNameInput: document.getElementById('admin-new-subject-name'),
             addSubjectBtn: document.getElementById('admin-add-subject-btn'),
@@ -213,6 +205,7 @@ export const AdminApp = {
             lectureVideoDateInput: document.getElementById('admin-class-video-date'),
             lectureClassSelect: document.getElementById('admin-class-video-class-select'),
             lectureVideoListContainer: document.getElementById('admin-class-video-list-container'),
+            addLectureVideoFieldBtn: document.getElementById('admin-add-class-video-field-btn'),
             saveLectureVideoBtn: document.getElementById('admin-save-class-video-btn'),
             lectureVideoTitleInput: document.getElementById('admin-class-video-title'),
             lectureVideoUrlInput: document.getElementById('admin-class-video-url'),
@@ -237,6 +230,7 @@ export const AdminApp = {
             homeworkTextbookSelect: document.getElementById('admin-homework-textbook-select'),
             homeworkPagesInput: document.getElementById('admin-homework-pages'),
             homeworkDueDateInput: document.getElementById('admin-homework-due-date'),
+            homeworkTitleInput: document.getElementById('admin-homework-title'),
 
             // Report
             reportClassSelect: document.getElementById('admin-report-class-select'),
@@ -245,12 +239,6 @@ export const AdminApp = {
             uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
             reportUploadStatus: document.getElementById('admin-report-upload-status'),
             uploadedReportsList: document.getElementById('admin-uploaded-reports-list'),
-
-            // Analysis ✨ [추가]
-            analysisClassSelect: document.getElementById("admin-analysis-class-select"),
-            analysisSubjectSelect: document.getElementById("admin-analysis-subject-select"),
-            analysisLessonSelect: document.getElementById("admin-analysis-lesson-select"),
-            analysisResultTable: document.getElementById("admin-analysis-result-table"),
         };
     },
 
@@ -272,7 +260,8 @@ export const AdminApp = {
             { key: "gotoClassVideoMgmtBtn", view: "classVideoMgmt" },
             { key: "gotoHomeworkMgmtBtn", view: "homeworkMgmt" },
             { key: "gotoReportMgmtBtn", view: "reportMgmt" },
-            { key: "gotoAnalysisMgmtBtn", view: "analysisMgmt" }, // ✨ [추가]
+            { key: "gotoDailyTestMgmtBtn", view: "dailyTestMgmt" }, 
+            { key: "gotoLearningStatusMgmtBtn", view: "learningStatusMgmt" },
         ];
 
         menuButtons.forEach(({ key, view }) => {
@@ -336,7 +325,7 @@ export const AdminApp = {
             studentAssignmentManager.init(this);
             adminClassVideoManager.init(this);
             adminHomeworkDashboard.init(this);
-            adminAnalysisManager.init(this); // ✨ [추가]
+            adminAnalysisManager.init(this);
 
             this.isInitialized = true;
         } catch (e) {
@@ -366,7 +355,7 @@ export const AdminApp = {
                     this.loadAndRenderUploadedReports(); 
                     break;
                 case "studentAssignment": 
-                    studentAssignmentManager.populateClassSelects?.(); 
+                    studentAssignmentManager.populateSelects?.(); 
                     studentAssignmentManager.resetView?.(); 
                     break;
                 case "textbookMgmt": 
@@ -377,8 +366,11 @@ export const AdminApp = {
                     lessonManager.populateSubjectSelect?.(); 
                     lessonManager.handleSubjectSelectForLesson?.(this.elements.subjectSelectForMgmt.value || ''); 
                     break;
-                case "analysisMgmt": // ✨ [추가]
-                    adminAnalysisManager.initView?.();
+                case "dailyTestMgmt": 
+                    adminAnalysisManager.initDailyTestView?.();
+                    break;
+                case "learningStatusMgmt": 
+                    adminAnalysisManager.initLearningStatusView?.();
                     break;
             }
         } else {

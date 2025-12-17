@@ -9,11 +9,9 @@ export function createHomeworkManager(config) {
     const homeworkManager = {
         unsubscribe: null,
         isStudentsLoadedListenerAdded: false,
-        
-        // ✅ 페이지네이션 상태
         homeworkPageSize: 8,
         hwCurrentPage: 1,
-        hwCursors: [], // 페이지별 마지막 문서를 저장
+        hwCursors: [], 
 
         init() {
             document.getElementById(elements.assignHomeworkBtn)?.addEventListener('click', () => this.openHomeworkModal(false));
@@ -92,7 +90,6 @@ export function createHomeworkManager(config) {
              if (tableBody) tableBody.innerHTML = '';
              if (assignBtn) assignBtn.disabled = true;
              
-             // 초기화
              this.hwCurrentPage = 1;
              this.hwCursors = [];
              this.handleHomeworkSelection('');
@@ -108,7 +105,6 @@ export function createHomeworkManager(config) {
              this.populateHomeworkSelect('first');
         },
 
-        // ... (filterAndDisplayStudents, resetUIState, openHomeworkModal 등 기존 로직 유지 - 생략 가능 부분은 동일) ...
         filterAndDisplayStudents(classId) {
             const tableBody = document.getElementById(elements.homeworkTableBody);
             const allStudents = app.state.students;
@@ -134,12 +130,9 @@ export function createHomeworkManager(config) {
         resetUIState() {
              const mainContent = document.getElementById(elements.homeworkMainContent);
              if (mainContent) mainContent.style.display = 'none';
-             // ... 나머지 UI 초기화 로직 동일 ...
         },
 
         async openHomeworkModal(isEditing = false) {
-             // ... 기존 openHomeworkModal 코드와 완전히 동일 ...
-             // (코드 길이상 생략하지만 실제 파일엔 기존 코드 그대로 있어야 합니다)
              const classId = elements.homeworkClassSelect ? app.state.selectedClassIdForHomework : app.state.selectedClassId;
              if (!classId) { showToast("반을 선택해주세요."); return; }
              app.state.editingHomeworkId = isEditing ? app.state.selectedHomeworkId : null;
@@ -147,6 +140,8 @@ export function createHomeworkManager(config) {
              const modal = document.getElementById(elements.assignHomeworkModal);
              const title = document.getElementById(elements.homeworkModalTitle);
              const saveBtn = document.getElementById(elements.saveHomeworkBtn);
+             
+             const titleInput = document.getElementById(elements.homeworkTitleInput);
              const subjectSelect = document.getElementById(elements.homeworkSubjectSelect);
              const textbookSelect = document.getElementById(elements.homeworkTextbookSelect);
              const dueDateInput = document.getElementById(elements.homeworkDueDateInput);
@@ -155,6 +150,7 @@ export function createHomeworkManager(config) {
              title.textContent = isEditing ? '숙제 정보 수정' : '새 숙제 출제';
              saveBtn.textContent = isEditing ? '수정하기' : '출제하기';
              
+             if (titleInput) titleInput.value = '';
              subjectSelect.innerHTML = '<option value="">-- 과목 선택 --</option>';
              textbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
              textbookSelect.disabled = true;
@@ -164,15 +160,20 @@ export function createHomeworkManager(config) {
              if(!selectedClassData) { showToast("반 정보 오류"); return; }
              
              const subjectIds = selectedClassData.subjects ? Object.keys(selectedClassData.subjects) : [];
-             subjectIds.forEach(id => {
-                 const subject = app.state.subjects.find(s => s.id === id);
-                 if (subject) subjectSelect.innerHTML += `<option value="${subject.id}">${subject.name}</option>`;
-             });
+             if (subjectIds.length === 0) {
+                 subjectSelect.innerHTML = '<option value="" disabled>설정된 과목 없음</option>';
+             } else {
+                 subjectIds.forEach(id => {
+                     const subject = app.state.subjects.find(s => s.id === id);
+                     if (subject) subjectSelect.innerHTML += `<option value="${subject.id}">${subject.name}</option>`;
+                 });
+             }
              
              if (isEditing && app.state.editingHomeworkId) {
                  const docSnap = await getDoc(doc(db, 'homeworks', app.state.editingHomeworkId));
                  if(docSnap.exists()) {
                      const data = docSnap.data();
+                     if (titleInput) titleInput.value = data.title || '';
                      subjectSelect.value = data.subjectId;
                      await this.populateTextbooksForHomework(data.subjectId);
                      textbookSelect.value = data.textbookId;
@@ -186,33 +187,33 @@ export function createHomeworkManager(config) {
         },
 
         async populateTextbooksForHomework(subjectId) {
-             // ... 기존 코드와 동일 ...
             const textbookSelect = document.getElementById(elements.homeworkTextbookSelect);
             if (!textbookSelect) return;
+            
             textbookSelect.innerHTML = '<option value="">-- 로딩 중... --</option>';
             textbookSelect.disabled = true;
             if (!subjectId) return;
 
-            const classId = elements.homeworkClassSelect ? app.state.selectedClassIdForHomework : app.state.selectedClassId;
-            const selectedClassData = elements.homeworkClassSelect ? app.state.classes.find(c => c.id === classId) : app.state.selectedClassData;
-            const textbookIds = selectedClassData?.subjects?.[subjectId]?.textbooks || [];
-            
-            // (간소화) 교재 데이터 로드 로직은 기존과 동일하므로 생략하지 않고 유지해야 함
-            // 여기서는 핵심 로직만 표현
             try {
-                let textbooks = app.state.textbooksBySubject?.[subjectId];
-                if (!textbooks) {
-                     const snaps = await Promise.all(textbookIds.map(id => getDoc(doc(db, `subjects/${subjectId}/textbooks`, id))));
-                     textbooks = snaps.filter(s => s.exists()).map(s => ({id:s.id, ...s.data()}));
-                     if(!app.state.textbooksBySubject) app.state.textbooksBySubject = {};
-                     app.state.textbooksBySubject[subjectId] = textbooks;
-                }
+                const q = query(collection(db, "textbooks"), where("subjectId", "==", subjectId), orderBy("name"));
+                const snapshot = await getDocs(q);
+                
                 textbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
-                textbooks.forEach(t => {
-                    if (textbookIds.includes(t.id)) textbookSelect.innerHTML += `<option value="${t.id}">${t.name}</option>`;
-                });
+                
+                if (snapshot.empty) {
+                     textbookSelect.innerHTML += '<option value="" disabled>등록된 교재가 없습니다.</option>';
+                } else {
+                    snapshot.forEach(doc => {
+                        const tb = doc.data();
+                        textbookSelect.innerHTML += `<option value="${doc.id}">${tb.name}</option>`;
+                    });
+                }
                 textbookSelect.disabled = false;
-            } catch(e) { console.error(e); }
+
+            } catch(e) { 
+                console.error("교재 로딩 실패:", e); 
+                textbookSelect.innerHTML = '<option value="">-- 로딩 실패 --</option>';
+            }
         },
 
         closeHomeworkModal() {
@@ -222,11 +223,12 @@ export function createHomeworkManager(config) {
         },
 
         async saveHomework() {
-            // ... 기존 saveHomework와 동일 ...
-            // 성공 시 초기화 로직만 수정
-            const saveBtn = document.getElementById(elements.saveHomeworkBtn);
-            // ... (입력값 검증 생략) ...
+             const saveBtn = document.getElementById(elements.saveHomeworkBtn);
              const classId = elements.homeworkClassSelect ? app.state.selectedClassIdForHomework : app.state.selectedClassId;
+             
+             const titleInput = document.getElementById(elements.homeworkTitleInput);
+             const title = titleInput?.value.trim();
+
              const subjectId = document.getElementById(elements.homeworkSubjectSelect)?.value;
              const textbookSelect = document.getElementById(elements.homeworkTextbookSelect);
              const textbookId = textbookSelect?.value;
@@ -234,26 +236,45 @@ export function createHomeworkManager(config) {
              const dueDate = document.getElementById(elements.homeworkDueDateInput)?.value;
              const pages = document.getElementById(elements.homeworkPagesInput)?.value;
 
-             if(!classId || !subjectId || !textbookId || !dueDate || !pages) { showToast("모두 입력해주세요"); return; }
+             if(!title) { showToast("숙제 제목을 입력해주세요."); return; } 
+             if(!classId || !subjectId || !textbookId || !dueDate || !pages) { showToast("모든 정보를 입력해주세요"); return; }
              
+             saveBtn.disabled = true;
+             saveBtn.innerText = "저장 중...";
+
              try {
-                 const data = { classId, subjectId, textbookId, textbookName, dueDate, pages: parseInt(pages), createdAt: serverTimestamp() };
+                 const data = { 
+                     title, 
+                     classId, 
+                     subjectId, 
+                     textbookId, 
+                     textbookName, 
+                     dueDate, 
+                     pages: parseInt(pages) || 0, 
+                     createdAt: serverTimestamp() 
+                 };
+
                  if(app.state.editingHomeworkId) {
                      await updateDoc(doc(db, 'homeworks', app.state.editingHomeworkId), data);
                  } else {
                      await addDoc(collection(db, 'homeworks'), data);
-                     // 저장 후 첫 페이지로 리셋
                      this.hwCurrentPage = 1;
                      this.hwCursors = [];
                      await this.populateHomeworkSelect('first');
                  }
                  this.closeHomeworkModal();
                  showToast("저장되었습니다.", false);
-             } catch(e) { showToast("저장 실패"); }
+             } catch(e) { 
+                 console.error(e);
+                 showToast("저장 실패"); 
+             } finally {
+                 saveBtn.disabled = false;
+                 saveBtn.innerText = app.state.editingHomeworkId ? "수정하기" : "출제하기";
+             }
         },
 
-        // ✅ [수정됨] 숙제 목록 페이지네이션 (이전/다음 지원)
-        async populateHomeworkSelect(direction) {
+        // ✨ [수정됨] 매개변수 기본값('first') 추가
+        async populateHomeworkSelect(direction = 'first') {
             const select = document.getElementById(elements.homeworkSelect);
             if (!select) return;
             
@@ -267,7 +288,6 @@ export function createHomeworkManager(config) {
                 let q;
                 const hwRef = collection(db, 'homeworks');
                 
-                // 1. 방향에 따른 쿼리 설정
                 if (direction === 'first') {
                     this.hwCurrentPage = 1;
                     this.hwCursors = [];
@@ -278,7 +298,6 @@ export function createHomeworkManager(config) {
                     q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(this.homeworkPageSize));
                 }
                 else if (direction === 'prev') {
-                    // 이전 페이지 로직: targetPage = currentPage - 1. Cursor index = targetPage - 2.
                     const targetPage = this.hwCurrentPage - 1;
                     const cursorIndex = targetPage - 2;
                     if (cursorIndex < 0) {
@@ -289,11 +308,17 @@ export function createHomeworkManager(config) {
                     }
                 }
 
+                // direction이 'first'가 아니지만 위 조건에 안 걸리는 경우(방어 코드)
+                if (!q) {
+                     this.hwCurrentPage = 1;
+                     this.hwCursors = [];
+                     q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), limit(this.homeworkPageSize));
+                }
+
                 const snapshot = await getDocs(q);
                 
                 select.innerHTML = '<option value="">-- 숙제 선택 --</option>';
                 
-                // 2. [이전 페이지] 옵션 추가 (2페이지 이상일 때만)
                 if (direction === 'next' || (direction === 'prev' && this.hwCurrentPage > 2)) {
                      const prevOpt = document.createElement('option');
                      prevOpt.value = "PREV_PAGE";
@@ -301,22 +326,15 @@ export function createHomeworkManager(config) {
                      prevOpt.style.fontWeight = "bold";
                      prevOpt.style.color = "#2563eb";
                      select.appendChild(prevOpt);
-                } else if (this.hwCurrentPage > 1 && direction !== 'first') {
-                     // 현재 2페이지인데 prev를 누르면 1페이지가 됨 -> 여기서는 렌더링 시점의 페이지를 봐야 함.
-                     // 단순화: currentPage가 업데이트 되기 전/후 로직.
-                     // 로직을 간소화: snapshot 처리 후 currentPage 업데이트.
                 }
 
                 if (snapshot.empty) {
                     if (direction === 'first') select.innerHTML += '<option value="" disabled>출제된 숙제 없음</option>';
                     else showToast("더 이상 숙제가 없습니다.");
-                    // 빈 경우 이전 페이지로 복귀하거나 유지해야 하는데, UI 특성상 유지.
                     return;
                 }
 
-                // 3. 상태 업데이트
                 if (direction === 'next') {
-                    // 커서 저장
                     if (this.hwCursors.length < this.hwCurrentPage) {
                         this.hwCursors.push(snapshot.docs[snapshot.docs.length - 1]);
                     }
@@ -328,7 +346,6 @@ export function createHomeworkManager(config) {
                     this.hwCursors = [snapshot.docs[snapshot.docs.length - 1]];
                 }
 
-                // 다시 렌더링 (이전 버튼 조건 재확인)
                 select.innerHTML = '<option value="">-- 숙제 선택 --</option>';
                 if (this.hwCurrentPage > 1) {
                     const prevOpt = document.createElement('option');
@@ -342,14 +359,14 @@ export function createHomeworkManager(config) {
                 snapshot.forEach(doc => { 
                     const hw = doc.data(); 
                     const displayDate = hw.dueDate || '기한없음'; 
+                    const titleText = hw.title ? `"${hw.title}"` : hw.textbookName;
                     const pagesText = hw.pages ? `(${hw.pages}p)` : ''; 
                     const option = document.createElement('option');
                     option.value = doc.id;
-                    option.textContent = `[${displayDate}] ${hw.textbookName} ${pagesText}`;
+                    option.textContent = `[${displayDate}] ${titleText} ${pagesText}`;
                     select.appendChild(option);
                 });
 
-                // 4. [다음 페이지] 옵션 추가 (꽉 찼을 때)
                 if (snapshot.docs.length === this.homeworkPageSize) {
                     const nextOpt = document.createElement('option');
                     nextOpt.value = "NEXT_PAGE";
@@ -364,13 +381,11 @@ export function createHomeworkManager(config) {
                 select.innerHTML = '<option value="">-- 로드 실패 --</option>'; 
             } finally { 
                 select.disabled = false;
-                // 리스트 교체 후 포커스 유지
                 if (direction !== 'first') select.focus();
             }
         },
 
         handleHomeworkSelection(homeworkId) {
-            // ✅ 페이지 이동 처리
             if (homeworkId === 'NEXT_PAGE') {
                 this.populateHomeworkSelect('next'); 
                 return;
@@ -419,11 +434,11 @@ export function createHomeworkManager(config) {
                      batch.delete(doc(db, 'homeworks', app.state.selectedHomeworkId));
                      await batch.commit();
                      showToast("삭제 완료", false);
-                     this.populateHomeworkSelect('first'); // 삭제 후 첫 페이지로
+                     this.populateHomeworkSelect('first'); 
                  } catch (error) { showToast("삭제 실패"); }
              }
         },
-        // ... (renderHomeworkSubmissions, downloadHomework, renderTableHeader는 기존 코드 유지) ...
+        
         async renderHomeworkSubmissions(snapshot) {
              const tableBody = document.getElementById(elements.homeworkTableBody); if (!tableBody) return; tableBody.innerHTML = '';
             const studentsMap = app.state.studentsInClass;
@@ -441,7 +456,7 @@ export function createHomeworkManager(config) {
                 }
             } catch (e) {}
 
-            const textbookName = homeworkData.textbookName || ''; 
+            const homeworkTitle = homeworkData.title || homeworkData.textbookName || '숙제'; 
             const totalPages = homeworkData.pages;
             const submissionsMap = new Map(); 
             snapshot.docs.forEach(doc => submissionsMap.set(doc.id, doc.data())); 
@@ -468,10 +483,10 @@ export function createHomeworkManager(config) {
                 row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${studentName}</td>${statusHtml}${submittedAtHtml}${actionHtml}`;
                 tableBody.appendChild(row);
                 
-                row.querySelector('.download-btn')?.addEventListener('click', (e) => this.downloadHomework(e.target.dataset.docId, e.target.dataset.name, textbookName));
+                row.querySelector('.download-btn')?.addEventListener('click', (e) => this.downloadHomework(e.target.dataset.docId, e.target.dataset.name, homeworkTitle));
             });
         },
-        async downloadHomework(studentDocId, studentName, textbookName) {
+        async downloadHomework(studentDocId, studentName, title) {
              if (!app.state.selectedHomeworkId || !studentDocId) return;
              try {
                  const snap = await getDoc(doc(db, 'homeworks', app.state.selectedHomeworkId, 'submissions', studentDocId));
@@ -484,7 +499,7 @@ export function createHomeworkManager(config) {
                      const url = imageUrls[i]; 
                      const link = document.createElement('a'); 
                      link.href = url;
-                     link.download = `${date}_${studentName}_${textbookName}_${i+1}.jpg`;
+                     link.download = `${date}_${studentName}_${title}_${i+1}.jpg`;
                      link.target = "_blank"; 
                      document.body.appendChild(link); link.click(); document.body.removeChild(link);
                  }

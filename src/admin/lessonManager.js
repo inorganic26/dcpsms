@@ -11,7 +11,6 @@ export const lessonManager = {
         modal: null,
         lessonTitle: null,
         video1Url: null,
-        // video2Url: null, // ❌ 삭제됨 (더 이상 사용 안 함)
         quizJsonInput: null,
         questionsPreviewContainer: null,
         questionsPreviewList: null,
@@ -31,7 +30,6 @@ export const lessonManager = {
         this.elements.modal = this.app.elements.modal;
         this.elements.lessonTitle = this.app.elements.lessonTitle;
         this.elements.video1Url = this.app.elements.video1Url;
-        // this.elements.video2Url = this.app.elements.video2Url; // ❌ 삭제됨
         this.elements.quizJsonInput = this.app.elements.quizJsonInput;
         this.elements.questionsPreviewContainer = this.app.elements.questionsPreviewContainer;
         this.elements.questionsPreviewList = this.app.elements.questionsPreviewList;
@@ -50,7 +48,10 @@ export const lessonManager = {
         this.app.elements.saveLessonBtn?.addEventListener('click', () => this.saveLesson());
         this.app.elements.addVideo1RevBtn?.addEventListener('click', () => this.addRevUrlInput(1));
         
-        // ✅ [신규] 교재별 영상 추가 버튼 리스너
+        // ✨ [수정됨] 순서 저장 버튼 리스너 추가 (이 부분이 빠져 있었습니다)
+        this.app.elements.saveOrderBtn?.addEventListener('click', () => this.saveLessonOrder());
+
+        // 교재별 영상 추가 버튼 리스너
         document.getElementById('btnAddVideo2Item')?.addEventListener('click', () => this.addVideo2InputItem());
     },
 
@@ -177,6 +178,7 @@ export const lessonManager = {
     },
 
     async saveLessonOrder() {
+        // querySelectorAll은 현재 DOM에 있는 순서대로 요소를 가져옵니다.
         const lessons = [...this.elements.lessonsList.querySelectorAll('.lesson-card')];
         const subjectId = this.app.state.selectedSubjectIdForMgmt;
         if (!subjectId || lessons.length === 0) return;
@@ -189,11 +191,13 @@ export const lessonManager = {
             lessons.forEach((item, index) => {
                 const lessonId = item.dataset.id;
                 const lessonRef = doc(db, `subjects/${subjectId}/lessons`, lessonId);
+                // 화면에 보이는 순서대로 1부터 번호를 매겨 업데이트
                 batch.update(lessonRef, { order: index + 1 });
             });
             await batch.commit();
             showToast("학습 순서가 저장되었습니다.", false);
         } catch (error) {
+            console.error(error);
             showToast("순서 저장 실패", true);
         } finally {
             this.app.elements.saveOrderBtn.disabled = false;
@@ -221,7 +225,6 @@ export const lessonManager = {
         }
     },
 
-    // ✅ [수정됨] 모달 표시 로직 (Video2 입력창 오류 해결)
     showModal(mode, lesson = null) {
         if (!this.elements.modal) {
              showToast("모달 오류: 페이지를 새로고침 해주세요.", true);
@@ -235,32 +238,24 @@ export const lessonManager = {
         this.elements.lessonTitle.value = lesson?.title || '';
         this.elements.video1Url.value = lesson?.video1Url || '';
         
-        // ❌ 아래 코드가 오류 원인이었습니다. (video2Url 요소가 없으므로 삭제)
-        // this.elements.video2Url.value = lesson?.video2Url || ''; 
-
-        // ✅ 대신, Video 2 리스트 컨테이너를 초기화하고 채웁니다.
         const video2Container = document.getElementById('video2ListContainer');
         if (video2Container) {
-            video2Container.innerHTML = ''; // 초기화
+            video2Container.innerHTML = ''; 
             
             if (lesson) {
-                // 1. 신규 방식 (리스트 데이터가 있는 경우)
                 if (lesson.video2List && Array.isArray(lesson.video2List)) {
                     lesson.video2List.forEach(item => this.addVideo2InputItem(item.name, item.url));
                 } 
-                // 2. 구 방식 (단일 URL만 있는 경우) -> 리스트로 변환
                 else if (lesson.video2Url) {
                     this.addVideo2InputItem('기본', lesson.video2Url);
                 } else {
-                    this.addVideo2InputItem(); // 빈 칸
+                    this.addVideo2InputItem();
                 }
             } else {
-                // 새 추가 모드
                 this.addVideo2InputItem();
             }
         }
         
-        // 퀴즈 데이터 처리
         let quizContent = lesson?.quizJson;
         try {
             if (!quizContent && lesson?.questionBank) {
@@ -274,14 +269,12 @@ export const lessonManager = {
              this.elements.quizJsonInput.value = quizContent || '';
         }
         
-        // 보충 영상(Video 1) 입력 필드 처리
         const v1Container = document.getElementById('admin-video1-rev-urls-container');
         if (v1Container) {
             v1Container.innerHTML = '';
             lesson?.video1RevUrls?.forEach(url => this.addRevUrlInput(1, url));
         }
 
-        // 퀴즈 미리보기 초기화
         this.elements.questionsPreviewContainer.style.display = 'none';
         this.elements.questionsPreviewList.innerHTML = '';
         this.app.state.generatedQuiz = null;
@@ -293,7 +286,6 @@ export const lessonManager = {
         this.elements.modal.style.display = 'flex';
     },
     
-    // ✅ [신규] 교재별 영상 입력줄 추가 함수
     addVideo2InputItem(name = '', url = '') {
         const container = document.getElementById('video2ListContainer');
         if (!container) return;
@@ -311,7 +303,7 @@ export const lessonManager = {
     },
 
     addRevUrlInput(type, url = '') {
-        const containerId = type === 1 ? 'admin-video1-rev-urls-container' : 'admin-video2-rev-urls-container'; // video2 보충은 사실상 안씀
+        const containerId = type === 1 ? 'admin-video1-rev-urls-container' : 'admin-video2-rev-urls-container';
         const container = document.getElementById(containerId);
         if (!container) return;
 
@@ -338,7 +330,6 @@ export const lessonManager = {
         const title = this.elements.lessonTitle.value.trim();
         const video1Url = this.elements.video1Url.value.trim();
         
-        // ✅ [수정] Video 2는 이제 입력창이 아니라 리스트에서 가져옴
         const video2Items = document.querySelectorAll('.video2-item');
         const video2List = [];
         video2Items.forEach(item => {
@@ -350,20 +341,14 @@ export const lessonManager = {
         const quizJsonInput = this.elements.quizJsonInput.value.trim();
         const isEdit = !!this.app.state.editingLesson;
         
-        // Video 1 보충 영상
         const video1RevUrls = Array.from(document.querySelectorAll(`#admin-video1-rev-urls-container .rev-url-input`)).map(input => input.value.trim()).filter(Boolean);
 
-        // 최소 조건 확인 (제목 + (영상1 or 영상2 or 퀴즈))
         if (!title || (!video1Url && video2List.length === 0 && !quizJsonInput)) {
             showToast("제목과 최소 하나의 컨텐츠(영상/퀴즈)가 필요합니다.", true);
             return;
         }
         
         const generatedQuiz = this.app.state.generatedQuiz;
-        if ((quizJsonInput && !generatedQuiz) || (!quizJsonInput && !isEdit && !generatedQuiz && !video1Url)) {
-             // 퀴즈 검증 로직 (약간 완화)
-        }
-
         this.app.elements.saveBtnText.textContent = '저장 중...';
         this.app.elements.saveLessonBtn.disabled = true;
         this.app.elements.saveLoader.style.display = 'inline-block';
@@ -376,8 +361,8 @@ export const lessonManager = {
             title,
             video1Url: video1Url || null,
             video1RevUrls,
-            video2List, // ✅ 리스트 저장
-            video2Url: video2List.length > 0 ? video2List[0].url : '', // ✅ 하위 호환성 (첫번째 영상)
+            video2List, 
+            video2Url: video2List.length > 0 ? video2List[0].url : '', 
             ...finalQuizData,
             updatedAt: serverTimestamp(),
             isActive: this.app.state.editingLesson?.isActive ?? false,

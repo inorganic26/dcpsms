@@ -3,8 +3,6 @@
 import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, writeBatch } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
-
-// ✨ [중요] 경로를 정확하게 ../store/ 로 지정했습니다.
 import { getSubjects } from "../store/subjectStore.js"; 
 import { getTextbooks } from "../store/textbookStore.js"; 
 import { getClasses } from "../store/classStore.js"; 
@@ -17,27 +15,27 @@ export const classManager = {
         this.app = app;
         this.elements = app.elements;
         this.addEventListeners();
-
-        // 1. 처음 화면에 들어왔을 때 목록 로드
         this.loadClasses(); 
 
-        // 2. ✨ 데이터가 바뀌면(추가/삭제/수정) 자동으로 화면 다시 그리기
         document.addEventListener('classesUpdated', () => {
-            console.log("반 데이터 변경 감지됨: 목록 갱신");
             this.loadClasses();
+        });
+        
+        // ✨ 교재 데이터가 로드되면 화면 갱신 (모달이 열려있을 경우 대비)
+        document.addEventListener('textbooks-updated', () => {
+             if (this.app.state.editingClass) {
+                 this.renderSubjectSettings(this.app.state.editingClass.subjects || {});
+             }
         });
     },
 
     addEventListeners() {
         this.elements.addClassBtn?.addEventListener('click', () => this.createClass());
-        
-        // 반 수정 모달 관련
         this.elements.closeEditClassModalBtn?.addEventListener('click', () => this.closeEditModal());
         this.elements.cancelEditClassBtn?.addEventListener('click', () => this.closeEditModal());
         this.elements.saveClassEditBtn?.addEventListener('click', () => this.updateClass());
     },
 
-    // 반 생성
     async createClass() {
         const nameInput = this.elements.newClassNameInput;
         const name = nameInput.value.trim();
@@ -46,27 +44,23 @@ export const classManager = {
         try {
             await addDoc(collection(db, "classes"), {
                 name,
-                classType: 'live-lecture', // 기본값
+                classType: 'live-lecture', 
                 subjects: {},
                 createdAt: new Date()
             });
             showToast("반이 생성되었습니다.", false);
             nameInput.value = "";
-            // Store가 자동으로 감지해서 'classesUpdated' 이벤트를 쏘면 loadClasses가 실행됨
         } catch (error) {
             console.error(error);
             showToast("생성 실패", true);
         }
     },
 
-    // 반 목록 불러오기 (화면 그리기)
     async loadClasses() {
         const listEl = this.elements.classesList;
         if (!listEl) return;
 
-        const classes = getClasses(); // Store에서 최신 데이터 가져옴
-        console.log(`불러온 반 개수: ${classes.length}개`); // 디버깅용 로그
-
+        const classes = getClasses(); 
         listEl.innerHTML = "";
 
         if (classes.length === 0) {
@@ -78,7 +72,6 @@ export const classManager = {
             const div = document.createElement("div");
             div.className = "flex justify-between items-center p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition mb-2";
             
-            // 뱃지 색상 설정
             const typeBadge = cls.classType === 'live-lecture' 
                 ? '<span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold mr-2">현강</span>' 
                 : '<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold mr-2">자습</span>';
@@ -86,7 +79,6 @@ export const classManager = {
             div.innerHTML = `
                 <div>
                     <h3 class="font-bold text-slate-700 text-lg flex items-center">${typeBadge}${cls.name}</h3>
-                    <p class="text-xs text-slate-400 mt-1">ID: ${cls.id}</p>
                 </div>
                 <div class="flex gap-2">
                     <button class="edit-btn text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50 transition" title="수정">
@@ -105,7 +97,6 @@ export const classManager = {
         });
     },
 
-    // 수정 모달 열기
     openEditModal(cls) {
         this.app.state.editingClass = cls;
         const modal = this.elements.editClassModal;
@@ -115,7 +106,9 @@ export const classManager = {
         nameInput.value = cls.name;
         typeSelect.value = cls.classType || 'live-lecture'; 
 
+        // ✨ 모달 열 때 교재 목록 렌더링
         this.renderSubjectSettings(cls.subjects || {});
+        
         modal.classList.remove('hidden');
         modal.classList.add('flex');
     },
@@ -126,22 +119,26 @@ export const classManager = {
         this.app.state.editingClass = null;
     },
 
-    // 과목/교재 설정 렌더링
+    // ✨ [핵심 수정] 과목/교재 설정 렌더링 (최상위 교재 컬렉션 사용)
     renderSubjectSettings(currentSubjects) {
         const container = this.elements.editClassSubjectsContainer;
         if(!container) return;
         
         const allSubjects = getSubjects();
-        const allTextbooks = getTextbooks();
+        const allTextbooks = getTextbooks(); // 여기서 최상위 교재 목록을 가져옴
 
         container.innerHTML = '';
+        
+        if (allSubjects.length === 0) {
+            container.innerHTML = '<p class="text-sm text-slate-400 p-2">등록된 과목이 없습니다. 과목 관리에서 먼저 등록해주세요.</p>';
+            return;
+        }
         
         allSubjects.forEach(subj => {
             const isChecked = !!currentSubjects[subj.id];
             const div = document.createElement('div');
             div.className = "mb-3 pb-3 border-b border-slate-200 last:border-0";
             
-            // 과목 체크박스
             div.innerHTML = `
                 <div class="flex items-center gap-2 mb-2">
                     <input type="checkbox" id="subj-${subj.id}" class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
@@ -150,14 +147,15 @@ export const classManager = {
                 <div id="textbooks-${subj.id}" class="pl-6 space-y-1 ${isChecked ? '' : 'hidden'}"></div>
             `;
 
-            // 교재 목록
+            // ✨ 교재 필터링: subjectId가 일치하는 교재 찾기
             const tbContainer = div.querySelector(`#textbooks-${subj.id}`);
             const subjTextbooks = allTextbooks.filter(tb => tb.subjectId === subj.id);
             
             if (subjTextbooks.length === 0) {
-                tbContainer.innerHTML = '<p class="text-xs text-slate-400">등록된 교재 없음</p>';
+                tbContainer.innerHTML = '<p class="text-xs text-slate-400">등록된 교재 없음 (교재 관리에서 등록 필요)</p>';
             } else {
                 subjTextbooks.forEach(tb => {
+                    // 기존 설정에 이 교재 ID가 포함되어 있는지 확인
                     const isTbChecked = currentSubjects[subj.id]?.textbooks?.includes(tb.id);
                     const tbDiv = document.createElement('div');
                     tbDiv.className = "flex items-center gap-2";
@@ -178,7 +176,6 @@ export const classManager = {
         });
     },
 
-    // 반 정보 수정 (DB 업데이트)
     async updateClass() {
         const cls = this.app.state.editingClass;
         if (!cls) return;
@@ -217,18 +214,14 @@ export const classManager = {
         }
     },
 
-    // ✨ [핵심] 반 삭제 및 학생 정리 로직
     async deleteClass(classId, className) {
         if (!confirm(`'${className}' 반을 정말 삭제하시겠습니까?\n\n⚠️ 주의: 이 반에 속해있던 학생들은 모두 '미배정' 상태로 변경됩니다.`)) return;
 
         try {
             const batch = writeBatch(db);
-
-            // 1. 반 삭제
             const classRef = doc(db, "classes", classId);
             batch.delete(classRef);
 
-            // 2. 해당 반 학생들 찾아서 '미배정(classId: null)' 처리
             const q = query(collection(db, "students"), where("classId", "==", classId));
             const snapshot = await getDocs(q);
             

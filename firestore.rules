@@ -35,12 +35,21 @@ service cloud.firestore {
     }
 
     // =========================================
+    // ✨ [추가됨] textbooks 컬렉션 (최상위)
+    // =========================================
+    match /textbooks/{textbookId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrTeacher();
+    }
+
+    // =========================================
     // subjects 컬렉션 (+ 하위 컬렉션)
     // =========================================
     match /subjects/{subjectId} {
       allow read: if isAuthenticated();
       allow write: if isAdminOrTeacher();
 
+      // (구 버전 호환을 위해 남겨둠, 필요 없으면 삭제 가능)
       match /textbooks/{textbookId} {
         allow read: if isAuthenticated();
         allow write: if isAdminOrTeacher();
@@ -51,7 +60,7 @@ service cloud.firestore {
         allow write: if isAdminOrTeacher();
 
         match /submissions/{studentDocId} {
-          // [수정됨] 읽기: 관리자/교사 OR 학생 본인
+          // 읽기: 관리자/교사 OR 학생 본인
           allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
           
           // 쓰기: 본인만 (데이터 ID와 인증 ID 일치 시)
@@ -71,11 +80,12 @@ service cloud.firestore {
       allow write: if isAdminOrTeacher();
 
       match /submissions/{studentDocId} {
-        // ✅ [수정됨] 핵심: 학생 본인이면 자기 제출물을 읽을 수 있게 허용!
+        // 학생 본인이면 자기 제출물을 읽을 수 있게 허용
         allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
         
         // 쓰기: 본인만
         allow write: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
+        
         // 삭제: 교사/관리자만
         allow delete: if isAdminOrTeacher();
       }
@@ -96,6 +106,14 @@ service cloud.firestore {
       allow write: if isAdminOrTeacher();
     }
     match /classLectures/{lectureId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrTeacher();
+    }
+    
+    // =========================================
+    // reports 컬렉션 (성적 리포트) - 필요 시 추가
+    // =========================================
+    match /reports/{reportId} {
       allow read: if isAuthenticated();
       allow write: if isAdminOrTeacher();
     }

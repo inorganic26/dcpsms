@@ -16,14 +16,11 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db, auth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
-// ✨ Store 임포트 (반 설정 화면에 데이터 공급용)
 import { setSubjects } from "../store/subjectStore.js";
 
-// 모듈 import
-// (주의: classEditor는 공용 모듈을 사용합니다)
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
-import { classEditor } from '../shared/classEditor.js'; // ✨ shared 경로로 수정 권장
+import { classEditor } from '../shared/classEditor.js'; 
 import { classVideoManager } from './classVideoManager.js';
 import { reportManager } from '../shared/reportManager.js';
 import { analysisDashboard } from './analysisDashboard.js'; 
@@ -79,7 +76,6 @@ const TeacherApp = {
         if (this.elements.dashboardContainer) this.elements.dashboardContainer.style.display = 'none';
     },
 
-    // ✅ 서버 함수를 통한 안전한 로그인 (권한 문제 해결)
     async handleLogin(name, password) {
         if (!name || !password) {
             showToast("이름과 비밀번호를 모두 입력해주세요.");
@@ -92,7 +88,6 @@ const TeacherApp = {
             const functions = getFunctions(app, 'asia-northeast3');
             const verifyLogin = httpsCallable(functions, 'verifyTeacherLogin');
             
-            // 1. 서버에 이름/비번 보내서 검증
             const result = await verifyLogin({ name, password });
             const { success, message, token, teacherId, teacherData } = result.data;
 
@@ -101,10 +96,8 @@ const TeacherApp = {
                 return;
             }
 
-            // 2. 받아온 토큰으로 실제 Firebase 로그인 (이때 권한 획득!)
             await signInWithCustomToken(auth, token);
 
-            // 3. 상태 저장 및 대시보드 이동
             this.state.teacherId = teacherId;
             this.state.teacherData = teacherData;
 
@@ -157,7 +150,7 @@ const TeacherApp = {
 
         this.addEventListeners();
         this.populateClassSelect();
-        this.listenForSubjects(); // 여기서 Store 업데이트 실행됨
+        this.listenForSubjects(); 
 
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'none';
 
@@ -215,6 +208,8 @@ const TeacherApp = {
                 'class-mgmt': document.getElementById('view-class-mgmt'),
                 'class-video-mgmt': document.getElementById('view-class-video-mgmt'),
                 'report-mgmt': document.getElementById('view-report-mgmt'),
+                'daily-test-mgmt': document.getElementById('view-daily-test-mgmt'), // ✨ 추가됨
+                'learning-status-mgmt': document.getElementById('view-learning-status-mgmt'), // ✨ 추가됨
             },
 
             studentListContainer: document.getElementById('teacher-student-list-container'),
@@ -316,17 +311,9 @@ const TeacherApp = {
             reportUploadStatus: document.getElementById('teacher-report-upload-status'),
             uploadedReportsList: document.getElementById('teacher-uploaded-reports-list'),
             
-            // Analysis
-            studentDataUploadInput: document.getElementById('student-data-upload-input'),
-            testStudentListContainer: document.getElementById('test-analysis-student-list'),
-            analysisModal: document.getElementById('analysis-report-modal'),
-            analysisHeader: document.getElementById('analysis-report-header'),
-            analysisMain: document.getElementById('analysis-report-main'),
-            analysisCloseBtn: document.getElementById('analysis-report-close-btn'),
-            analysisSaveBtn: document.getElementById('analysis-report-save-btn'),
-            pdfAnalysisJsonInput: document.getElementById('pdf-analysis-json-input'),
-            loadAnalysisJsonBtn: document.getElementById('load-analysis-json-btn'),
-            pdfAnalysisStatus: document.getElementById('pdf-analysis-status'),
+            // Analysis (분리됨)
+            // dailyTest... 와 learning... 요소는 analysisDashboard 내부에서 직접 ID로 참조하므로 여기서는 생략 가능하지만,
+            // 전체 구조 통일성을 위해 남겨둘 수도 있음.
         };
     },
 
@@ -377,6 +364,13 @@ const TeacherApp = {
             if (this.state.currentView === 'report-mgmt') {
                 this.initReportUploadView();
                 this.loadAndRenderUploadedReports();
+            }
+            // ✨ 화면 초기화
+            if (this.state.currentView === 'daily-test-mgmt') {
+                this.analysisDashboard.initDailyTestView();
+            }
+            if (this.state.currentView === 'learning-status-mgmt') {
+                this.analysisDashboard.initLearningStatusView();
             }
         });
     },
@@ -438,6 +432,15 @@ const TeacherApp = {
                 this.initReportUploadView();
                 this.loadAndRenderUploadedReports();
                 break;
+                
+            // ✨ [추가] 분리된 뷰 초기화
+            case 'daily-test-mgmt': 
+                this.analysisDashboard.initDailyTestView(); 
+                break;
+            case 'learning-status-mgmt': 
+                this.analysisDashboard.initLearningStatusView(); 
+                break;
+                
             default: this.showDashboardMenu(); break;
         }
     },
@@ -575,7 +578,9 @@ const TeacherApp = {
             neededSubjectIds.forEach(id => this.state.areTextbooksLoading[id] = true);
             currentClassSubjectsList.innerHTML = '<li>교재 로딩 중...</li>';
             try {
-                const textbookPromises = neededSubjectIds.map(id => getDocs(collection(db, `subjects/${id}/textbooks`)));
+                const textbookPromises = neededSubjectIds.map(id => 
+                    getDocs(query(collection(db, 'textbooks'), where('subjectId', '==', id)))
+                );
                 const textbookSnapshots = await Promise.all(textbookPromises);
 
                 neededSubjectIds.forEach((id, index) => {
@@ -622,7 +627,6 @@ const TeacherApp = {
         });
     },
 
-    // ✅ [핵심 수정] 과목 데이터를 불러오면 Store에도 넣어줍니다.
     listenForSubjects() {
         this.state.isSubjectsLoading = true;
         try {
@@ -630,8 +634,6 @@ const TeacherApp = {
             onSnapshot(q, (snapshot) => {
                 const subjects = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
                 this.state.subjects = subjects;
-                
-                // ✨ Store 업데이트 (이게 있어야 반 설정 화면에서 과목이 뜹니다!)
                 setSubjects(subjects);
 
                 this.state.isSubjectsLoading = false;

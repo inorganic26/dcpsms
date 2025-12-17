@@ -1,7 +1,7 @@
 // src/admin/studentManager.js
 
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions"; 
+import { collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db } from "../shared/firebase.js"; 
 import { showToast } from "../shared/utils.js";
 import { getClasses } from "../store/classStore.js"; 
@@ -13,7 +13,7 @@ export const studentManager = {
     state: {
         students: [],
         currentPage: 1,     
-        itemsPerPage: 10,   // 10명씩 보기
+        itemsPerPage: 10,
     },
 
     init(app) {
@@ -25,8 +25,6 @@ export const studentManager = {
         }
 
         this.addEventListeners();
-
-        // 초기 로드
         this.renderStudentList();
 
         document.addEventListener('studentsUpdated', () => this.renderStudentList());
@@ -46,7 +44,6 @@ export const studentManager = {
         this.elements.saveStudentEditBtn?.addEventListener('click', () => this.updateStudent());
     },
 
-    // 학생 생성 (서울 리전 설정 유지)
     async createStudent() {
         const nameInput = this.elements.newStudentNameInput;
         const phoneInput = this.elements.newStudentPhoneInput;
@@ -69,7 +66,6 @@ export const studentManager = {
         try {
             showToast("학생 계정을 생성 중입니다...", false);
             
-            // 서울 리전 함수 호출
             const functions = getFunctions(app, 'asia-northeast3');
             const createAccountFn = httpsCallable(functions, 'createStudentAccount');
             
@@ -80,7 +76,8 @@ export const studentManager = {
             });
             
             if (result.data.success) {
-                showToast("학생이 등록되었습니다. (비번: 전화번호 뒤 4자리)", false);
+                showToast("학생이 등록되었습니다.", false);
+                
                 if(nameInput) nameInput.value = "";
                 if(phoneInput) phoneInput.value = "";
                 if(parentPhoneInput) parentPhoneInput.value = "";
@@ -90,11 +87,7 @@ export const studentManager = {
             
         } catch (error) {
             console.error("학생 생성 오류:", error);
-            let msg = "등록에 실패했습니다.";
-            if (error.message.includes("already-exists")) {
-                msg = "이미 등록된 전화번호이거나 학생입니다.";
-            }
-            showToast(msg, true);
+            showToast("등록 실패: " + error.message, true);
         }
     },
 
@@ -106,15 +99,37 @@ export const studentManager = {
         if (this.elements.editStudentPhoneInput) this.elements.editStudentPhoneInput.value = student.phone || "";
         if (this.elements.editParentPhoneInput) this.elements.editParentPhoneInput.value = student.parentPhone || "";
 
+        const currentClassIds = student.classIds || (student.classId ? [student.classId] : []);
         const classSelect = document.getElementById('admin-edit-student-class-select');
+        
         if (classSelect) {
+            classSelect.style.display = 'none';
+            
+            let checkboxContainer = document.getElementById('admin-edit-student-class-checkboxes');
+            if (!checkboxContainer) {
+                checkboxContainer = document.createElement('div');
+                checkboxContainer.id = 'admin-edit-student-class-checkboxes';
+                checkboxContainer.className = 'max-h-40 overflow-y-auto border rounded p-2 bg-slate-50 grid grid-cols-2 gap-2';
+                classSelect.parentNode.insertBefore(checkboxContainer, classSelect.nextSibling);
+            }
+            
             const classes = getClasses();
-            classSelect.innerHTML = '<option value="">(미배정)</option>';
-            classes.forEach(c => {
-                const selected = c.id === student.classId ? "selected" : "";
-                const typeLabel = c.classType === 'live-lecture' ? '[현강]' : '[자습]';
-                classSelect.innerHTML += `<option value="${c.id}" ${selected}>${typeLabel} ${c.name}</option>`;
-            });
+            checkboxContainer.innerHTML = '';
+            
+            if (classes.length === 0) {
+                checkboxContainer.innerHTML = '<span class="text-sm text-slate-400 p-2">등록된 반이 없습니다.</span>';
+            } else {
+                classes.forEach(c => {
+                    const isChecked = currentClassIds.includes(c.id);
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-1 rounded';
+                    label.innerHTML = `
+                        <input type="checkbox" value="${c.id}" class="class-checkbox w-4 h-4 text-indigo-600 rounded" ${isChecked ? 'checked' : ''}>
+                        <span>${c.name}</span>
+                    `;
+                    checkboxContainer.appendChild(label);
+                });
+            }
         }
 
         modal?.classList.remove('hidden');
@@ -136,8 +151,15 @@ export const studentManager = {
         const newPhone = this.elements.editStudentPhoneInput?.value.trim();
         const newParentPhone = this.elements.editParentPhoneInput?.value.trim() || "";
         
-        const classSelect = document.getElementById('admin-edit-student-class-select');
-        const newClassId = classSelect ? classSelect.value : (student.classId || null);
+        const checkboxContainer = document.getElementById('admin-edit-student-class-checkboxes');
+        let newClassIds = [];
+        if (checkboxContainer) {
+            const checkboxes = checkboxContainer.querySelectorAll('.class-checkbox:checked');
+            newClassIds = Array.from(checkboxes).map(cb => cb.value);
+        } else {
+            const classSelect = document.getElementById('admin-edit-student-class-select');
+            if (classSelect && classSelect.value) newClassIds = [classSelect.value];
+        }
 
         if (!newName || !newPhone) {
             showToast("이름과 전화번호를 입력하세요.", true);
@@ -149,7 +171,8 @@ export const studentManager = {
                 name: newName,
                 phone: newPhone,
                 parentPhone: newParentPhone,
-                classId: newClassId === "" ? null : newClassId
+                classIds: newClassIds,
+                classId: newClassIds.length > 0 ? newClassIds[0] : null
             });
             showToast("학생 정보가 수정되었습니다.", false);
             this.closeEditModal();
@@ -197,32 +220,27 @@ export const studentManager = {
             const tr = document.createElement("tr");
             tr.className = "hover:bg-slate-50 border-b border-slate-100 transition";
 
-            let className = "-";
-            let classBadgeColor = "bg-slate-100 text-slate-500";
-            
-            if (student.classId) {
-                const cls = classes.find(c => c.id === student.classId);
-                if (cls) {
-                    className = cls.name;
-                    classBadgeColor = cls.classType === 'live-lecture' 
+            const studentClassIds = student.classIds || (student.classId ? [student.classId] : []);
+            let classBadgeHtml = "";
+
+            if (studentClassIds.length === 0) {
+                classBadgeHtml = `<span class="text-xs px-2 py-1 rounded font-bold bg-orange-50 text-orange-600 border border-orange-100">미배정</span>`;
+            } else {
+                classBadgeHtml = studentClassIds.map(cid => {
+                    const cls = classes.find(c => c.id === cid);
+                    if (!cls) return ""; 
+                    const colorClass = cls.classType === 'live-lecture' 
                         ? "bg-indigo-50 text-indigo-700" 
                         : "bg-emerald-50 text-emerald-700";
-                } else {
-                    className = "삭제된 반";
-                    classBadgeColor = "bg-red-50 text-red-500";
-                }
-            } else {
-                className = "미배정";
-                classBadgeColor = "bg-orange-50 text-orange-600 border border-orange-100";
+                    return `<span class="text-xs px-2 py-1 rounded font-bold ${colorClass} mr-1 mb-1 inline-block">${cls.name}</span>`;
+                }).join("");
             }
 
             tr.innerHTML = `
                 <td class="p-3 text-slate-800 font-bold">${student.name}</td>
                 <td class="p-3 text-slate-600 font-mono text-sm">${student.phone || '-'}</td>
                 <td class="p-3">
-                    <span class="text-xs px-2 py-1 rounded font-bold ${classBadgeColor}">
-                        ${className}
-                    </span>
+                    ${classBadgeHtml}
                 </td>
                 <td class="p-3 text-right">
                     <button class="edit-btn text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50 transition">
@@ -250,14 +268,13 @@ export const studentManager = {
         paginationContainer.innerHTML = "";
         if (totalPages <= 1) return;
 
-        // ✨ [수정됨] text를 String으로 변환해서 안전하게 검사
         const createBtn = (text, onClick, disabled = false, isActive = false) => {
             const btn = document.createElement('button');
             btn.innerHTML = text;
             btn.disabled = disabled;
             btn.onclick = onClick;
             
-            // 여기서 String(text)를 사용하여 숫자가 들어와도 오류가 나지 않도록 수정
+            // ✨ [핵심 수정] text를 String으로 변환하여 안전하게 .includes 체크
             if (String(text).includes('material-icons')) { 
                 btn.className = `p-2 rounded hover:bg-slate-100 text-slate-500 disabled:opacity-30 ${disabled ? 'cursor-not-allowed' : ''}`;
             } else { 
@@ -286,7 +303,7 @@ export const studentManager = {
 
         for (let i = startPage; i <= endPage; i++) {
             paginationContainer.appendChild(createBtn(
-                i, // 숫자 i를 그대로 넘겨도 내부에서 String으로 변환하므로 안전함
+                i, 
                 () => { this.state.currentPage = i; this.renderStudentList(); }, 
                 false, 
                 i === this.state.currentPage
