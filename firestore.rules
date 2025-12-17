@@ -19,108 +19,77 @@ service cloud.firestore {
     }
 
     // =========================================
-    // classes 컬렉션
+    // classes 컬렉션 (반 목록)
     // =========================================
     match /classes/{classId} {
-      allow read: if isAuthenticated();
+      // 로그인 전에도 반을 선택해야 하므로 read 허용
+      allow read: if true; 
       allow write: if isAdminOrTeacher();
     }
 
     // =========================================
-    // students 컬렉션
+    // students 컬렉션 (학생 목록)
     // =========================================
     match /students/{studentId} {
-      allow read: if isAuthenticated();
+      // 반 선택 후 이름을 찾아야 하므로 read 허용
+      allow read: if true; 
       allow write: if isAdminOrTeacher();
     }
 
     // =========================================
-    // ✨ [추가됨] textbooks 컬렉션 (최상위)
+    // textbooks / subjects / lessons (학습 데이터)
     // =========================================
     match /textbooks/{textbookId} {
-      allow read: if isAuthenticated();
+      allow read: if true; 
       allow write: if isAdminOrTeacher();
     }
 
-    // =========================================
-    // subjects 컬렉션 (+ 하위 컬렉션)
-    // =========================================
     match /subjects/{subjectId} {
-      allow read: if isAuthenticated();
+      allow read: if true; 
       allow write: if isAdminOrTeacher();
 
-      // (구 버전 호환을 위해 남겨둠, 필요 없으면 삭제 가능)
-      match /textbooks/{textbookId} {
-        allow read: if isAuthenticated();
-        allow write: if isAdminOrTeacher();
-      }
-
       match /lessons/{lessonId} {
-        allow read: if isAuthenticated();
+        allow read: if true; 
         allow write: if isAdminOrTeacher();
 
         match /submissions/{studentDocId} {
-          // 읽기: 관리자/교사 OR 학생 본인
+          // 제출물은 본인 혹은 관리자만
           allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
-          
-          // 쓰기: 본인만 (데이터 ID와 인증 ID 일치 시)
           allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
-          
-          // 삭제: 교사/관리자만
           allow delete: if isAdminOrTeacher();
         }
       }
     }
 
     // =========================================
-    // homeworks 컬렉션 (+ 하위 submissions)
+    // homeworks / classVideos / reports
     // =========================================
     match /homeworks/{homeworkId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdminOrTeacher();
-
+      
       match /submissions/{studentDocId} {
-        // 학생 본인이면 자기 제출물을 읽을 수 있게 허용
         allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
-        
-        // 쓰기: 본인만
         allow write: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
-        
-        // 삭제: 교사/관리자만
-        allow delete: if isAdminOrTeacher();
       }
     }
 
-    // =========================================
-    // teachers 컬렉션
-    // =========================================
-    match /teachers/{teacherId} {
-      allow read, write: if isAdminOrTeacher();
-    }
-
-    // =========================================
-    // classVideos / classLectures (수업/질문 영상)
-    // =========================================
     match /classVideos/{videoId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdminOrTeacher();
-    }
-    match /classLectures/{lectureId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdminOrTeacher();
     }
     
-    // =========================================
-    // reports 컬렉션 (성적 리포트) - 필요 시 추가
-    // =========================================
-    match /reports/{reportId} {
-      allow read: if isAuthenticated();
+    match /classLectures/{lectureId} {
+      allow read: if true;
       allow write: if isAdminOrTeacher();
     }
 
-    // =========================================
-    // 기본 거부 (나머지 모든 경로는 차단)
-    // =========================================
+    match /reports/{reportId} {
+      allow read: if true;
+      allow write: if isAdminOrTeacher();
+    }
+
+    // 기본 거부
     match /{document=**} {
       allow read, write: if false;
     }

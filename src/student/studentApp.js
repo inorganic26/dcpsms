@@ -4,7 +4,7 @@ import { studentAuth } from "./studentAuth.js";
 import { studentLesson } from "./studentLesson.js";
 import { studentHomework } from "./studentHomework.js";
 import { reportManager } from "../shared/reportManager.js";
-import { classVideoManager } from "./classVideoManager.js"; // 새로 만든 파일 연결
+import { classVideoManager } from "./classVideoManager.js"; 
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 
@@ -63,6 +63,9 @@ export const StudentApp = {
         studentHomework.init(this);
         classVideoManager.init(this);
         this.addEventListeners();
+
+        // 초기 화면 설정: 로그인 화면 표시
+        this.showScreen(this.elements.loginScreen);
     },
 
     addEventListeners() {
@@ -98,7 +101,10 @@ export const StudentApp = {
             if (el) el.style.display = 'none';
         });
         const target = document.getElementById(screenId);
-        if (target) target.style.display = (['student-subject-selection-screen','student-lesson-selection-screen','student-homework-screen','student-report-list-screen'].includes(screenId)) ? 'block' : 'flex';
+        if (target) {
+            const flexScreens = ['student-loading-screen', 'student-login-screen', 'student-video1-screen', 'student-quiz-screen', 'student-result-screen'];
+            target.style.display = flexScreens.includes(screenId) ? 'flex' : 'block';
+        }
     },
 
     async onLoginSuccess(studentData, studentDocId) {
@@ -106,14 +112,27 @@ export const StudentApp = {
         this.state.studentDocId = studentDocId;
         this.state.studentName = studentData.name;
         
+        this.showScreen(this.elements.loadingScreen);
+
         if (studentData.classId) {
             try {
                 const classDoc = await getDoc(doc(db, "classes", studentData.classId));
-                if (classDoc.exists()) this.state.classType = classDoc.data().classType;
-            } catch (e) { console.error(e); }
+                if (classDoc.exists()) {
+                    const data = classDoc.data();
+                    this.state.classType = data.classType;
+                    // 클래스 데이터에 담긴 과목 정보를 가져옴
+                    this.state.subjects = data.subjects || [];
+                }
+            } catch (e) { 
+                console.error("클래스 로드 실패:", e); 
+            }
         }
 
-        document.getElementById(this.elements.welcomeMessage).textContent = `${studentData.name} 학생, 환영합니다!`;
+        const welcomeEl = document.getElementById(this.elements.welcomeMessage);
+        if (welcomeEl) {
+            welcomeEl.textContent = `${studentData.name} 학생, 환영합니다!`;
+        }
+
         this.loadAvailableSubjects();
         this.showSubjectSelectionScreen();
     },
@@ -121,22 +140,33 @@ export const StudentApp = {
     async loadAvailableSubjects() {
         const container = document.getElementById('student-subjects-list');
         if (!container) return;
-        container.innerHTML = '';
-        if (this.state.subjects.length === 0) {
-            container.innerHTML = '<p class="text-sm text-slate-400">학습할 과목이 없습니다.</p>';
-            return;
-        }
-        this.state.subjects.forEach(subject => {
-            const div = document.createElement('div');
-            div.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center cursor-pointer hover:bg-indigo-50 transition';
-            div.innerHTML = `<span class="font-bold text-slate-700">${subject.name}</span><span class="material-icons-round text-slate-300 text-sm">arrow_forward_ios</span>`;
-            div.onclick = () => this.showLessonSelectionScreen(subject.id);
-            container.appendChild(div);
-        });
         
-        ['startLessonCard', 'gotoClassVideoCard', 'gotoQnaVideoCard', 'gotoHomeworkCard', 'gotoReportCard', 'dailyTestCard'].forEach(key => {
+        container.innerHTML = '';
+        
+        // 과목 영역 표시
+        const startCard = document.getElementById(this.elements.startLessonCard);
+        if (startCard) startCard.style.display = 'block';
+
+        if (!this.state.subjects || this.state.subjects.length === 0) {
+            container.innerHTML = '<p class="text-sm text-slate-400">학습할 과목이 없습니다.</p>';
+        } else {
+            this.state.subjects.forEach(subject => {
+                const div = document.createElement('div');
+                div.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center cursor-pointer hover:bg-indigo-50 transition mb-2';
+                div.innerHTML = `<span class="font-bold text-slate-700">${subject.name}</span><span class="material-icons-round text-slate-300 text-sm">arrow_forward_ios</span>`;
+                div.onclick = () => this.showLessonSelectionScreen(subject.id);
+                container.appendChild(div);
+            });
+        }
+        
+        // 나머지 기능 버튼들(수업영상, 숙제 등) 표시
+        const menuKeys = ['gotoClassVideoCard', 'gotoQnaVideoCard', 'gotoHomeworkCard', 'gotoReportCard', 'dailyTestCard'];
+        menuKeys.forEach(key => {
             const el = document.getElementById(this.elements[key]);
-            if(el) el.style.display = (key === 'startLessonCard') ? 'block' : 'flex';
+            if(el) {
+                el.style.display = 'flex';
+                el.classList.remove('hidden'); // hidden 클래스가 남아있을 경우 제거
+            }
         });
     },
 
@@ -149,7 +179,10 @@ export const StudentApp = {
         const subject = this.state.subjects.find(s => s.id === subjectId);
         if (!subject) return;
         this.state.selectedSubject = subject;
-        document.getElementById(this.elements.selectedSubjectTitle).textContent = subject.name;
+        
+        const titleEl = document.getElementById(this.elements.selectedSubjectTitle);
+        if (titleEl) titleEl.textContent = subject.name;
+
         this.showScreen(this.elements.loadingScreen);
         await studentLesson.loadLessons(subjectId);
         this.showScreen(this.elements.lessonSelectionScreen);
@@ -168,7 +201,6 @@ export const StudentApp = {
     }
 };
 
-// ✨ [중요] 앱 자동 시작 코드 (이게 없어서 반 목록이 안 떴습니다)
 document.addEventListener('DOMContentLoaded', () => {
     StudentApp.init();
 });
