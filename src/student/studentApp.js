@@ -5,7 +5,8 @@ import { studentLesson } from "./studentLesson.js";
 import { studentHomework } from "./studentHomework.js";
 import { reportManager } from "../shared/reportManager.js";
 import { classVideoManager } from "./classVideoManager.js"; 
-import { doc, getDoc } from "firebase/firestore";
+// ⬇️ collection, getDocs 추가됨
+import { doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 
 export const StudentApp = {
@@ -25,12 +26,8 @@ export const StudentApp = {
         videoTitlesScreen: 'student-video-titles-screen',
         videoDisplayModal: 'student-video-display-modal',
 
-        startLessonCard: 'student-start-lesson-card',
-        dailyTestCard: 'student-daily-test-card',
-        gotoClassVideoCard: 'student-goto-class-video-card',
-        gotoQnaVideoCard: 'student-goto-qna-video-card',
-        gotoHomeworkCard: 'student-goto-homework-card',
-        gotoReportCard: 'student-goto-report-card',
+        // ⬇️ 대시보드 컨테이너 ID 변경
+        dashboardContainer: 'student-dashboard-grid', 
 
         welcomeMessage: 'student-welcome-message',
         selectedSubjectTitle: 'student-selected-subject-title',
@@ -64,18 +61,14 @@ export const StudentApp = {
         classVideoManager.init(this);
         this.addEventListeners();
 
-        // 초기 화면 설정: 로그인 화면 표시
         this.showScreen(this.elements.loginScreen);
     },
 
     addEventListeners() {
         const el = (id) => document.getElementById(this.elements[id]);
 
-        el('gotoClassVideoCard')?.addEventListener('click', () => classVideoManager.showDateSelectionScreen('class'));
-        el('gotoQnaVideoCard')?.addEventListener('click', () => classVideoManager.showDateSelectionScreen('qna'));
-        el('gotoHomeworkCard')?.addEventListener('click', () => this.showHomeworkScreen());
-        el('gotoReportCard')?.addEventListener('click', () => this.showReportListScreen());
-
+        // 기존의 개별 카드 리스너 제거 (동적 생성으로 변경됨)
+        // 공통 뒤로가기 버튼들
         el('backToSubjectsBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
         el('backToSubjectsFromHomeworkBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
         el('backToMenuFromReportListBtn')?.addEventListener('click', () => this.showSubjectSelectionScreen());
@@ -116,15 +109,33 @@ export const StudentApp = {
 
         if (studentData.classId) {
             try {
+                // 1. 반 정보 가져오기
                 const classDoc = await getDoc(doc(db, "classes", studentData.classId));
+                let classSubjectsMap = {};
+                
                 if (classDoc.exists()) {
                     const data = classDoc.data();
                     this.state.classType = data.classType;
-                    // 클래스 데이터에 담긴 과목 정보를 가져옴
-                    this.state.subjects = data.subjects || [];
+                    classSubjectsMap = data.subjects || {}; // { "subjectId": { ... }, ... }
                 }
+
+                // 2. 전체 과목 정보 가져오기 (이름 매칭용)
+                const subjectsSnapshot = await getDocs(collection(db, "subjects"));
+                const allSubjects = subjectsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+                // 3. 반에 설정된 과목 ID와 전체 과목 정보를 매칭하여 배열로 변환
+                // ⬇️ 여기서 forEach 오류가 해결됩니다.
+                this.state.subjects = Object.keys(classSubjectsMap).map(subjectId => {
+                    const subjectInfo = allSubjects.find(s => s.id === subjectId);
+                    return subjectInfo ? { id: subjectId, name: subjectInfo.name } : null;
+                }).filter(s => s !== null);
+
+                // 이름순 정렬
+                this.state.subjects.sort((a, b) => a.name.localeCompare(b.name));
+
             } catch (e) { 
-                console.error("클래스 로드 실패:", e); 
+                console.error("데이터 로드 실패:", e); 
+                this.state.subjects = [];
             }
         }
 
@@ -133,41 +144,74 @@ export const StudentApp = {
             welcomeEl.textContent = `${studentData.name} 학생, 환영합니다!`;
         }
 
-        this.loadAvailableSubjects();
+        this.loadAvailableSubjects(); // 대시보드 그리기
         this.showSubjectSelectionScreen();
     },
 
+    // ⬇️ 관리자 대시보드 스타일로 변경된 함수
     async loadAvailableSubjects() {
-        const container = document.getElementById('student-subjects-list');
+        const container = document.getElementById(this.elements.dashboardContainer);
         if (!container) return;
         
         container.innerHTML = '';
         
-        // 과목 영역 표시
-        const startCard = document.getElementById(this.elements.startLessonCard);
-        if (startCard) startCard.style.display = 'block';
-
-        if (!this.state.subjects || this.state.subjects.length === 0) {
-            container.innerHTML = '<p class="text-sm text-slate-400">학습할 과목이 없습니다.</p>';
-        } else {
+        // 1. 과목 카드 생성 (보라색 테마)
+        if (this.state.subjects && this.state.subjects.length > 0) {
             this.state.subjects.forEach(subject => {
-                const div = document.createElement('div');
-                div.className = 'p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center cursor-pointer hover:bg-indigo-50 transition mb-2';
-                div.innerHTML = `<span class="font-bold text-slate-700">${subject.name}</span><span class="material-icons-round text-slate-300 text-sm">arrow_forward_ios</span>`;
-                div.onclick = () => this.showLessonSelectionScreen(subject.id);
-                container.appendChild(div);
+                const card = this.createDashboardCard(
+                    'menu_book', 
+                    subject.name, 
+                    'bg-purple-50 text-purple-600 group-hover:bg-purple-100', 
+                    () => this.showLessonSelectionScreen(subject.id)
+                );
+                container.appendChild(card);
             });
+        } else {
+            // 과목이 없을 때 표시
+            const emptyMsg = document.createElement('div');
+            emptyMsg.className = "col-span-full text-center text-slate-400 py-4";
+            emptyMsg.textContent = "등록된 학습 과목이 없습니다.";
+            container.appendChild(emptyMsg);
         }
-        
-        // 나머지 기능 버튼들(수업영상, 숙제 등) 표시
-        const menuKeys = ['gotoClassVideoCard', 'gotoQnaVideoCard', 'gotoHomeworkCard', 'gotoReportCard', 'dailyTestCard'];
-        menuKeys.forEach(key => {
-            const el = document.getElementById(this.elements[key]);
-            if(el) {
-                el.style.display = 'flex';
-                el.classList.remove('hidden'); // hidden 클래스가 남아있을 경우 제거
-            }
-        });
+
+        // 2. 기능 카드 생성 (관리자 대시보드 스타일)
+        // 숙제 확인 (노란색)
+        container.appendChild(this.createDashboardCard(
+            'assignment', '숙제 확인', 'bg-yellow-50 text-yellow-600 group-hover:bg-yellow-100',
+            () => this.showHomeworkScreen()
+        ));
+
+        // 수업 영상 (인디고색)
+        container.appendChild(this.createDashboardCard(
+            'ondemand_video', '수업 영상', 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100',
+            () => classVideoManager.showDateSelectionScreen('class')
+        ));
+
+        // 질문 영상 (청록색)
+        container.appendChild(this.createDashboardCard(
+            'question_answer', '질문 영상', 'bg-cyan-50 text-cyan-600 group-hover:bg-cyan-100',
+            () => classVideoManager.showDateSelectionScreen('qna')
+        ));
+
+        // 성적표 확인 (라임색)
+        container.appendChild(this.createDashboardCard(
+            'assessment', '성적표 확인', 'bg-lime-50 text-lime-600 group-hover:bg-lime-100',
+            () => this.showReportListScreen()
+        ));
+    },
+
+    // 카드 생성 헬퍼 함수
+    createDashboardCard(iconName, title, colorClass, onClickHandler) {
+        const div = document.createElement('div');
+        div.className = "cursor-pointer bg-white p-6 rounded-2xl shadow-sm hover:shadow-md transition border border-slate-100 flex flex-col items-center justify-center gap-3 group active:scale-95 duration-200";
+        div.innerHTML = `
+            <div class="w-14 h-14 rounded-2xl flex items-center justify-center transition ${colorClass}">
+                <span class="material-icons-round text-3xl">${iconName}</span>
+            </div>
+            <h3 class="font-bold text-slate-700 text-base">${title}</h3>
+        `;
+        div.addEventListener('click', onClickHandler);
+        return div;
     },
 
     showSubjectSelectionScreen() {
