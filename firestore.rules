@@ -27,7 +27,7 @@ service cloud.firestore {
     }
 
     // =========================================
-    // teachers 컬렉션 (선생님 목록) - ✨ [추가됨] 이 부분이 없어서 오류 발생
+    // teachers 컬렉션 (선생님 목록)
     // =========================================
     match /teachers/{teacherId} {
       allow read: if true;
@@ -67,18 +67,27 @@ service cloud.firestore {
     }
 
     // =========================================
-    // homeworks / classVideos / reports
+    // homeworks (숙제) - ✨ [수정됨] 학생 제출 허용
     // =========================================
     match /homeworks/{homeworkId} {
       allow read: if true;
-      allow write: if isAdminOrTeacher();
       
+      // ✨ 핵심 수정: 학생이 숙제를 제출(수정)할 수 있도록 허용
+      allow update: if isAuthenticated(); 
+      
+      // 생성(숙제 내기)과 삭제(숙제 지우기)는 여전히 선생님/관리자만 가능
+      allow create, delete: if isAdminOrTeacher();
+      
+      // (참고) 서브컬렉션 규칙
       match /submissions/{studentDocId} {
         allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
         allow write: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
       }
     }
 
+    // =========================================
+    // classVideos / classLectures / reports
+    // =========================================
     match /classVideos/{videoId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
@@ -98,7 +107,6 @@ service cloud.firestore {
     // 일일 테스트 (daily_tests)
     // =========================================
     match /daily_tests/{testId} {
-      // 학생 및 관리자 모두 접근 가능하게 설정
       allow read, write: if isAuthenticated();
     }
 

@@ -7,24 +7,26 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // 2. [숙제 파일] 학생이 사진 올리는 곳
-    // 경로: homeworks/숙제ID/파일명
-    match /homeworks/{homeworkId}/{fileName} {
-      allow read: if isAuthenticated();  // 로그인하면 볼 수 있음
-      allow write: if isAuthenticated(); // 로그인하면 올릴 수 있음
+    // 2. [수정됨] 숙제 파일 제출 경로 허용
+    // 학생 앱은 'homework_submissions' 폴더를 사용하므로 이 규칙이 반드시 필요합니다.
+    match /homework_submissions/{allPaths=**} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // (참고) 혹시 모를 구버전 호환용
+    match /homeworks/{allPaths=**} {
+      allow read, write: if isAuthenticated();
     }
 
     // 3. [성적표 리포트] 관리자가 올리는 곳
-    // 경로: reports/반ID/날짜/파일명
     match /reports/{classId}/{date}/{fileName} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
     
-    // 4. [기타] 그 외 모든 파일 (기본 차단 또는 필요시 허용)
+    // 4. [기타] 그 외 모든 파일 (기본 차단)
     match /{allPaths=**} {
       allow read: if isAuthenticated();
-      allow write: if false; // 기본적으로 아무대나 쓰는건 막음
+      allow write: if false; 
     }
   }
 }

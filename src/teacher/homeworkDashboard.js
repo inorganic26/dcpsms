@@ -3,10 +3,11 @@
 import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
+import { homeworkManagerHelper } from "../shared/homeworkManager.js";
 
 export const homeworkDashboard = {
     managerInstance: null,
-    unsubscribe: null, // ✨ 실시간 감시 취소용 변수 추가
+    unsubscribe: null,
 
     config: {
         elements: {
@@ -16,6 +17,7 @@ export const homeworkDashboard = {
             subjectSelect: 'teacher-homework-subject-select',
             textbookSelect: 'teacher-homework-textbook-select',
             pagesInput: 'teacher-homework-pages',
+            totalPagesInput: 'teacher-homework-total-pages', 
             dueDateInput: 'teacher-homework-due-date',
             
             saveBtn: 'teacher-save-homework-btn',
@@ -70,7 +72,6 @@ export const homeworkDashboard = {
     },
 
     resetUIState() {
-        // 기존 감시(리스너)가 있다면 해제
         if (this.unsubscribe) {
             this.unsubscribe();
             this.unsubscribe = null;
@@ -107,11 +108,9 @@ export const homeworkDashboard = {
         }
     },
 
-    // ✨ [핵심 수정] 실시간 데이터 감시(onSnapshot) 적용
     loadHomeworkDetails(homeworkId) {
         if (!homeworkId) return;
         
-        // 기존 리스너 해제 (다른 숙제 클릭 시)
         if (this.unsubscribe) {
             this.unsubscribe();
             this.unsubscribe = null;
@@ -123,15 +122,16 @@ export const homeworkDashboard = {
         
         el('homeworkContent').style.display = 'block';
         el('homeworkContent').classList.remove('hidden');
-        
         el('homeworkManagementButtons').style.display = 'flex';
         el('homeworkManagementButtons').classList.remove('hidden');
-
         el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터 연결 중...</td></tr>';
 
         const docRef = doc(db, 'homeworks', homeworkId);
 
-        // onSnapshot을 사용하여 실시간 업데이트
+        // ✨ [추가] 파일명 생성을 위해 현재 반 이름을 가져옴
+        const classSelect = document.getElementById('teacher-class-select');
+        const className = classSelect && classSelect.selectedIndex > -1 ? classSelect.options[classSelect.selectedIndex].text : '반';
+
         this.unsubscribe = onSnapshot(docRef, (docSnap) => {
             if (!docSnap.exists()) {
                 el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
@@ -140,13 +140,10 @@ export const homeworkDashboard = {
 
             const hwData = docSnap.data();
             this.state.editingHomework = { id: homeworkId, ...hwData };
-            
             el('selectedHomeworkTitle').textContent = hwData.title;
 
-            // 학생 데이터와 제출 데이터 매칭
             const studentsInClass = this.app.state.studentsInClass; 
             const submissions = hwData.submissions || {};
-            
             const tbody = el('homeworkTableBody');
             tbody.innerHTML = '';
 
@@ -155,40 +152,35 @@ export const homeworkDashboard = {
                 return;
             }
 
-            // 학생 목록을 이름순 정렬
             const sortedStudents = Array.from(studentsInClass.entries()).sort((a, b) => a[1].localeCompare(b[1]));
 
             sortedStudents.forEach(([id, name]) => {
                 const sub = submissions[id];
-                const isDone = sub && sub.status === 'completed';
                 const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                 
-                // 파일 다운로드 버튼 (URL이 있을 경우)
-                let downloadBtn = '';
-                if (sub?.fileUrl) {
-                    downloadBtn = `<a href="${sub.fileUrl}" target="_blank" class="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100 ml-2">다운로드</a>`;
-                }
+                const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
+                // ✨ [수정] renderFileButtons에 className 전달
+                const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, className);
 
                 const tr = document.createElement('tr');
-                tr.className = "border-b hover:bg-slate-50 transition duration-300"; // 애니메이션 효과 추가
+                tr.className = "border-b hover:bg-slate-50 transition duration-300";
                 tr.innerHTML = `
                     <td class="py-3 px-4">${name}</td>
-                    <td class="py-3 px-4 font-bold ${isDone ? 'text-green-600' : 'text-red-500'}">
-                        ${isDone ? '완료' : '미완료'}
-                    </td>
+                    <td class="py-3 px-4 ${statusInfo.color}">${statusInfo.text}</td>
                     <td class="py-3 px-4 text-xs text-slate-500">
-                        ${date} ${downloadBtn}
+                        <div class="mb-1">${date}</div>
+                        <div>${buttonHtml}</div>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }, (error) => {
-            console.error("실시간 업데이트 실패:", error);
-            el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">실시간 연결 끊김</td></tr>';
+            console.error(error);
+            el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">연결 끊김</td></tr>';
         });
     },
 
-    // --- Modal Functions ---
+    // --- Modal Functions (기존 유지) ---
     async openModal(mode) {
         const el = (id) => document.getElementById(this.config.elements[id]);
         const modal = el('modal');
@@ -205,6 +197,7 @@ export const homeworkDashboard = {
             const hw = this.state.editingHomework;
             el('titleInput').value = hw.title;
             el('pagesInput').value = hw.pages || '';
+            if(el('totalPagesInput')) el('totalPagesInput').value = hw.totalPages || '';
             el('dueDateInput').value = hw.dueDate || '';
             
             if (hw.subjectId) {
@@ -215,6 +208,7 @@ export const homeworkDashboard = {
         } else {
             el('titleInput').value = '';
             el('pagesInput').value = '';
+            if(el('totalPagesInput')) el('totalPagesInput').value = '';
             el('dueDateInput').value = '';
             el('subjectSelect').value = '';
             el('textbookSelect').innerHTML = '<option value="">교재 선택</option>';
@@ -234,35 +228,23 @@ export const homeworkDashboard = {
     async populateSubjectsForHomeworkModal() {
         const select = document.getElementById(this.config.elements.subjectSelect);
         const subjects = this.app.state.subjects || [];
-        
         select.innerHTML = '<option value="">과목 선택</option>';
-        subjects.forEach(sub => {
-            select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`;
-        });
+        subjects.forEach(sub => { select.innerHTML += `<option value="${sub.id}">${sub.name}</option>`; });
     },
 
     async handleSubjectChange(subjectId) {
         const select = document.getElementById(this.config.elements.textbookSelect);
         select.innerHTML = '<option value="">로딩 중...</option>';
         select.disabled = true;
-        
-        if (!subjectId) {
-            select.innerHTML = '<option value="">교재 선택</option>';
-            return;
-        }
+        if (!subjectId) { select.innerHTML = '<option value="">교재 선택</option>'; return; }
 
         try {
             const q = query(collection(db, 'textbooks'), where('subjectId', '==', subjectId));
             const snap = await getDocs(q);
             select.innerHTML = '<option value="">교재 선택</option>';
-            snap.forEach(doc => {
-                select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
-            });
+            snap.forEach(doc => { select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`; });
             select.disabled = false;
-        } catch (e) {
-            console.error(e);
-            select.innerHTML = '<option>로드 실패</option>';
-        }
+        } catch (e) { select.innerHTML = '<option>로드 실패</option>'; }
     },
 
     async saveHomework() {
@@ -276,14 +258,13 @@ export const homeworkDashboard = {
         const textbookId = el('textbookSelect').value;
         const pages = el('pagesInput').value;
         const dueDate = el('dueDateInput').value;
+        const totalPages = el('totalPagesInput') ? Number(el('totalPagesInput').value) : 0;
 
-        if (!title || !subjectId) {
-            showToast("제목과 과목은 필수입니다.", true);
-            return;
-        }
+        if (!title || !subjectId) { showToast("제목과 과목은 필수입니다.", true); return; }
 
         const data = {
             classId, title, subjectId, textbookId, pages, dueDate,
+            totalPages,
             updatedAt: serverTimestamp()
         };
 
@@ -299,23 +280,17 @@ export const homeworkDashboard = {
             }
             this.closeModal();
             this.populateHomeworkSelect(); 
-        } catch (e) {
-            console.error(e);
-            showToast("저장 실패", true);
-        }
+        } catch (e) { showToast("저장 실패", true); }
     },
 
     async deleteHomework() {
         if (!this.state.selectedHomeworkId) return;
         if (!confirm("정말 삭제하시겠습니까?")) return;
-
         try {
             await deleteDoc(doc(db, 'homeworks', this.state.selectedHomeworkId));
             showToast("삭제되었습니다.", false);
             this.resetUIState();
             this.populateHomeworkSelect();
-        } catch (e) {
-            showToast("삭제 실패", true);
-        }
+        } catch (e) { showToast("삭제 실패", true); }
     }
 };

@@ -5,32 +5,55 @@ import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
-const studentHomework = {
+export const studentHomework = {
     app: null,
     unsubscribe: null,
     isInitialized: false,
-    elements: { listContainer: 'student-homework-list', modal: 'student-homework-modal', modalTitle: 'student-homework-modal-title', modalContent: 'student-homework-modal-content', modalUploadSection: 'student-homework-upload-section', closeBtn: 'student-close-homework-modal-btn' },
-    state: { homeworks: [], selectedHomework: null, selectedFile: null },
+    elements: {
+        listContainer: 'student-homework-list',
+        modal: 'student-homework-modal',
+        modalTitle: 'student-homework-modal-title',
+        modalContent: 'student-homework-modal-content',
+        modalUploadSection: 'student-homework-upload-section',
+        closeBtn: 'student-close-homework-modal-btn'
+    },
+    state: {
+        homeworks: [],
+        selectedHomework: null,
+        selectedFiles: [], // ✨ 여러 파일을 담을 배열
+    },
 
     init(app) {
         if (this.isInitialized) return;
         this.app = app;
         this.isInitialized = true;
+
         document.getElementById(this.elements.closeBtn)?.addEventListener('click', () => this.closeModal());
-        if (this.app.state.studentData?.classId) this.listenForHomework(this.app.state.studentData.classId);
+
+        if (this.app.state.studentData?.classId) {
+            this.listenForHomework(this.app.state.studentData.classId);
+        }
     },
 
     listenForHomework(classId) {
         if (this.unsubscribe) this.unsubscribe();
+
         const container = document.getElementById(this.elements.listContainer);
         if (!container) return;
-        container.innerHTML = '<div class="text-center py-4 text-slate-400">숙제를 불러오는 중...</div>';
+
+        container.innerHTML = '<div class="text-center py-10 text-slate-400">숙제 목록을 불러오는 중...</div>';
 
         const q = query(collection(db, 'homeworks'), where('classId', '==', classId));
+
         this.unsubscribe = onSnapshot(q, (snapshot) => {
-            this.state.homeworks = [];
-            snapshot.forEach(doc => this.state.homeworks.push({ id: doc.id, ...doc.data() }));
-            this.state.homeworks.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            const homeworks = [];
+            snapshot.forEach(doc => {
+                homeworks.push({ id: doc.id, ...doc.data() });
+            });
+            // 최신순 정렬
+            homeworks.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            
+            this.state.homeworks = homeworks;
             this.renderList();
         });
     },
@@ -38,90 +61,170 @@ const studentHomework = {
     renderList() {
         const container = document.getElementById(this.elements.listContainer);
         if (!container) return;
+        
         container.innerHTML = '';
-        if (this.state.homeworks.length === 0) { container.innerHTML = '<div class="text-center py-10 text-slate-400">등록된 숙제가 없습니다.</div>'; return; }
+
+        if (this.state.homeworks.length === 0) {
+            container.innerHTML = '<div class="text-center py-10 text-slate-400">등록된 숙제가 없습니다.</div>';
+            return;
+        }
+
+        const studentId = this.app.state.studentDocId;
 
         this.state.homeworks.forEach(hw => {
-            const sub = hw.submissions?.[this.app.state.studentDocId];
+            const sub = hw.submissions?.[studentId];
             const isDone = sub && sub.status === 'completed';
+            
+            // 숙제 카드 UI
             const div = document.createElement('div');
-            div.className = `p-4 rounded-xl border mb-3 shadow-sm transition cursor-pointer flex justify-between items-center ${isDone ? 'bg-green-50 border-green-200' : 'bg-white border-slate-100'}`;
-            div.innerHTML = `<div><h4 class="font-bold text-slate-800">${hw.title}</h4><p class="text-xs text-slate-500">마감: ${hw.dueDate || '-'} | 페이지: ${hw.pages || '-'}</p></div><div class="text-right">${isDone ? '<span class="px-3 py-1 rounded-full bg-green-200 text-green-800 text-xs font-bold">완료</span>' : '<span class="px-3 py-1 rounded-full bg-slate-100 text-slate-500 text-xs font-bold">미제출</span>'}</div>`;
-            div.onclick = () => this.openModal(hw);
+            div.className = `bg-white p-5 rounded-2xl border mb-3 shadow-sm transition-all ${isDone ? 'border-green-200 bg-green-50/30' : 'border-slate-100'}`;
+            div.innerHTML = `
+                <div class="flex justify-between items-start mb-2">
+                    <div>
+                        <span class="text-xs font-bold px-2 py-1 rounded-md mb-2 inline-block ${isDone ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">
+                            ${isDone ? '제출 완료' : '미제출'}
+                        </span>
+                        <h3 class="font-bold text-slate-800 text-lg">${hw.title}</h3>
+                    </div>
+                    ${isDone ? '<span class="material-icons-round text-green-500">check_circle</span>' : ''}
+                </div>
+                <div class="text-sm text-slate-500 space-y-1 mb-4">
+                    <p>📅 마감: ${hw.dueDate || '없음'}</p>
+                    <p>📖 범위: ${hw.pages || '-'}</p>
+                </div>
+                <button class="w-full py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${isDone ? 'bg-slate-100 text-slate-500' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}">
+                    ${isDone ? '다시 제출하기' : '숙제 제출하기'}
+                </button>
+            `;
+
+            div.querySelector('button').onclick = () => this.openSubmitModal(hw);
             container.appendChild(div);
         });
     },
 
-    openModal(homework) {
+    openSubmitModal(homework) {
         this.state.selectedHomework = homework;
-        this.state.selectedFile = null;
+        this.state.selectedFiles = []; // 초기화
+
         const modal = document.getElementById(this.elements.modal);
-        if (!modal) return;
+        const title = document.getElementById(this.elements.modalTitle);
+        const content = document.getElementById(this.elements.modalContent);
+        const uploadSection = document.getElementById(this.elements.modalUploadSection);
 
-        document.getElementById(this.elements.modalTitle).textContent = homework.title;
-        const sub = homework.submissions?.[this.app.state.studentDocId];
-        const isDone = sub?.status === 'completed';
+        if (title) title.textContent = homework.title;
+        
+        if (content) {
+            content.innerHTML = `
+                <div class="bg-slate-50 p-4 rounded-xl mb-4 text-sm text-slate-600">
+                    <p><strong>마감일:</strong> ${homework.dueDate || '없음'}</p>
+                    <p><strong>페이지:</strong> ${homework.pages || '-'}</p>
+                </div>
+            `;
+        }
 
-        document.getElementById(this.elements.modalContent).innerHTML = `
-            <div class="space-y-2 text-sm text-slate-600 mb-6"><p><strong>페이지:</strong> ${homework.pages || '-'}</p><p><strong>상태:</strong> ${isDone ? '<span class="text-green-600 font-bold">제출 완료</span>' : '<span class="text-red-500 font-bold">미제출</span>'}</p>${sub?.fileUrl ? `<a href="${sub.fileUrl}" target="_blank" class="text-blue-600 underline text-xs">제출 파일 보기</a>` : ''}</div>`;
+        // 업로드 섹션 초기화 (multiple 속성 추가)
+        if (uploadSection) {
+            uploadSection.innerHTML = `
+                <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center transition hover:border-indigo-400 hover:bg-indigo-50 group cursor-pointer relative">
+                    <input type="file" id="homework-file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" multiple accept="image/*,.pdf">
+                    <span class="material-icons-round text-4xl text-slate-300 group-hover:text-indigo-500 mb-2 transition">cloud_upload</span>
+                    <p class="text-slate-500 text-sm font-medium group-hover:text-indigo-600">
+                        여기를 눌러 파일을 선택하세요<br>
+                        <span class="text-xs text-slate-400">(여러 장 선택 가능)</span>
+                    </p>
+                </div>
+                <div id="selected-files-preview" class="mt-3 space-y-2 text-sm text-slate-600 max-h-40 overflow-y-auto"></div>
+                <button id="real-submit-btn" class="w-full mt-6 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    제출하기
+                </button>
+            `;
 
-        document.getElementById(this.elements.modalUploadSection).innerHTML = `
-            <div class="border-t pt-4"><input type="file" id="hw-file" class="hidden" accept="image/*,.pdf"><button id="hw-trigger" class="w-full py-3 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl font-bold mb-3 flex items-center justify-center gap-2"><span class="material-icons">camera_alt</span> ${isDone ? '다시 제출' : '파일/카메라'}</button><div id="hw-preview" class="hidden flex items-center justify-between bg-slate-100 p-3 rounded-lg mb-3"><span id="hw-fname" class="truncate text-sm"></span><button id="hw-cancel" class="text-red-500">X</button></div><button id="hw-submit" class="w-full btn-primary py-3 rounded-xl font-bold">제출하기</button></div>`;
+            const fileInput = document.getElementById('homework-file-input');
+            const preview = document.getElementById('selected-files-preview');
+            const submitBtn = document.getElementById('real-submit-btn');
 
-        const fileInput = document.getElementById('hw-file');
-        document.getElementById('hw-trigger').onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-            if (e.target.files[0]) {
-                this.state.selectedFile = e.target.files[0];
-                document.getElementById('hw-fname').textContent = e.target.files[0].name;
-                document.getElementById('hw-trigger').classList.add('hidden');
-                document.getElementById('hw-preview').classList.remove('hidden');
-            }
-        };
-        document.getElementById('hw-cancel').onclick = () => {
-            this.state.selectedFile = null;
-            fileInput.value = '';
-            document.getElementById('hw-preview').classList.add('hidden');
-            document.getElementById('hw-trigger').classList.remove('hidden');
-        };
-        document.getElementById('hw-submit').onclick = (e) => this.submitHomework(e.target);
+            fileInput.addEventListener('change', (e) => {
+                // ✨ 여러 파일을 배열로 저장
+                this.state.selectedFiles = Array.from(e.target.files);
+                
+                if (this.state.selectedFiles.length > 0) {
+                    preview.innerHTML = this.state.selectedFiles.map((f, i) => 
+                        `<div class="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg">
+                            <span class="material-icons-round text-sm text-indigo-500">description</span>
+                            <span class="truncate flex-1">${f.name}</span>
+                            <span class="text-xs text-slate-400">${(f.size / 1024).toFixed(1)}KB</span>
+                        </div>`
+                    ).join('');
+                    submitBtn.disabled = false;
+                } else {
+                    preview.innerHTML = '';
+                    submitBtn.disabled = true;
+                }
+            });
 
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
+            submitBtn.onclick = () => this.submitHomework(submitBtn);
+        }
+
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.classList.remove('hidden');
+        }
     },
 
     closeModal() {
         const modal = document.getElementById(this.elements.modal);
-        if (modal) { modal.style.display = 'none'; modal.classList.add('hidden'); }
+        if (modal) {
+            modal.style.display = 'none';
+            modal.classList.add('hidden');
+        }
+        this.state.selectedFiles = [];
     },
 
     async submitHomework(btn) {
-        if (!this.state.selectedFile) return showToast("파일을 선택해주세요.", true);
+        if (this.state.selectedFiles.length === 0) return showToast("파일을 선택해주세요.", true);
+        
         const originalText = btn.innerHTML;
         btn.disabled = true;
         btn.textContent = "업로드 중...";
 
         try {
             const storage = getStorage();
-            const fileRef = ref(storage, `homework_submissions/${this.state.selectedHomework.id}/${this.app.state.studentDocId}/${this.state.selectedFile.name}`);
-            await uploadBytes(fileRef, this.state.selectedFile);
-            const url = await getDownloadURL(fileRef);
+            const studentId = this.app.state.studentDocId;
+            const homeworkId = this.state.selectedHomework.id;
+            
+            // ✨ 1. 모든 파일을 순회하며 업로드
+            const uploadPromises = this.state.selectedFiles.map(async (file) => {
+                // 파일명 중복 방지를 위해 timestamp 추가 (선택사항)
+                const fileRef = ref(storage, `homework_submissions/${homeworkId}/${studentId}/${file.name}`);
+                await uploadBytes(fileRef, file);
+                const url = await getDownloadURL(fileRef);
+                return { fileName: file.name, fileUrl: url };
+            });
 
-            await updateDoc(doc(db, 'homeworks', this.state.selectedHomework.id), {
-                [`submissions.${this.app.state.studentDocId}`]: {
-                    studentId: this.app.state.studentDocId,
+            const uploadedFiles = await Promise.all(uploadPromises);
+
+            // ✨ 2. Firestore에 파일 목록(배열) 저장
+            await updateDoc(doc(db, 'homeworks', homeworkId), {
+                [`submissions.${studentId}`]: {
+                    studentId: studentId,
                     studentName: this.app.state.studentName,
                     status: 'completed',
                     submittedAt: serverTimestamp(),
-                    fileUrl: url,
-                    fileName: this.state.selectedFile.name
+                    files: uploadedFiles, // 배열 저장
+                    // 하위 호환성을 위해 첫 번째 파일을 대표 파일로도 저장
+                    fileUrl: uploadedFiles[0].fileUrl,
+                    fileName: uploadedFiles[0].fileName
                 }
             });
+
             showToast("제출되었습니다!", false);
             this.closeModal();
-        } catch (e) { showToast("실패: " + e.message, true); btn.disabled = false; btn.innerHTML = originalText; }
+
+        } catch (e) {
+            console.error(e);
+            showToast("업로드 실패: " + e.message, true);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
     }
 };
-
-export { studentHomework };
-export default studentHomework;

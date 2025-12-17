@@ -1,516 +1,140 @@
 // src/shared/homeworkManager.js
-import { collection, onSnapshot, doc, deleteDoc, query, getDocs, getDoc, addDoc, serverTimestamp, where, orderBy, updateDoc, writeBatch, limit, startAfter } from "firebase/firestore";
-import { db } from './firebase.js';
-import { showToast } from './utils.js';
 
-export function createHomeworkManager(config) {
-    const { app, elements } = config;
+// ✨ 전역 다운로드 함수 (HTML onclick에서 호출하기 위해 window에 등록)
+window.downloadHomeworkFiles = async (filesJson, baseFileName) => {
+    try {
+        const files = JSON.parse(decodeURIComponent(filesJson));
+        if (!files || files.length === 0) {
+            alert("다운로드할 파일이 없습니다.");
+            return;
+        }
 
-    const homeworkManager = {
-        unsubscribe: null,
-        isStudentsLoadedListenerAdded: false,
-        homeworkPageSize: 8,
-        hwCurrentPage: 1,
-        hwCursors: [], 
+        let count = 0;
+        const total = files.length;
 
-        init() {
-            document.getElementById(elements.assignHomeworkBtn)?.addEventListener('click', () => this.openHomeworkModal(false));
-            document.getElementById(elements.closeHomeworkModalBtn)?.addEventListener('click', () => this.closeHomeworkModal());
-            document.getElementById(elements.cancelHomeworkBtn)?.addEventListener('click', () => this.closeHomeworkModal());
-            document.getElementById(elements.saveHomeworkBtn)?.addEventListener('click', () => this.saveHomework());
-            document.getElementById(elements.homeworkClassSelect)?.addEventListener('change', (e) => this.handleClassSelection(e));
-            document.getElementById(elements.homeworkSelect)?.addEventListener('change', (e) => this.handleHomeworkSelection(e.target.value));
-            document.getElementById(elements.homeworkSubjectSelect)?.addEventListener('change', (e) => this.populateTextbooksForHomework(e.target.value));
-            document.getElementById(elements.editHomeworkBtn)?.addEventListener('click', () => this.openHomeworkModal(true));
-            document.getElementById(elements.deleteHomeworkBtn)?.addEventListener('click', () => this.deleteHomework());
+        // 알림 표시 (파일이 많을 경우를 대비)
+        const originalText = document.activeElement.innerText;
+        document.activeElement.innerText = "다운로드 중...";
+        document.activeElement.disabled = true;
 
-            if (elements.homeworkClassSelect && !this.isStudentsLoadedListenerAdded) {
-                document.addEventListener('studentsLoaded', () => {
-                    if (app.state.selectedClassIdForHomework && app.state.studentsInClass.size === 0) {
-                        this.filterAndDisplayStudents(app.state.selectedClassIdForHomework);
-                        if (app.state.selectedHomeworkId && this.unsubscribe) {
-                             const homeworkId = app.state.selectedHomeworkId;
-                             const submissionsRef = collection(db, 'homeworks', homeworkId, 'submissions');
-                             this.unsubscribe();
-                             this.unsubscribe = onSnapshot(query(submissionsRef),
-                                (snapshot) => this.renderHomeworkSubmissions(snapshot),
-                                (error) => { console.error("Error re-listening:", error)}
-                             );
-                        }
-                    }
-                });
-                this.isStudentsLoadedListenerAdded = true;
-            }
-        },
-
-        initView() {
-            if (!elements.homeworkClassSelect) return;
-            this.populateClassSelect();
-            app.state.selectedHomeworkId = null;
-            const classSelect = document.getElementById(elements.homeworkClassSelect);
-            if (classSelect && app.state.classes?.length > 0) {
-                const firstClassId = app.state.classes[0].id;
-                if (firstClassId) {
-                    classSelect.value = firstClassId;
-                    this.handleClassSelection({ target: classSelect });
-                } else {
-                    this.resetUIState();
-                }
-            } else {
-                this.resetUIState();
-            }
-        },
-
-        populateClassSelect() {
-            const select = document.getElementById(elements.homeworkClassSelect);
-            if (!select) return;
-            select.innerHTML = '<option value="">-- 반을 선택하세요 --</option>';
-            if (!app.state.classes || app.state.classes.length === 0) {
-                select.innerHTML = '<option value="">-- 등록된 반 없음 --</option>'; return;
-            }
-            app.state.classes.forEach(cls => {
-                select.innerHTML += `<option value="${cls.id}">${cls.name}</option>`;
-            });
-        },
-
-        handleClassSelection(event) {
-             const selectElement = event.target;
-             const newClassId = selectElement.value;
-             app.state.selectedClassIdForHomework = newClassId;
-             app.state.selectedHomeworkId = null;
-             app.state.studentsInClass.clear();
-
-             const mainContent = document.getElementById(elements.homeworkMainContent);
-             const hwSelect = document.getElementById(elements.homeworkSelect);
-             const tableBody = document.getElementById(elements.homeworkTableBody);
-             const assignBtn = document.getElementById(elements.assignHomeworkBtn);
-
-             if (mainContent) mainContent.style.display = 'none';
-             if (hwSelect) { hwSelect.innerHTML = '<option value="">-- 반 선택 필요 --</option>'; hwSelect.disabled = true; }
-             if (tableBody) tableBody.innerHTML = '';
-             if (assignBtn) assignBtn.disabled = true;
-             
-             this.hwCurrentPage = 1;
-             this.hwCursors = [];
-             this.handleHomeworkSelection('');
-
-             if (!newClassId) return;
-
-             if (mainContent) mainContent.style.display = 'block';
-             if (assignBtn) assignBtn.disabled = false;
-             if (hwSelect) { hwSelect.innerHTML = '<option value="">-- 숙제 로딩 중... --</option>'; hwSelect.disabled = true; }
-             if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8"><div class="loader-small mx-auto"></div> 학생 목록 확인 중...</td></tr>';
-
-             this.filterAndDisplayStudents(newClassId);
-             this.populateHomeworkSelect('first');
-        },
-
-        filterAndDisplayStudents(classId) {
-            const tableBody = document.getElementById(elements.homeworkTableBody);
-            const allStudents = app.state.students;
-            if (!allStudents || allStudents.length === 0) {
-                if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-orange-500">전체 학생 목록 로딩 중...</td></tr>';
-                return;
-            }
-            app.state.studentsInClass.clear();
-            allStudents.forEach(student => {
-                if (student && student.classId === classId) {
-                    app.state.studentsInClass.set(student.id, student.name);
-                }
-            });
-            if (tableBody) {
-                if (app.state.studentsInClass.size === 0) {
-                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-slate-500">이 반에 배정된 학생이 없습니다.</td></tr>';
-                } else if (!app.state.selectedHomeworkId) {
-                    tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-slate-400">숙제를 선택해주세요.</td></tr>';
-                }
-            }
-        },
-        
-        resetUIState() {
-             const mainContent = document.getElementById(elements.homeworkMainContent);
-             if (mainContent) mainContent.style.display = 'none';
-        },
-
-        async openHomeworkModal(isEditing = false) {
-             const classId = elements.homeworkClassSelect ? app.state.selectedClassIdForHomework : app.state.selectedClassId;
-             if (!classId) { showToast("반을 선택해주세요."); return; }
-             app.state.editingHomeworkId = isEditing ? app.state.selectedHomeworkId : null;
-             
-             const modal = document.getElementById(elements.assignHomeworkModal);
-             const title = document.getElementById(elements.homeworkModalTitle);
-             const saveBtn = document.getElementById(elements.saveHomeworkBtn);
-             
-             const titleInput = document.getElementById(elements.homeworkTitleInput);
-             const subjectSelect = document.getElementById(elements.homeworkSubjectSelect);
-             const textbookSelect = document.getElementById(elements.homeworkTextbookSelect);
-             const dueDateInput = document.getElementById(elements.homeworkDueDateInput);
-             const pagesInput = document.getElementById(elements.homeworkPagesInput);
-             
-             title.textContent = isEditing ? '숙제 정보 수정' : '새 숙제 출제';
-             saveBtn.textContent = isEditing ? '수정하기' : '출제하기';
-             
-             if (titleInput) titleInput.value = '';
-             subjectSelect.innerHTML = '<option value="">-- 과목 선택 --</option>';
-             textbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
-             textbookSelect.disabled = true;
-             dueDateInput.value = ''; pagesInput.value = '';
-             
-             const selectedClassData = elements.homeworkClassSelect ? app.state.classes.find(c => c.id === classId) : app.state.selectedClassData;
-             if(!selectedClassData) { showToast("반 정보 오류"); return; }
-             
-             const subjectIds = selectedClassData.subjects ? Object.keys(selectedClassData.subjects) : [];
-             if (subjectIds.length === 0) {
-                 subjectSelect.innerHTML = '<option value="" disabled>설정된 과목 없음</option>';
-             } else {
-                 subjectIds.forEach(id => {
-                     const subject = app.state.subjects.find(s => s.id === id);
-                     if (subject) subjectSelect.innerHTML += `<option value="${subject.id}">${subject.name}</option>`;
-                 });
-             }
-             
-             if (isEditing && app.state.editingHomeworkId) {
-                 const docSnap = await getDoc(doc(db, 'homeworks', app.state.editingHomeworkId));
-                 if(docSnap.exists()) {
-                     const data = docSnap.data();
-                     if (titleInput) titleInput.value = data.title || '';
-                     subjectSelect.value = data.subjectId;
-                     await this.populateTextbooksForHomework(data.subjectId);
-                     textbookSelect.value = data.textbookId;
-                     textbookSelect.disabled = false;
-                     dueDateInput.value = data.dueDate || '';
-                     pagesInput.value = data.pages || '';
-                 }
-             }
-             
-             modal.style.display = 'flex';
-        },
-
-        async populateTextbooksForHomework(subjectId) {
-            const textbookSelect = document.getElementById(elements.homeworkTextbookSelect);
-            if (!textbookSelect) return;
+        for (let i = 0; i < total; i++) {
+            const file = files[i];
+            const url = file.fileUrl;
             
-            textbookSelect.innerHTML = '<option value="">-- 로딩 중... --</option>';
-            textbookSelect.disabled = true;
-            if (!subjectId) return;
+            // 원래 파일의 확장자 추출 (예: .jpg, .pdf)
+            // 파일명에 점이 없는 경우 대비
+            const originalName = file.fileName || "file";
+            const extIndex = originalName.lastIndexOf('.');
+            const ext = extIndex > -1 ? originalName.substring(extIndex) : '';
+
+            // ✨ 요청하신 파일명 형식: 날짜_반_이름_번호.확장자
+            // 파일이 1개라도 번호를 붙여 통일성을 유지하거나, 1개일 땐 번호 생략 가능.
+            // 요청: "파일이 여러개면 ... 1,2,3,4" -> 1개일 때도 1 붙이는 게 깔끔하지만, 
+            // 보통 1개면 안 붙이기도 함. 여기선 1부터 무조건 붙여서 정렬되게 하겠습니다.
+            const newFileName = `${baseFileName}_${i + 1}${ext}`;
 
             try {
-                const q = query(collection(db, "textbooks"), where("subjectId", "==", subjectId), orderBy("name"));
-                const snapshot = await getDocs(q);
+                // 이름을 바꾸려면 fetch로 blob을 받아야 함
+                const response = await fetch(url);
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = newFileName;
+                document.body.appendChild(a);
+                a.click();
                 
-                textbookSelect.innerHTML = '<option value="">-- 교재 선택 --</option>';
+                // 정리
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(blobUrl);
                 
-                if (snapshot.empty) {
-                     textbookSelect.innerHTML += '<option value="" disabled>등록된 교재가 없습니다.</option>';
-                } else {
-                    snapshot.forEach(doc => {
-                        const tb = doc.data();
-                        textbookSelect.innerHTML += `<option value="${doc.id}">${tb.name}</option>`;
-                    });
-                }
-                textbookSelect.disabled = false;
-
-            } catch(e) { 
-                console.error("교재 로딩 실패:", e); 
-                textbookSelect.innerHTML = '<option value="">-- 로딩 실패 --</option>';
-            }
-        },
-
-        closeHomeworkModal() {
-            const modal = document.getElementById(elements.assignHomeworkModal);
-            if (modal) modal.style.display = 'none';
-            app.state.editingHomeworkId = null;
-        },
-
-        async saveHomework() {
-             const saveBtn = document.getElementById(elements.saveHomeworkBtn);
-             const classId = elements.homeworkClassSelect ? app.state.selectedClassIdForHomework : app.state.selectedClassId;
-             
-             const titleInput = document.getElementById(elements.homeworkTitleInput);
-             const title = titleInput?.value.trim();
-
-             const subjectId = document.getElementById(elements.homeworkSubjectSelect)?.value;
-             const textbookSelect = document.getElementById(elements.homeworkTextbookSelect);
-             const textbookId = textbookSelect?.value;
-             const textbookName = textbookSelect?.options[textbookSelect.selectedIndex]?.text;
-             const dueDate = document.getElementById(elements.homeworkDueDateInput)?.value;
-             const pages = document.getElementById(elements.homeworkPagesInput)?.value;
-
-             if(!title) { showToast("숙제 제목을 입력해주세요."); return; } 
-             if(!classId || !subjectId || !textbookId || !dueDate || !pages) { showToast("모든 정보를 입력해주세요"); return; }
-             
-             saveBtn.disabled = true;
-             saveBtn.innerText = "저장 중...";
-
-             try {
-                 const data = { 
-                     title, 
-                     classId, 
-                     subjectId, 
-                     textbookId, 
-                     textbookName, 
-                     dueDate, 
-                     pages: parseInt(pages) || 0, 
-                     createdAt: serverTimestamp() 
-                 };
-
-                 if(app.state.editingHomeworkId) {
-                     await updateDoc(doc(db, 'homeworks', app.state.editingHomeworkId), data);
-                 } else {
-                     await addDoc(collection(db, 'homeworks'), data);
-                     this.hwCurrentPage = 1;
-                     this.hwCursors = [];
-                     await this.populateHomeworkSelect('first');
-                 }
-                 this.closeHomeworkModal();
-                 showToast("저장되었습니다.", false);
-             } catch(e) { 
-                 console.error(e);
-                 showToast("저장 실패"); 
-             } finally {
-                 saveBtn.disabled = false;
-                 saveBtn.innerText = app.state.editingHomeworkId ? "수정하기" : "출제하기";
-             }
-        },
-
-        // ✨ [수정됨] 매개변수 기본값('first') 추가
-        async populateHomeworkSelect(direction = 'first') {
-            const select = document.getElementById(elements.homeworkSelect);
-            if (!select) return;
-            
-            select.innerHTML = '<option value="">-- 로딩 중... --</option>';
-            select.disabled = true;
-
-            const classId = elements.homeworkClassSelect ? app.state.selectedClassIdForHomework : app.state.selectedClassId;
-            if (!classId) { select.innerHTML = '<option value="">-- 반 선택 필요 --</option>'; return; }
-
-            try {
-                let q;
-                const hwRef = collection(db, 'homeworks');
-                
-                if (direction === 'first') {
-                    this.hwCurrentPage = 1;
-                    this.hwCursors = [];
-                    q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), limit(this.homeworkPageSize));
-                }
-                else if (direction === 'next') {
-                    const lastDoc = this.hwCursors[this.hwCurrentPage - 1];
-                    q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), startAfter(lastDoc), limit(this.homeworkPageSize));
-                }
-                else if (direction === 'prev') {
-                    const targetPage = this.hwCurrentPage - 1;
-                    const cursorIndex = targetPage - 2;
-                    if (cursorIndex < 0) {
-                        q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), limit(this.homeworkPageSize));
-                    } else {
-                        const prevCursor = this.hwCursors[cursorIndex];
-                        q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), startAfter(prevCursor), limit(this.homeworkPageSize));
-                    }
-                }
-
-                // direction이 'first'가 아니지만 위 조건에 안 걸리는 경우(방어 코드)
-                if (!q) {
-                     this.hwCurrentPage = 1;
-                     this.hwCursors = [];
-                     q = query(hwRef, where('classId', '==', classId), orderBy('createdAt', 'desc'), limit(this.homeworkPageSize));
-                }
-
-                const snapshot = await getDocs(q);
-                
-                select.innerHTML = '<option value="">-- 숙제 선택 --</option>';
-                
-                if (direction === 'next' || (direction === 'prev' && this.hwCurrentPage > 2)) {
-                     const prevOpt = document.createElement('option');
-                     prevOpt.value = "PREV_PAGE";
-                     prevOpt.textContent = "▲ 이전 페이지 (최근 숙제)";
-                     prevOpt.style.fontWeight = "bold";
-                     prevOpt.style.color = "#2563eb";
-                     select.appendChild(prevOpt);
-                }
-
-                if (snapshot.empty) {
-                    if (direction === 'first') select.innerHTML += '<option value="" disabled>출제된 숙제 없음</option>';
-                    else showToast("더 이상 숙제가 없습니다.");
-                    return;
-                }
-
-                if (direction === 'next') {
-                    if (this.hwCursors.length < this.hwCurrentPage) {
-                        this.hwCursors.push(snapshot.docs[snapshot.docs.length - 1]);
-                    }
-                    this.hwCurrentPage++;
-                } else if (direction === 'prev') {
-                    this.hwCurrentPage--;
-                } else {
-                    this.hwCurrentPage = 1;
-                    this.hwCursors = [snapshot.docs[snapshot.docs.length - 1]];
-                }
-
-                select.innerHTML = '<option value="">-- 숙제 선택 --</option>';
-                if (this.hwCurrentPage > 1) {
-                    const prevOpt = document.createElement('option');
-                    prevOpt.value = "PREV_PAGE";
-                    prevOpt.textContent = "▲ 이전 페이지";
-                    prevOpt.style.fontWeight = "bold";
-                    prevOpt.style.color = "#2563eb";
-                    select.appendChild(prevOpt);
-                }
-
-                snapshot.forEach(doc => { 
-                    const hw = doc.data(); 
-                    const displayDate = hw.dueDate || '기한없음'; 
-                    const titleText = hw.title ? `"${hw.title}"` : hw.textbookName;
-                    const pagesText = hw.pages ? `(${hw.pages}p)` : ''; 
-                    const option = document.createElement('option');
-                    option.value = doc.id;
-                    option.textContent = `[${displayDate}] ${titleText} ${pagesText}`;
-                    select.appendChild(option);
-                });
-
-                if (snapshot.docs.length === this.homeworkPageSize) {
-                    const nextOpt = document.createElement('option');
-                    nextOpt.value = "NEXT_PAGE";
-                    nextOpt.textContent = "▼ 다음 페이지 (과거 숙제)";
-                    nextOpt.style.fontWeight = "bold";
-                    nextOpt.style.color = "#2563eb";
-                    select.appendChild(nextOpt);
-                }
-
-            } catch (error) { 
-                console.error("Error populating homework select:", error); 
-                select.innerHTML = '<option value="">-- 로드 실패 --</option>'; 
-            } finally { 
-                select.disabled = false;
-                if (direction !== 'first') select.focus();
-            }
-        },
-
-        handleHomeworkSelection(homeworkId) {
-            if (homeworkId === 'NEXT_PAGE') {
-                this.populateHomeworkSelect('next'); 
-                return;
-            }
-            if (homeworkId === 'PREV_PAGE') {
-                this.populateHomeworkSelect('prev');
-                return;
+                count++;
+            } catch (e) {
+                console.error("다운로드 실패 (CORS 또는 네트워크 문제):", e);
+                // 실패 시 원본 링크라도 열어줌
+                window.open(url, '_blank');
             }
 
-            app.state.selectedHomeworkId = homeworkId;
-            if (this.unsubscribe) { this.unsubscribe(); this.unsubscribe = null; }
+            // 브라우저가 다운로드를 처리할 시간을 조금 줌 (0.5초)
+            await new Promise(r => setTimeout(r, 500));
+        }
 
-            const hwContent = document.getElementById(elements.homeworkContent);
-            const mgmtButtons = document.getElementById(elements.homeworkManagementButtons);
-            const tableBody = document.getElementById(elements.homeworkTableBody);
-            const selectedTitle = document.getElementById(elements.selectedHomeworkTitle);
-            const selectElement = document.getElementById(elements.homeworkSelect);
+        document.activeElement.innerText = "완료!";
+        setTimeout(() => {
+            document.activeElement.innerText = originalText;
+            document.activeElement.disabled = false;
+        }, 2000);
 
-            if (!homeworkId) {
-                if (hwContent) hwContent.style.display = 'none';
-                if (mgmtButtons) mgmtButtons.style.display = 'none';
-                if (tableBody) tableBody.innerHTML = '';
-                if (selectedTitle) selectedTitle.textContent = '';
-                return;
-            }
+    } catch (e) {
+        console.error(e);
+        alert("다운로드 중 오류가 발생했습니다.");
+    }
+};
 
-            if (hwContent) hwContent.style.display = 'block';
-            if (mgmtButtons) mgmtButtons.style.display = 'flex';
-            const selectedOptionText = selectElement?.options[selectElement.selectedIndex]?.text || '선택된 숙제';
-            if (selectedTitle) selectedTitle.textContent = `'${selectedOptionText}' 숙제 제출 현황`;
-            if (tableBody) this.renderTableHeader(tableBody, ['학생 이름', '제출 상태', '제출 시간', '관리']);
-            if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8"><div class="loader-small mx-auto"></div> 제출 현황 로딩 중...</td></tr>';
+export const homeworkManagerHelper = {
+    /**
+     * 숙제 상태 텍스트와 색상을 계산하는 함수
+     */
+    calculateStatus(submission, homework) {
+        if (!submission || submission.status !== 'completed') {
+            return { text: '미제출', color: 'text-red-500 font-bold' };
+        }
 
-            const submissionsRef = collection(db, 'homeworks', homeworkId, 'submissions');
-            this.unsubscribe = onSnapshot(query(submissionsRef),
-                (snapshot) => this.renderHomeworkSubmissions(snapshot),
-                (error) => { console.error("Error listening:", error); if (tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-red-500">로딩 실패</td></tr>'; }
-            );
-        },
+        const fileCount = submission.files ? submission.files.length : (submission.fileUrl ? 1 : 0);
+        const totalPages = homework.totalPages ? parseInt(homework.totalPages, 10) : 0;
 
-        async deleteHomework() {
-             if (!app.state.selectedHomeworkId) return;
-             if (confirm("정말 삭제하시겠습니까?")) {
-                 try {
-                     const batch = writeBatch(db);
-                     batch.delete(doc(db, 'homeworks', app.state.selectedHomeworkId));
-                     await batch.commit();
-                     showToast("삭제 완료", false);
-                     this.populateHomeworkSelect('first'); 
-                 } catch (error) { showToast("삭제 실패"); }
-             }
-        },
+        if (totalPages > 0 && fileCount < totalPages) {
+            return { text: `${fileCount} / ${totalPages}`, color: 'text-orange-500 font-bold' };
+        }
+
+        return { text: '완료', color: 'text-green-600 font-bold' };
+    },
+
+    /**
+     * 파일 다운로드 버튼 HTML을 생성하는 함수
+     * @param {Object} submission - 학생의 제출 데이터
+     * @param {String} className - 반 이름 (파일명 생성용)
+     * @returns {String} HTML 문자열
+     */
+    renderFileButtons(submission, className = "반") {
+        if (!submission) return '<span class="text-slate-400">-</span>';
         
-        async renderHomeworkSubmissions(snapshot) {
-             const tableBody = document.getElementById(elements.homeworkTableBody); if (!tableBody) return; tableBody.innerHTML = '';
-            const studentsMap = app.state.studentsInClass;
+        let files = [];
+        if (submission.files && Array.isArray(submission.files)) {
+            files = submission.files;
+        } else if (submission.fileUrl) {
+            files = [{ fileUrl: submission.fileUrl, fileName: 'file' }];
+        }
 
-            if (!studentsMap || studentsMap.size === 0) {
-                 tableBody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-slate-500">학생이 없습니다.</td></tr>';
-                 return;
-            }
+        if (files.length === 0) return '<span class="text-slate-400">-</span>';
 
-            let homeworkData = {};
-            try {
-                if (app.state.selectedHomeworkId) {
-                    const docSnap = await getDoc(doc(db, 'homeworks', app.state.selectedHomeworkId));
-                    if (docSnap.exists()) homeworkData = docSnap.data();
-                }
-            } catch (e) {}
+        // 1. 날짜 포맷팅 (YYYYMMDD)
+        let dateStr = "날짜미상";
+        if (submission.submittedAt) {
+            const d = submission.submittedAt.toDate();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            dateStr = `${year}${month}${day}`;
+        }
 
-            const homeworkTitle = homeworkData.title || homeworkData.textbookName || '숙제'; 
-            const totalPages = homeworkData.pages;
-            const submissionsMap = new Map(); 
-            snapshot.docs.forEach(doc => submissionsMap.set(doc.id, doc.data())); 
-            const sortedStudents = Array.from(studentsMap.entries()).sort(([, a], [, b]) => a.localeCompare(b));
+        // 2. 파일명 베이스: 날짜_반_이름
+        // 공백이나 특수문자가 있으면 파일명 오류 날 수 있으므로 _로 치환
+        const safeClassName = className.replace(/[^a-zA-Z0-9가-힣]/g, "_");
+        const safeStudentName = (submission.studentName || "이름없음").replace(/[^a-zA-Z0-9가-힣]/g, "_");
+        const baseFileName = `${dateStr}_${safeClassName}_${safeStudentName}`;
 
-            sortedStudents.forEach(([studentDocId, studentName]) => {
-                const submissionData = submissionsMap.get(studentDocId);
-                const row = document.createElement('tr'); row.className = 'bg-white border-b hover:bg-slate-50';
-                
-                let statusHtml, submittedAtHtml, actionHtml;
-                if (submissionData) {
-                    const submittedAt = submissionData.submittedAt?.toDate().toLocaleString('ko-KR') || '-';
-                    const cnt = submissionData.imageUrls?.length || 0; 
-                    const isComplete = totalPages && cnt >= totalPages;
-                    const statusClass = isComplete ? 'text-green-600' : 'text-yellow-600';
-                    statusHtml = `<td class="px-6 py-4 ${statusClass} font-semibold">${isComplete ? '완료' : '제출중'} (${cnt}/${totalPages || '?'}p)</td>`;
-                    submittedAtHtml = `<td class="px-6 py-4">${submittedAt}</td>`;
-                    actionHtml = `<td class="px-6 py-4"><button data-doc-id="${studentDocId}" data-name="${studentName}" class="download-btn btn btn-primary btn-sm">다운로드</button></td>`;
-                } else {
-                    statusHtml = `<td class="px-6 py-4 text-slate-400">미제출</td>`; 
-                    submittedAtHtml = `<td class="px-6 py-4">-</td>`; 
-                    actionHtml = `<td class="px-6 py-4"></td>`;
-                }
-                row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${studentName}</td>${statusHtml}${submittedAtHtml}${actionHtml}`;
-                tableBody.appendChild(row);
-                
-                row.querySelector('.download-btn')?.addEventListener('click', (e) => this.downloadHomework(e.target.dataset.docId, e.target.dataset.name, homeworkTitle));
-            });
-        },
-        async downloadHomework(studentDocId, studentName, title) {
-             if (!app.state.selectedHomeworkId || !studentDocId) return;
-             try {
-                 const snap = await getDoc(doc(db, 'homeworks', app.state.selectedHomeworkId, 'submissions', studentDocId));
-                 if (!snap.exists()) return showToast("데이터 없음");
-                 const { imageUrls, submittedAt } = snap.data();
-                 const date = submittedAt?.toDate()?.toISOString().split('T')[0] || 'date';
-                 
-                 showToast(`${studentName} 다운로드 시작...`, false);
-                 for (let i = 0; i < imageUrls.length; i++) {
-                     const url = imageUrls[i]; 
-                     const link = document.createElement('a'); 
-                     link.href = url;
-                     link.download = `${date}_${studentName}_${title}_${i+1}.jpg`;
-                     link.target = "_blank"; 
-                     document.body.appendChild(link); link.click(); document.body.removeChild(link);
-                 }
-             } catch (e) { showToast("다운로드 오류"); }
-        },
-        renderTableHeader(tableBody, headers) {
-            const table = tableBody?.parentElement; if (!table) return; table.querySelector('thead')?.remove();
-            const thead = document.createElement('thead'); thead.className = 'text-xs text-gray-700 uppercase bg-gray-50';
-            let headerHtml = '<tr>'; headers.forEach(h => headerHtml += `<th scope="col" class="px-6 py-3">${h}</th>`); headerHtml += '</tr>';
-            thead.innerHTML = headerHtml; table.insertBefore(thead, tableBody);
-        },
-    };
-    return homeworkManager;
-}
+        // 3. 파일 목록을 JSON 문자열로 변환 (onclick에 넣기 위해)
+        const filesJson = encodeURIComponent(JSON.stringify(files));
+
+        // ✨ 단일 다운로드 버튼 생성
+        return `
+            <button onclick="downloadHomeworkFiles('${filesJson}', '${baseFileName}')" 
+                class="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 border border-indigo-200 transition font-bold shadow-sm">
+                <span class="material-icons text-[16px]">download</span> 
+                다운로드 (${files.length}개)
+            </button>
+        `;
+    }
+};
