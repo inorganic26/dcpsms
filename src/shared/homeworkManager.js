@@ -1,40 +1,41 @@
 // src/shared/homeworkManager.js
 
-// ✨ 전역 다운로드 함수 (HTML onclick에서 호출하기 위해 window에 등록)
-window.downloadHomeworkFiles = async (filesJson, baseFileName) => {
+// ✨ 전역 다운로드 함수
+window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
+    // 1. 버튼 상태 저장 (원래 텍스트 복구용)
+    const originalHtml = btnElement.innerHTML;
+    const originalWidth = btnElement.style.width; // 너비 고정 (덜컹거림 방지)
+    btnElement.style.width = `${btnElement.offsetWidth}px`;
+    btnElement.disabled = true;
+
     try {
         const files = JSON.parse(decodeURIComponent(filesJson));
         if (!files || files.length === 0) {
             alert("다운로드할 파일이 없습니다.");
+            btnElement.disabled = false;
             return;
         }
 
-        let count = 0;
         const total = files.length;
 
-        // 알림 표시 (파일이 많을 경우를 대비)
-        const originalText = document.activeElement.innerText;
-        document.activeElement.innerText = "다운로드 중...";
-        document.activeElement.disabled = true;
+        // 2. 다운로드 시작 알림
+        btnElement.innerHTML = `<span class="material-icons animate-spin text-[16px]">sync</span> 준비 중...`;
 
         for (let i = 0; i < total; i++) {
+            // 진행 상황 표시 (예: 1/3 다운로드...)
+            btnElement.innerHTML = `<span class="material-icons animate-pulse text-[16px]">downloading</span> ${i + 1} / ${total}`;
+
             const file = files[i];
             const url = file.fileUrl;
             
-            // 원래 파일의 확장자 추출 (예: .jpg, .pdf)
-            // 파일명에 점이 없는 경우 대비
+            // 파일명 생성 (확장자 유지)
             const originalName = file.fileName || "file";
             const extIndex = originalName.lastIndexOf('.');
             const ext = extIndex > -1 ? originalName.substring(extIndex) : '';
-
-            // ✨ 요청하신 파일명 형식: 날짜_반_이름_번호.확장자
-            // 파일이 1개라도 번호를 붙여 통일성을 유지하거나, 1개일 땐 번호 생략 가능.
-            // 요청: "파일이 여러개면 ... 1,2,3,4" -> 1개일 때도 1 붙이는 게 깔끔하지만, 
-            // 보통 1개면 안 붙이기도 함. 여기선 1부터 무조건 붙여서 정렬되게 하겠습니다.
             const newFileName = `${baseFileName}_${i + 1}${ext}`;
 
             try {
-                // 이름을 바꾸려면 fetch로 blob을 받아야 함
+                // Blob으로 받아와서 이름 변경 후 다운로드
                 const response = await fetch(url);
                 const blob = await response.blob();
                 const blobUrl = window.URL.createObjectURL(blob);
@@ -45,37 +46,43 @@ window.downloadHomeworkFiles = async (filesJson, baseFileName) => {
                 document.body.appendChild(a);
                 a.click();
                 
-                // 정리
                 document.body.removeChild(a);
                 window.URL.revokeObjectURL(blobUrl);
                 
-                count++;
             } catch (e) {
-                console.error("다운로드 실패 (CORS 또는 네트워크 문제):", e);
-                // 실패 시 원본 링크라도 열어줌
+                console.error("다운로드 실패:", e);
+                // 실패 시 새 창으로라도 띄워줌
                 window.open(url, '_blank');
             }
 
-            // 브라우저가 다운로드를 처리할 시간을 조금 줌 (0.5초)
-            await new Promise(r => setTimeout(r, 500));
+            // 브라우저 부하 방지용 딜레이
+            await new Promise(r => setTimeout(r, 800));
         }
 
-        document.activeElement.innerText = "완료!";
+        // 3. 완료 메시지
+        btnElement.innerHTML = `<span class="material-icons text-[16px]">check_circle</span> 완료!`;
+        btnElement.classList.replace('text-indigo-700', 'text-green-700');
+        btnElement.classList.replace('bg-indigo-50', 'bg-green-50');
+
+        // 4. 2초 후 원래 버튼으로 '자동 복귀'
         setTimeout(() => {
-            document.activeElement.innerText = originalText;
-            document.activeElement.disabled = false;
+            btnElement.innerHTML = originalHtml;
+            btnElement.classList.replace('text-green-700', 'text-indigo-700');
+            btnElement.classList.replace('bg-green-50', 'bg-indigo-50');
+            btnElement.style.width = originalWidth; // 너비 해제
+            btnElement.disabled = false;
         }, 2000);
 
     } catch (e) {
         console.error(e);
-        alert("다운로드 중 오류가 발생했습니다.");
+        alert("오류가 발생했습니다. 다시 시도해주세요.");
+        // 오류 시 즉시 복구
+        btnElement.innerHTML = originalHtml;
+        btnElement.disabled = false;
     }
 };
 
 export const homeworkManagerHelper = {
-    /**
-     * 숙제 상태 텍스트와 색상을 계산하는 함수
-     */
     calculateStatus(submission, homework) {
         if (!submission || submission.status !== 'completed') {
             return { text: '미제출', color: 'text-red-500 font-bold' };
@@ -91,12 +98,6 @@ export const homeworkManagerHelper = {
         return { text: '완료', color: 'text-green-600 font-bold' };
     },
 
-    /**
-     * 파일 다운로드 버튼 HTML을 생성하는 함수
-     * @param {Object} submission - 학생의 제출 데이터
-     * @param {String} className - 반 이름 (파일명 생성용)
-     * @returns {String} HTML 문자열
-     */
     renderFileButtons(submission, className = "반") {
         if (!submission) return '<span class="text-slate-400">-</span>';
         
@@ -109,7 +110,6 @@ export const homeworkManagerHelper = {
 
         if (files.length === 0) return '<span class="text-slate-400">-</span>';
 
-        // 1. 날짜 포맷팅 (YYYYMMDD)
         let dateStr = "날짜미상";
         if (submission.submittedAt) {
             const d = submission.submittedAt.toDate();
@@ -119,19 +119,16 @@ export const homeworkManagerHelper = {
             dateStr = `${year}${month}${day}`;
         }
 
-        // 2. 파일명 베이스: 날짜_반_이름
-        // 공백이나 특수문자가 있으면 파일명 오류 날 수 있으므로 _로 치환
         const safeClassName = className.replace(/[^a-zA-Z0-9가-힣]/g, "_");
         const safeStudentName = (submission.studentName || "이름없음").replace(/[^a-zA-Z0-9가-힣]/g, "_");
         const baseFileName = `${dateStr}_${safeClassName}_${safeStudentName}`;
 
-        // 3. 파일 목록을 JSON 문자열로 변환 (onclick에 넣기 위해)
         const filesJson = encodeURIComponent(JSON.stringify(files));
 
-        // ✨ 단일 다운로드 버튼 생성
+        // ✨ [핵심 수정] this(버튼 자신)를 함수에 전달하여 제어권을 확보함
         return `
-            <button onclick="downloadHomeworkFiles('${filesJson}', '${baseFileName}')" 
-                class="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 border border-indigo-200 transition font-bold shadow-sm">
+            <button onclick="downloadHomeworkFiles(this, '${filesJson}', '${baseFileName}')" 
+                class="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 border border-indigo-200 transition font-bold shadow-sm whitespace-nowrap">
                 <span class="material-icons text-[16px]">download</span> 
                 다운로드 (${files.length}개)
             </button>
