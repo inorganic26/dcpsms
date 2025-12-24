@@ -20,7 +20,7 @@ export const studentHomework = {
     state: {
         homeworks: [],
         selectedHomework: null,
-        selectedFiles: [], // ✨ 여러 파일을 담을 배열
+        selectedFiles: [], 
     },
 
     init(app) {
@@ -50,7 +50,6 @@ export const studentHomework = {
             snapshot.forEach(doc => {
                 homeworks.push({ id: doc.id, ...doc.data() });
             });
-            // 최신순 정렬
             homeworks.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             
             this.state.homeworks = homeworks;
@@ -75,7 +74,6 @@ export const studentHomework = {
             const sub = hw.submissions?.[studentId];
             const isDone = sub && sub.status === 'completed';
             
-            // 숙제 카드 UI
             const div = document.createElement('div');
             div.className = `bg-white p-5 rounded-2xl border mb-3 shadow-sm transition-all ${isDone ? 'border-green-200 bg-green-50/30' : 'border-slate-100'}`;
             div.innerHTML = `
@@ -104,7 +102,7 @@ export const studentHomework = {
 
     openSubmitModal(homework) {
         this.state.selectedHomework = homework;
-        this.state.selectedFiles = []; // 초기화
+        this.state.selectedFiles = []; 
 
         const modal = document.getElementById(this.elements.modal);
         const title = document.getElementById(this.elements.modalTitle);
@@ -122,7 +120,6 @@ export const studentHomework = {
             `;
         }
 
-        // 업로드 섹션 초기화 (multiple 속성 추가)
         if (uploadSection) {
             uploadSection.innerHTML = `
                 <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center transition hover:border-indigo-400 hover:bg-indigo-50 group cursor-pointer relative">
@@ -144,11 +141,18 @@ export const studentHomework = {
             const submitBtn = document.getElementById('real-submit-btn');
 
             fileInput.addEventListener('change', (e) => {
-                // ✨ 여러 파일을 배열로 저장
-                this.state.selectedFiles = Array.from(e.target.files);
+                const files = Array.from(e.target.files);
+                
+                // ✨ [추가] 0바이트 파일 필터링
+                const validFiles = files.filter(f => f.size > 0);
+                if (validFiles.length < files.length) {
+                    showToast("내용이 없는(0KB) 파일이 제외되었습니다.", true);
+                }
+
+                this.state.selectedFiles = validFiles;
                 
                 if (this.state.selectedFiles.length > 0) {
-                    preview.innerHTML = this.state.selectedFiles.map((f, i) => 
+                    preview.innerHTML = this.state.selectedFiles.map((f) => 
                         `<div class="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg">
                             <span class="material-icons-round text-sm text-indigo-500">description</span>
                             <span class="truncate flex-1">${f.name}</span>
@@ -183,36 +187,38 @@ export const studentHomework = {
     async submitHomework(btn) {
         if (this.state.selectedFiles.length === 0) return showToast("파일을 선택해주세요.", true);
         
+        // ✨ [추가] 업로드 중 이탈 방지
+        window.onbeforeunload = () => "업로드 중입니다. 정말 나가시겠습니까?";
+        
         const originalText = btn.innerHTML;
         btn.disabled = true;
-        btn.textContent = "업로드 중...";
+        btn.textContent = "업로드 중... (창을 닫지 마세요)";
 
         try {
             const storage = getStorage();
             const studentId = this.app.state.studentDocId;
             const homeworkId = this.state.selectedHomework.id;
             
-            // ✨ 1. 모든 파일을 순회하며 업로드
             const uploadPromises = this.state.selectedFiles.map(async (file) => {
-                // 파일명 중복 방지를 위해 timestamp 추가 (선택사항)
-                const fileRef = ref(storage, `homework_submissions/${homeworkId}/${studentId}/${file.name}`);
+                // 파일명 중복 방지 (타임스탬프 추가)
+                const uniqueName = `${Date.now()}_${file.name}`;
+                const fileRef = ref(storage, `homework_submissions/${homeworkId}/${studentId}/${uniqueName}`);
+                
                 await uploadBytes(fileRef, file);
                 const url = await getDownloadURL(fileRef);
-                return { fileName: file.name, fileUrl: url };
+                return { fileName: file.name, fileUrl: url }; // 원본 이름 저장
             });
 
             const uploadedFiles = await Promise.all(uploadPromises);
 
-            // ✨ 2. Firestore에 파일 목록(배열) 저장
             await updateDoc(doc(db, 'homeworks', homeworkId), {
                 [`submissions.${studentId}`]: {
                     studentId: studentId,
                     studentName: this.app.state.studentName,
                     status: 'completed',
                     submittedAt: serverTimestamp(),
-                    files: uploadedFiles, // 배열 저장
-                    // 하위 호환성을 위해 첫 번째 파일을 대표 파일로도 저장
-                    fileUrl: uploadedFiles[0].fileUrl,
+                    files: uploadedFiles,
+                    fileUrl: uploadedFiles[0].fileUrl, // 하위 호환성
                     fileName: uploadedFiles[0].fileName
                 }
             });
@@ -223,6 +229,9 @@ export const studentHomework = {
         } catch (e) {
             console.error(e);
             showToast("업로드 실패: " + e.message, true);
+        } finally {
+            // ✨ [추가] 이탈 방지 해제 및 버튼 복구
+            window.onbeforeunload = null;
             btn.disabled = false;
             btn.innerHTML = originalText;
         }

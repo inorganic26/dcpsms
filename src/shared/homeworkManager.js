@@ -33,7 +33,9 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
 
         const total = files.length;
 
-        // ✨ [신규 기능] 폴더 선택 API 시도 (Chrome/Edge PC 전용)
+        // ==========================================
+        // [1] 폴더 선택 API 시도 (Chrome/Edge PC 전용)
+        // ==========================================
         if ('showDirectoryPicker' in window) {
             try {
                 // 폴더 선택 팝업 띄우기
@@ -53,8 +55,9 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
                     const ext = extIndex > -1 ? originalName.substring(extIndex) : '';
                     const newFileName = `${baseFileName}_${i + 1}${ext}`;
 
-                    // 파일 데이터 가져오기
+                    // 파일 데이터 가져오기 (fetch + blob으로 0바이트 방지)
                     const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     const blob = await response.blob();
 
                     // 선택한 폴더에 파일 생성 및 쓰기
@@ -78,13 +81,13 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
                     btnElement.disabled = false;
                     return;
                 }
-                // 그 외 오류(권한 거부 등)는 콘솔에 찍고 기존 방식으로 폴백
+                // 그 외 오류(권한, 네트워크 등)는 콘솔에 찍고 [2]번 일반 다운로드로 넘어감
                 console.warn("폴더 저장 실패, 일반 다운로드로 전환:", err);
             }
         }
 
         // ==========================================
-        // [기존 방식] 폴더 선택 미지원 브라우저용 Fallback
+        // [2] 일반 다운로드 (폴더 선택 미지원 브라우저 또는 오류 시 Fallback)
         // ==========================================
         btnElement.innerHTML = `<span class="material-icons animate-spin text-[16px]">sync</span> 준비 중...`;
 
@@ -100,9 +103,11 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
             const newFileName = `${baseFileName}_${i + 1}${ext}`;
 
             try {
+                // fetch를 사용해 데이터를 확실하게 가져옵니다.
                 const response = await fetch(url);
-                const blob = await response.blob();
-                const blobUrl = window.URL.createObjectURL(blob);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const blob = await response.blob(); // 데이터를 Blob(덩어리) 형태로 변환
+                const blobUrl = window.URL.createObjectURL(blob); // 내 브라우저 전용 주소 생성
 
                 const a = document.createElement('a');
                 a.href = blobUrl;
@@ -115,9 +120,11 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
                 
             } catch (e) {
                 console.error("다운로드 실패:", e);
+                // 다운로드 실패 시, 사용자가 직접 볼 수라도 있게 새 창으로 띄움
                 window.open(url, '_blank');
             }
 
+            // 다운로드 간 충돌 방지를 위한 딜레이
             await new Promise(r => setTimeout(r, 800));
         }
 
@@ -168,7 +175,7 @@ export const homeworkManagerHelper = {
             dateStr = `${year}${month}${day}`;
         }
 
-        // 파일명: 날짜_반_이름 (특수문자 제거)
+        // 파일명: 날짜_반_이름 (특수문자 및 공백 제거로 안전하게)
         const safeClassName = className.replace(/[^a-zA-Z0-9가-힣]/g, "_");
         const safeStudentName = (submission.studentName || "이름없음").replace(/[^a-zA-Z0-9가-힣]/g, "_");
         const baseFileName = `${dateStr}_${safeClassName}_${safeStudentName}`;
