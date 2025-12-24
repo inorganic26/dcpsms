@@ -9,7 +9,14 @@ export const studentLesson = {
   video2Player: null,
   isYoutubeApiReady: false, 
   app: null,
-
+  
+  // 시청 시간 추적용 타이머와 상태 변수
+  watchTimer: null,
+  
+  // 테스트 모드용 클릭 카운터
+  debugClickCount: 0,
+  debugClickTimer: null,
+  
   init(app) {
     this.app = app;
     this.bindEvents();
@@ -18,6 +25,7 @@ export const studentLesson = {
 
   bindEvents() {
     const { elements } = this.app;
+    // ID가 없으면 문자열 그대로를 ID로 사용 (안전장치)
     const el = (id) => document.getElementById(elements[id] || id);
 
     el('startQuizBtn')?.addEventListener("click", () => this.startQuiz());
@@ -92,40 +100,44 @@ export const studentLesson = {
     });
   },
 
-  // ✨ [수정] 강의 시작 로직 (통과 여부 확인 후 분기)
+  // 강의 시작
   async startSelectedLesson(lesson) {
     this.app.state.activeLesson = lesson;
     const { studentDocId, classType, selectedSubject } = this.app.state;
 
-    // 1. 자기주도반이 아니면 바로 영상 1 재생 (기존 로직)
     if (classType !== 'self-directed') {
         this.playVideo1(lesson);
         return;
     }
 
-    // 2. 자기주도반인 경우, DB에서 통과 여부 확인
-    showToast("학습 정보를 확인 중입니다...", false);
+    showToast("학습 정보를 불러오는 중...", false);
     try {
         const submissionRef = doc(db, "subjects", selectedSubject.id, "lessons", lesson.id, "submissions", studentDocId);
         const snapshot = await getDoc(submissionRef);
 
-        // 3. 이미 통과(completed)한 경우 -> 선택 팝업 띄우기
-        if (snapshot.exists() && snapshot.data().status === 'completed') {
+        let status = 'none';
+        let watchedSeconds = 0;
+
+        if (snapshot.exists()) {
+            const data = snapshot.data();
+            status = data.status || 'none';
+            watchedSeconds = Number(data.watchedSeconds) || 0;
+        }
+
+        this.app.state.activeLesson.watchedSeconds = watchedSeconds;
+
+        if (status === 'completed') {
             this.showVideoSelectionModal(lesson);
         } else {
-            // 4. 아직 통과 못 했으면 -> 정석대로 1번 영상부터
             this.playVideo1(lesson);
         }
     } catch (e) {
         console.error(e);
-        // 에러 나면 그냥 1번부터 재생
         this.playVideo1(lesson);
     }
   },
 
-  // ✨ [신규] 영상 선택 팝업 (HTML 수정 없이 JS로 동적 생성)
   showVideoSelectionModal(lesson) {
-    // 기존 모달이 있다면 제거
     const oldModal = document.getElementById('video-selection-modal');
     if(oldModal) oldModal.remove();
 
@@ -158,32 +170,34 @@ export const studentLesson = {
 
     document.body.appendChild(modal);
 
-    // 이벤트 연결
     document.getElementById('btn-select-video1').onclick = () => {
         modal.remove();
-        this.playVideo1(lesson); // 1번 영상 재생
+        this.playVideo1(lesson);
     };
 
     document.getElementById('btn-select-video2').onclick = () => {
         modal.remove();
-        this.playVideo2Only(lesson); // 2번 영상 바로 재생 (퀴즈 패스)
+        this.playVideo2Only(lesson);
     };
 
     document.getElementById('btn-close-selection').onclick = () => modal.remove();
   },
 
-  // ✨ [기존 로직 분리] 1번 영상 재생
+  // 1번 영상 재생 (문구 표시 로직 개선 - ID 안전장치 추가)
   playVideo1(lesson) {
     const { elements } = this.app;
     
-    const titleEl = document.getElementById(elements.video1Title);
+    // ✨ [수정] ID가 없으면 기본값 사용
+    const iframeId = elements.video1Iframe || 'student-video1-iframe';
+    const iframe = document.getElementById(iframeId);
+
+    const titleEl = document.getElementById(elements.video1Title || 'student-video1-title');
     if(titleEl) titleEl.textContent = lesson.title;
 
-    this.app.showScreen(elements.video1Screen);
+    this.app.showScreen(elements.video1Screen || 'student-video1-screen');
 
     const videoId = this.extractVideoId(lesson.video1Url);
-    const iframe = document.getElementById(elements.video1Iframe);
-
+    
     if (iframe) {
         if (!videoId) {
             iframe.style.display = 'none';
@@ -191,42 +205,195 @@ export const studentLesson = {
             iframe.style.display = 'block'; 
             iframe.src = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
             
-            const container = iframe.parentNode;
-            const oldMsg = container?.querySelector('.video-complete-msg');
+            // 1. 기존 UI 정리
+            const oldMsg = document.querySelector('.video-complete-msg');
             if(oldMsg) oldMsg.remove();
+            const oldProgress = document.querySelector('.video-progress-container');
+            if(oldProgress) oldProgress.remove();
+            const oldText = document.getElementById('video-watch-text');
+            if(oldText) oldText.remove();
 
-            this.loadVideoWithMonitoring(elements.video1Iframe, (status) => {
-                if (status === 0) this.onVideo1Ended(); 
-            });
+            // 2. [핵심] 삽입 위치 찾기: 퀴즈 버튼이 들어있는 컨테이너 찾기
+            const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
+            const quizBtn = document.getElementById(quizBtnId);
+            const buttonsContainer = quizBtn ? quizBtn.parentNode : null;
+
+            if (buttonsContainer && buttonsContainer.parentNode) {
+                // 3. UI 생성
+                const progressContainer = document.createElement('div');
+                progressContainer.className = 'video-progress-container w-full max-w-5xl bg-slate-700 rounded-full h-4 mt-6 mb-2 overflow-hidden mx-auto border border-slate-600';
+                progressContainer.innerHTML = `<div id="video-watch-progress" class="bg-indigo-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>`;
+                
+                const progressText = document.createElement('p');
+                progressText.id = 'video-watch-text';
+                // 글씨를 흰색(text-white)으로 설정하여 검은 배경에서 잘 보이게 함
+                progressText.className = 'text-center text-base text-white font-bold mb-6 cursor-pointer select-none animate-pulse'; 
+                progressText.innerText = "⏳ 시청 시간 기록 준비 중...";
+                progressText.title = "⚡ 테스트 모드: 이 텍스트를 빠르게 5번 클릭하면 즉시 완료됩니다.";
+
+                // 4. 5연타 치트키 로직
+                progressText.onclick = () => {
+                    this.debugClickCount = (this.debugClickCount || 0) + 1;
+                    
+                    clearTimeout(this.debugClickTimer);
+                    this.debugClickTimer = setTimeout(() => this.debugClickCount = 0, 1000);
+
+                    if (this.debugClickCount >= 5) {
+                        const total = this.app.state.activeLesson.totalDuration || 100;
+                        this.app.state.activeLesson.watchedSeconds = total; 
+                        this.checkVideo1Completion(); 
+                        showToast("⚡ 테스트 모드: 영상 시청 완료 처리됨");
+                        this.debugClickCount = 0;
+                    }
+                };
+
+                // 5. 버튼 박스 *앞에* 삽입 (영상과 버튼 사이)
+                const parent = buttonsContainer.parentNode;
+                parent.insertBefore(progressContainer, buttonsContainer);
+                parent.insertBefore(progressText, buttonsContainer);
+            } else {
+                console.error("버튼 컨테이너를 찾을 수 없어 시청 시간 바를 표시하지 못했습니다. (ID 확인 필요)");
+            }
+
+            // 유튜브 모니터링 시작 (ID 명시적 전달)
+            this.startVideo1Monitoring(iframeId);
         }
+    } else {
+        console.error(`Iframe을 찾을 수 없습니다. ID: ${iframeId}`);
     }
 
-    const quizBtn = document.getElementById(elements.startQuizBtn);
+    const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
+    const quizBtn = document.getElementById(quizBtnId);
     if (quizBtn) quizBtn.style.display = "none"; 
   },
 
-  // ✨ [신규] 2번 영상(결과화면) 바로 가기
+  startVideo1Monitoring(iframeId) {
+    if (!this.isYoutubeApiReady) {
+        setTimeout(() => this.startVideo1Monitoring(iframeId), 500);
+        return;
+    }
+
+    if (this.watchTimer) clearInterval(this.watchTimer);
+
+    try {
+        this.player = new YT.Player(iframeId, {
+            playerVars: { 'rel': 0 },
+            events: {
+                'onReady': (event) => {
+                    this.app.state.activeLesson.totalDuration = event.target.getDuration();
+                    this.updateProgressUI();
+                },
+                'onStateChange': (event) => {
+                    if (event.data === YT.PlayerState.PLAYING) {
+                        this.startWatchTimer();
+                    } else {
+                        this.stopWatchTimer();
+                        this.saveWatchProgress();
+                    }
+                }
+            }
+        });
+    } catch (e) { console.warn("YT Player Error", e); }
+  },
+
+  startWatchTimer() {
+      if (this.watchTimer) clearInterval(this.watchTimer);
+      
+      this.watchTimer = setInterval(() => {
+          if (typeof this.app.state.activeLesson.watchedSeconds !== 'number') {
+              this.app.state.activeLesson.watchedSeconds = 0;
+          }
+          this.app.state.activeLesson.watchedSeconds += 1;
+          
+          this.updateProgressUI();
+
+          if (this.app.state.activeLesson.watchedSeconds % 5 === 0) {
+              this.saveWatchProgress();
+          }
+
+          this.checkVideo1Completion();
+
+      }, 1000);
+  },
+
+  stopWatchTimer() {
+      if (this.watchTimer) clearInterval(this.watchTimer);
+      this.watchTimer = null;
+  },
+
+  updateProgressUI() {
+      const watched = this.app.state.activeLesson.watchedSeconds || 0;
+      const total = this.app.state.activeLesson.totalDuration || 1; 
+      
+      const targetSeconds = total * 0.6;
+      const percent = Math.min((watched / targetSeconds) * 100, 100);
+
+      const bar = document.getElementById('video-watch-progress');
+      const text = document.getElementById('video-watch-text');
+
+      if(bar) bar.style.width = `${percent}%`;
+      if(text) {
+          const remain = Math.max(0, Math.ceil(targetSeconds - watched));
+          if (remain > 0) {
+              text.innerText = `⏳ 목표 달성까지 ${remain}초 남았습니다 (총 60% 시청 필요)`;
+              text.className = 'text-center text-sm text-indigo-400 font-bold mb-6 cursor-pointer select-none';
+          } else {
+              text.innerText = "🎉 목표 시청 시간을 달성했습니다! 퀴즈를 풀어보세요.";
+              text.className = 'text-center text-sm text-green-400 font-bold mb-6 cursor-pointer select-none animate-bounce';
+          }
+      }
+  },
+
+  checkVideo1Completion() {
+      const watched = this.app.state.activeLesson.watchedSeconds || 0;
+      const total = this.app.state.activeLesson.totalDuration || 0;
+      
+      if (total === 0) return;
+
+      if (watched >= total * 0.6) {
+          this.onVideo1Ended();
+          this.stopWatchTimer();
+          this.saveWatchProgress();
+      }
+  },
+
+  async saveWatchProgress() {
+      const { activeLesson, studentDocId, selectedSubject } = this.app.state;
+      if (!activeLesson?.id || !studentDocId) return;
+
+      try {
+          const submissionRef = doc(db, "subjects", selectedSubject.id, "lessons", activeLesson.id, "submissions", studentDocId);
+          
+          const watchedVal = activeLesson.watchedSeconds !== undefined ? activeLesson.watchedSeconds : 0;
+
+          await setDoc(submissionRef, {
+              watchedSeconds: Number(watchedVal),
+              lastUpdatedAt: serverTimestamp(),
+              studentDocId: studentDocId
+          }, { merge: true });
+          
+      } catch (error) {
+          console.error("Watch progress save failed:", error);
+      }
+  },
+
   playVideo2Only(lesson) {
     const { elements } = this.app;
-    this.app.showScreen(elements.resultScreen);
+    this.app.showScreen(elements.resultScreen || 'student-result-screen');
 
-    // 성공 메시지로 세팅
-    const successMsg = document.getElementById(elements.successMessage);
-    const failureMsg = document.getElementById(elements.failureMessage);
-    const successText = document.getElementById(elements.resultScoreTextSuccess);
+    const successMsg = document.getElementById(elements.successMessage || 'student-result-success-msg');
+    const failureMsg = document.getElementById(elements.failureMessage || 'student-result-failure-msg');
+    const successText = document.getElementById(elements.resultScoreTextSuccess || 'student-result-score-text-success');
 
     if(successMsg) successMsg.style.display = "block";
     if(failureMsg) failureMsg.style.display = "none";
     
-    // 점수 대신 안내 문구
     if(successText) successText.innerHTML = "학습을 완료한 강의입니다.<br>심화 영상을 자유롭게 시청하세요.";
 
-    // 버튼 생성 (목록 돌아가기 등)
     const oldNav = successMsg.querySelector('.nav-buttons-container');
     if(oldNav) oldNav.remove();
     this.renderNavigationButtons(successMsg);
 
-    // 2번 영상 재생 준비
     const resultVideoContainer = document.getElementById('student-review-video2-container');
     if(resultVideoContainer) {
         resultVideoContainer.style.display = 'block';
@@ -249,23 +416,32 @@ export const studentLesson = {
   onVideo1Ended() {
     const { elements } = this.app;
     
-    const iframe = document.getElementById(elements.video1Iframe);
-    if (iframe) {
-        iframe.style.display = 'none';
-        const container = iframe.parentNode;
-        if (container && !container.querySelector('.video-complete-msg')) {
-            const msg = document.createElement('div');
-            msg.className = 'video-complete-msg w-full h-full flex flex-col items-center justify-center text-white bg-slate-800 rounded-xl';
-            msg.innerHTML = `
-                <span class="material-icons text-4xl mb-2 text-green-400">check_circle</span>
-                <span class="text-xl font-bold mb-1">영상 시청 완료!</span>
-                <span class="text-sm text-slate-300">이제 퀴즈를 풀어보세요.</span>
-            `;
-            container.appendChild(msg);
-        }
+    // 버튼 박스 위치 찾기 (ID 안전장치 추가)
+    const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
+    const quizBtn = document.getElementById(quizBtnId);
+    const buttonsContainer = quizBtn ? quizBtn.parentNode : null;
+    
+    if (buttonsContainer && !document.querySelector('.video-complete-msg')) {
+        // 기존 진행바 제거
+        const oldProgress = document.querySelector('.video-progress-container');
+        if(oldProgress) oldProgress.remove();
+        const oldText = document.getElementById('video-watch-text');
+        if(oldText) oldText.remove();
+
+        const msg = document.createElement('div');
+        msg.className = 'video-complete-msg w-full max-w-5xl mx-auto p-4 mt-4 mb-6 flex flex-col items-center justify-center text-white bg-green-600 rounded-xl animate-fade-in shadow-lg';
+        msg.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="material-icons text-2xl">check_circle</span>
+                <span class="text-lg font-bold">목표 시청 시간 달성!</span>
+            </div>
+            <span class="text-sm text-green-100">이제 퀴즈를 풀 수 있습니다.</span>
+        `;
+        
+        // 버튼 박스 앞에 메시지 삽입
+        buttonsContainer.parentNode.insertBefore(msg, buttonsContainer);
     }
 
-    const quizBtn = document.getElementById(elements.startQuizBtn);
     if (quizBtn) {
         quizBtn.style.display = "block";
         quizBtn.disabled = false;
@@ -285,7 +461,7 @@ export const studentLesson = {
     const count = Math.min(questionBank.length, this.app.state.totalQuizQuestions);
     this.app.state.quizQuestions = [...questionBank].sort(() => 0.5 - Math.random()).slice(0, count);
     
-    this.app.showScreen(this.app.elements.quizScreen); 
+    this.app.showScreen(this.app.elements.quizScreen || 'student-quiz-screen'); 
     this.displayQuestion();
   },
 
@@ -300,14 +476,14 @@ export const studentLesson = {
     const question = quizQuestions[currentQuestionIndex];
     
     const progressPercent = ((currentQuestionIndex + 1) / quizQuestions.length) * 100;
-    const progressBar = document.getElementById(elements.progressBar);
-    const progressText = document.getElementById(elements.progressText);
+    const progressBar = document.getElementById(elements.progressBar || 'student-quiz-progress-bar');
+    const progressText = document.getElementById(elements.progressText || 'student-quiz-progress-text');
     
     if (progressBar) progressBar.style.width = `${progressPercent}%`;
     if (progressText) progressText.textContent = `문제 ${currentQuestionIndex + 1} / ${quizQuestions.length}`;
 
-    const qTextEl = document.getElementById(elements.questionText);
-    const optsContainer = document.getElementById(elements.optionsContainer);
+    const qTextEl = document.getElementById(elements.questionText || 'student-quiz-question-text');
+    const optsContainer = document.getElementById(elements.optionsContainer || 'student-quiz-options-container');
     
     if(qTextEl) qTextEl.innerHTML = question.question || "질문 없음";
     if(optsContainer) {
@@ -331,7 +507,7 @@ export const studentLesson = {
 
   selectAnswer(e, selectedText) {
     const { elements } = this.app;
-    const optsContainer = document.getElementById(elements.optionsContainer);
+    const optsContainer = document.getElementById(elements.optionsContainer || 'student-quiz-options-container');
     
     if(optsContainer.classList.contains("disabled")) return;
     optsContainer.classList.add("disabled");
@@ -372,14 +548,14 @@ export const studentLesson = {
     
     this.updateStudentProgress(isPass ? "completed" : "failed", score);
     
-    this.app.showScreen(elements.resultScreen);
+    this.app.showScreen(elements.resultScreen || 'student-result-screen');
     
     const scoreText = `${totalQuizQuestions} 문제 중 ${score} 문제를 맞혔습니다.`;
 
-    const successMsg = document.getElementById(elements.successMessage);
-    const failureMsg = document.getElementById(elements.failureMessage);
-    const successText = document.getElementById(elements.resultScoreTextSuccess);
-    const failureText = document.getElementById(elements.resultScoreTextFailure);
+    const successMsg = document.getElementById(elements.successMessage || 'student-result-success-msg');
+    const failureMsg = document.getElementById(elements.failureMessage || 'student-result-failure-msg');
+    const successText = document.getElementById(elements.resultScoreTextSuccess || 'student-result-score-text-success');
+    const failureText = document.getElementById(elements.resultScoreTextFailure || 'student-result-score-text-failure');
 
     if (isPass) {
         if(successMsg) successMsg.style.display = "block";
@@ -625,7 +801,7 @@ export const studentLesson = {
     }
     try {
         new YT.Player(iframeId, {
-            playerVars: { 'rel': 0, 'origin': window.location.origin },
+            playerVars: { 'rel': 0 },
             events: {
                 'onStateChange': (event) => onStateChangeCallback(event.data),
             }
@@ -639,15 +815,15 @@ export const studentLesson = {
 
     try {
         const submissionRef = doc(db, "subjects", selectedSubject.id, "lessons", activeLesson.id, "submissions", studentDocId);
-        const data = {
-          studentName: studentName || "익명",
-          status: status,
-          lastAttemptAt: serverTimestamp(),
-          studentDocId: studentDocId,
-          score: score,
-          totalQuestions: totalQuizQuestions
-        };
-        await setDoc(submissionRef, data, { merge: true });
+        
+        await setDoc(submissionRef, {
+            studentName: studentName || "익명",
+            status: status,
+            lastAttemptAt: serverTimestamp(),
+            studentDocId: studentDocId,
+            score: score,
+            totalQuestions: totalQuizQuestions
+        }, { merge: true });
     } catch (error) { 
         console.error("Progress save failed:", error);
     }
@@ -655,13 +831,24 @@ export const studentLesson = {
   
   rewatchVideo1() {
       const { elements } = this.app;
-      this.app.showScreen(elements.video1Screen);
-      const iframe = document.getElementById(elements.video1Iframe);
+      this.app.showScreen(elements.video1Screen || 'student-video1-screen');
+      const iframeId = elements.video1Iframe || 'student-video1-iframe';
+      const iframe = document.getElementById(iframeId);
+      
       if(iframe) {
         iframe.style.display = 'block';
-        const container = iframe.parentNode;
-        const msg = container.querySelector('.video-complete-msg');
-        if(msg) msg.remove();
+        
+        // 버튼 박스 앞의 메시지 제거 (위치 기반으로 찾기)
+        const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
+        const quizBtn = document.getElementById(quizBtnId);
+        const container = quizBtn ? quizBtn.parentNode.parentNode : null; // mainContent
+
+        if (container) {
+            const oldMsg = container.querySelector('.video-complete-msg');
+            if(oldMsg) oldMsg.remove();
+        }
+        
+        this.startVideo1Monitoring(iframeId);
       }
   }
 };
