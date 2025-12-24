@@ -4,9 +4,24 @@
 window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
     // 1. 버튼 상태 저장 (원래 텍스트 복구용)
     const originalHtml = btnElement.innerHTML;
-    const originalWidth = btnElement.style.width; // 너비 고정 (덜컹거림 방지)
+    const originalWidth = btnElement.style.width; 
     btnElement.style.width = `${btnElement.offsetWidth}px`;
     btnElement.disabled = true;
+
+    // 성공 시 UI 처리 함수 (중복 방지용)
+    const showSuccessUI = () => {
+        btnElement.innerHTML = `<span class="material-icons text-[16px]">check_circle</span> 완료!`;
+        btnElement.classList.replace('text-indigo-700', 'text-green-700');
+        btnElement.classList.replace('bg-indigo-50', 'bg-green-50');
+
+        setTimeout(() => {
+            btnElement.innerHTML = originalHtml;
+            btnElement.classList.replace('text-green-700', 'text-indigo-700');
+            btnElement.classList.replace('bg-green-50', 'bg-indigo-50');
+            btnElement.style.width = originalWidth; 
+            btnElement.disabled = false;
+        }, 2000);
+    };
 
     try {
         const files = JSON.parse(decodeURIComponent(filesJson));
@@ -18,24 +33,73 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
 
         const total = files.length;
 
-        // 2. 다운로드 시작 알림
+        // ✨ [신규 기능] 폴더 선택 API 시도 (Chrome/Edge PC 전용)
+        if ('showDirectoryPicker' in window) {
+            try {
+                // 폴더 선택 팝업 띄우기
+                const dirHandle = await window.showDirectoryPicker();
+                
+                btnElement.innerHTML = `<span class="material-icons animate-spin text-[16px]">sync</span> 저장 중...`;
+
+                for (let i = 0; i < total; i++) {
+                    btnElement.innerHTML = `<span class="material-icons animate-pulse text-[16px]">downloading</span> ${i + 1} / ${total}`;
+                    
+                    const file = files[i];
+                    const url = file.fileUrl;
+                    
+                    // 파일명 생성
+                    const originalName = file.fileName || "file";
+                    const extIndex = originalName.lastIndexOf('.');
+                    const ext = extIndex > -1 ? originalName.substring(extIndex) : '';
+                    const newFileName = `${baseFileName}_${i + 1}${ext}`;
+
+                    // 파일 데이터 가져오기
+                    const response = await fetch(url);
+                    const blob = await response.blob();
+
+                    // 선택한 폴더에 파일 생성 및 쓰기
+                    const fileHandle = await dirHandle.getFileHandle(newFileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    
+                    // 딜레이 (UI 갱신용)
+                    await new Promise(r => setTimeout(r, 100));
+                }
+
+                showSuccessUI();
+                return; // 폴더 저장 성공 시 여기서 종료
+
+            } catch (err) {
+                // 사용자가 '취소'를 눌렀을 때는 조용히 복귀
+                if (err.name === 'AbortError') {
+                    btnElement.innerHTML = originalHtml;
+                    btnElement.style.width = originalWidth;
+                    btnElement.disabled = false;
+                    return;
+                }
+                // 그 외 오류(권한 거부 등)는 콘솔에 찍고 기존 방식으로 폴백
+                console.warn("폴더 저장 실패, 일반 다운로드로 전환:", err);
+            }
+        }
+
+        // ==========================================
+        // [기존 방식] 폴더 선택 미지원 브라우저용 Fallback
+        // ==========================================
         btnElement.innerHTML = `<span class="material-icons animate-spin text-[16px]">sync</span> 준비 중...`;
 
         for (let i = 0; i < total; i++) {
-            // 진행 상황 표시 (예: 1/3 다운로드...)
             btnElement.innerHTML = `<span class="material-icons animate-pulse text-[16px]">downloading</span> ${i + 1} / ${total}`;
 
             const file = files[i];
             const url = file.fileUrl;
             
-            // 파일명 생성 (확장자 유지)
             const originalName = file.fileName || "file";
             const extIndex = originalName.lastIndexOf('.');
             const ext = extIndex > -1 ? originalName.substring(extIndex) : '';
             const newFileName = `${baseFileName}_${i + 1}${ext}`;
 
             try {
-                // Blob으로 받아와서 이름 변경 후 다운로드
                 const response = await fetch(url);
                 const blob = await response.blob();
                 const blobUrl = window.URL.createObjectURL(blob);
@@ -51,32 +115,17 @@ window.downloadHomeworkFiles = async (btnElement, filesJson, baseFileName) => {
                 
             } catch (e) {
                 console.error("다운로드 실패:", e);
-                // 실패 시 새 창으로라도 띄워줌
                 window.open(url, '_blank');
             }
 
-            // 브라우저 부하 방지용 딜레이
             await new Promise(r => setTimeout(r, 800));
         }
 
-        // 3. 완료 메시지
-        btnElement.innerHTML = `<span class="material-icons text-[16px]">check_circle</span> 완료!`;
-        btnElement.classList.replace('text-indigo-700', 'text-green-700');
-        btnElement.classList.replace('bg-indigo-50', 'bg-green-50');
-
-        // 4. 2초 후 원래 버튼으로 '자동 복귀'
-        setTimeout(() => {
-            btnElement.innerHTML = originalHtml;
-            btnElement.classList.replace('text-green-700', 'text-indigo-700');
-            btnElement.classList.replace('bg-green-50', 'bg-indigo-50');
-            btnElement.style.width = originalWidth; // 너비 해제
-            btnElement.disabled = false;
-        }, 2000);
+        showSuccessUI();
 
     } catch (e) {
         console.error(e);
-        alert("오류가 발생했습니다. 다시 시도해주세요.");
-        // 오류 시 즉시 복구
+        alert("오류가 발생했습니다.");
         btnElement.innerHTML = originalHtml;
         btnElement.disabled = false;
     }
@@ -119,13 +168,14 @@ export const homeworkManagerHelper = {
             dateStr = `${year}${month}${day}`;
         }
 
+        // 파일명: 날짜_반_이름 (특수문자 제거)
         const safeClassName = className.replace(/[^a-zA-Z0-9가-힣]/g, "_");
         const safeStudentName = (submission.studentName || "이름없음").replace(/[^a-zA-Z0-9가-힣]/g, "_");
         const baseFileName = `${dateStr}_${safeClassName}_${safeStudentName}`;
 
         const filesJson = encodeURIComponent(JSON.stringify(files));
 
-        // ✨ [핵심 수정] this(버튼 자신)를 함수에 전달하여 제어권을 확보함
+        // 단일 다운로드 버튼
         return `
             <button onclick="downloadHomeworkFiles(this, '${filesJson}', '${baseFileName}')" 
                 class="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 border border-indigo-200 transition font-bold shadow-sm whitespace-nowrap">
