@@ -18,15 +18,12 @@ export const studentLesson = {
 
   bindEvents() {
     const { elements } = this.app;
-    // 요소가 없을 경우를 대비해 안전하게 가져오기
     const el = (id) => document.getElementById(elements[id] || id);
 
-    // 퀴즈 및 영상 관련 버튼
     el('startQuizBtn')?.addEventListener("click", () => this.startQuiz());
     el('retryQuizBtn')?.addEventListener("click", () => this.startQuiz());
     el('rewatchVideo1Btn')?.addEventListener("click", () => this.rewatchVideo1());
     
-    // 일일 테스트 등록 버튼
     const addTestBtn = document.getElementById('student-add-daily-test-btn');
     if(addTestBtn) {
         addTestBtn.onclick = () => this.addDailyTest();
@@ -41,8 +38,6 @@ export const studentLesson = {
 
     try {
         const lessonsRef = collection(db, "subjects", subjectId, "lessons");
-        
-        // 정렬 기준: 관리자 설정 순서(order)
         const q = query(lessonsRef, orderBy("order", "asc")); 
         
         const querySnapshot = await getDocs(q);
@@ -50,7 +45,6 @@ export const studentLesson = {
         const lessons = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            // 비활성화된 강의는 목록에서 제외
             if (data.isActive === true) {
                 lessons.push({ id: doc.id, ...data });
             }
@@ -98,10 +92,89 @@ export const studentLesson = {
     });
   },
 
-  // 2. 학습 시작 (Video 1)
-  startSelectedLesson(lesson) {
-    const { elements } = this.app;
+  // ✨ [수정] 강의 시작 로직 (통과 여부 확인 후 분기)
+  async startSelectedLesson(lesson) {
     this.app.state.activeLesson = lesson;
+    const { studentDocId, classType, selectedSubject } = this.app.state;
+
+    // 1. 자기주도반이 아니면 바로 영상 1 재생 (기존 로직)
+    if (classType !== 'self-directed') {
+        this.playVideo1(lesson);
+        return;
+    }
+
+    // 2. 자기주도반인 경우, DB에서 통과 여부 확인
+    showToast("학습 정보를 확인 중입니다...", false);
+    try {
+        const submissionRef = doc(db, "subjects", selectedSubject.id, "lessons", lesson.id, "submissions", studentDocId);
+        const snapshot = await getDoc(submissionRef);
+
+        // 3. 이미 통과(completed)한 경우 -> 선택 팝업 띄우기
+        if (snapshot.exists() && snapshot.data().status === 'completed') {
+            this.showVideoSelectionModal(lesson);
+        } else {
+            // 4. 아직 통과 못 했으면 -> 정석대로 1번 영상부터
+            this.playVideo1(lesson);
+        }
+    } catch (e) {
+        console.error(e);
+        // 에러 나면 그냥 1번부터 재생
+        this.playVideo1(lesson);
+    }
+  },
+
+  // ✨ [신규] 영상 선택 팝업 (HTML 수정 없이 JS로 동적 생성)
+  showVideoSelectionModal(lesson) {
+    // 기존 모달이 있다면 제거
+    const oldModal = document.getElementById('video-selection-modal');
+    if(oldModal) oldModal.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'video-selection-modal';
+    modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-[9999] p-4 animate-fade-in';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center transform scale-100 transition-transform">
+            <div class="mb-4">
+                <span class="material-icons text-5xl text-green-500 mb-2">check_circle</span>
+                <h3 class="text-xl font-bold text-slate-800">학습 완료한 강의입니다!</h3>
+                <p class="text-slate-500 text-sm mt-1">어떤 영상을 보시겠습니까?</p>
+            </div>
+            
+            <div class="space-y-3">
+                <button id="btn-select-video1" class="w-full py-4 rounded-xl border-2 border-indigo-100 hover:border-indigo-500 bg-indigo-50 hover:bg-indigo-600 group transition-all flex items-center justify-center gap-3">
+                    <span class="material-icons text-indigo-500 group-hover:text-white">play_circle</span>
+                    <span class="font-bold text-indigo-700 group-hover:text-white">개념 영상 다시보기</span>
+                </button>
+
+                <button id="btn-select-video2" class="w-full py-4 rounded-xl border-2 border-purple-100 hover:border-purple-500 bg-purple-50 hover:bg-purple-600 group transition-all flex items-center justify-center gap-3">
+                    <span class="material-icons text-purple-500 group-hover:text-white">rocket_launch</span>
+                    <span class="font-bold text-purple-700 group-hover:text-white">심화 영상(문제풀이) 보기</span>
+                </button>
+            </div>
+
+            <button id="btn-close-selection" class="mt-6 text-slate-400 hover:text-slate-600 text-sm underline">닫기</button>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // 이벤트 연결
+    document.getElementById('btn-select-video1').onclick = () => {
+        modal.remove();
+        this.playVideo1(lesson); // 1번 영상 재생
+    };
+
+    document.getElementById('btn-select-video2').onclick = () => {
+        modal.remove();
+        this.playVideo2Only(lesson); // 2번 영상 바로 재생 (퀴즈 패스)
+    };
+
+    document.getElementById('btn-close-selection').onclick = () => modal.remove();
+  },
+
+  // ✨ [기존 로직 분리] 1번 영상 재생
+  playVideo1(lesson) {
+    const { elements } = this.app;
     
     const titleEl = document.getElementById(elements.video1Title);
     if(titleEl) titleEl.textContent = lesson.title;
@@ -130,6 +203,47 @@ export const studentLesson = {
 
     const quizBtn = document.getElementById(elements.startQuizBtn);
     if (quizBtn) quizBtn.style.display = "none"; 
+  },
+
+  // ✨ [신규] 2번 영상(결과화면) 바로 가기
+  playVideo2Only(lesson) {
+    const { elements } = this.app;
+    this.app.showScreen(elements.resultScreen);
+
+    // 성공 메시지로 세팅
+    const successMsg = document.getElementById(elements.successMessage);
+    const failureMsg = document.getElementById(elements.failureMessage);
+    const successText = document.getElementById(elements.resultScoreTextSuccess);
+
+    if(successMsg) successMsg.style.display = "block";
+    if(failureMsg) failureMsg.style.display = "none";
+    
+    // 점수 대신 안내 문구
+    if(successText) successText.innerHTML = "학습을 완료한 강의입니다.<br>심화 영상을 자유롭게 시청하세요.";
+
+    // 버튼 생성 (목록 돌아가기 등)
+    const oldNav = successMsg.querySelector('.nav-buttons-container');
+    if(oldNav) oldNav.remove();
+    this.renderNavigationButtons(successMsg);
+
+    // 2번 영상 재생 준비
+    const resultVideoContainer = document.getElementById('student-review-video2-container');
+    if(resultVideoContainer) {
+        resultVideoContainer.style.display = 'block';
+        resultVideoContainer.classList.remove('hidden');
+
+        const video2List = lesson.video2List || [];
+        const defaultUrl = video2List.length > 0 ? video2List[0].url : lesson.video2Url;
+        
+        const iframe = document.getElementById('student-review-video2-iframe');
+        
+        if (defaultUrl && iframe) {
+            const embedUrl = this.convertYoutubeUrlToEmbed(defaultUrl);
+            iframe.src = embedUrl;
+        } else {
+            resultVideoContainer.innerHTML = '<p class="text-center text-slate-400 py-4">등록된 심화 영상이 없습니다.</p>';
+        }
+    }
   },
 
   onVideo1Ended() {
@@ -347,7 +461,6 @@ export const studentLesson = {
       container.appendChild(btnWrapper);
   },
 
-  // 일일 테스트 화면 초기화
   initDailyTestScreen() {
       const subjectSelect = document.getElementById('daily-test-subject-select');
       const subjects = this.app.state.subjects || [];
@@ -364,11 +477,9 @@ export const studentLesson = {
       this.loadAllDailyTests();
   },
 
-  // ✨ [수정] 반(Class) 정보도 함께 저장하도록 개선
   async addDailyTest() {
       const studentId = this.app.state.studentDocId;
       const studentName = this.app.state.studentName;
-      // 현재 학생의 반 정보(classId) 가져오기
       const classId = this.app.state.studentData?.classId || null;
 
       const subjectSelect = document.getElementById('daily-test-subject-select');
@@ -391,11 +502,10 @@ export const studentLesson = {
       if(!confirm(`${subjectName} ${scoreEl.value}점을 등록하시겠습니까?`)) return;
 
       try {
-          // classId 필드를 추가하여 저장
           await addDoc(collection(db, "daily_tests"), {
               studentId,
               studentName: studentName || '이름 없음',
-              classId: classId, // ✨ 핵심: 반 정보 저장
+              classId: classId, 
               subjectId: subjectSelect.value, 
               subjectName: subjectName,       
               date: dateEl.value,
