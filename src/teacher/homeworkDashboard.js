@@ -127,8 +127,6 @@ export const homeworkDashboard = {
         el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터 연결 중...</td></tr>';
 
         const docRef = doc(db, 'homeworks', homeworkId);
-
-        // ✨ [추가] 파일명 생성을 위해 현재 반 이름을 가져옴
         const classSelect = document.getElementById('teacher-class-select');
         const className = classSelect && classSelect.selectedIndex > -1 ? classSelect.options[classSelect.selectedIndex].text : '반';
 
@@ -159,14 +157,27 @@ export const homeworkDashboard = {
                 const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                 
                 const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
-                // ✨ [수정] renderFileButtons에 className 전달
                 const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, className);
+
+                // ✨ [추가] 제출은 했지만 수동 완료가 아닐 때 '확인' 버튼 표시
+                let actionBtn = '';
+                if (sub && !sub.manualComplete) {
+                    actionBtn = `
+                        <button class="teacher-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
+                                data-student-id="${id}" title="페이지 수가 부족해도 완료로 처리합니다">
+                            ✅ 확인
+                        </button>
+                    `;
+                }
 
                 const tr = document.createElement('tr');
                 tr.className = "border-b hover:bg-slate-50 transition duration-300";
                 tr.innerHTML = `
                     <td class="py-3 px-4">${name}</td>
-                    <td class="py-3 px-4 ${statusInfo.color}">${statusInfo.text}</td>
+                    <td class="py-3 px-4 ${statusInfo.color}">
+                        ${statusInfo.text}
+                        ${actionBtn}
+                    </td>
                     <td class="py-3 px-4 text-xs text-slate-500">
                         <div class="mb-1">${date}</div>
                         <div>${buttonHtml}</div>
@@ -174,13 +185,36 @@ export const homeworkDashboard = {
                 `;
                 tbody.appendChild(tr);
             });
+
+            // 이벤트 위임으로 버튼 클릭 처리
+            tbody.querySelectorAll('.teacher-force-complete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const sId = e.target.dataset.studentId;
+                    this.forceCompleteHomework(homeworkId, sId);
+                });
+            });
+
         }, (error) => {
             console.error(error);
             el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">연결 끊김</td></tr>';
         });
     },
 
-    // --- Modal Functions (기존 유지) ---
+    // ✨ [신규] 강제 완료 처리 함수
+    async forceCompleteHomework(homeworkId, studentId) {
+        if (!confirm("페이지 수가 부족해도 '완료' 상태로 변경하시겠습니까?")) return;
+        try {
+            await updateDoc(doc(db, 'homeworks', homeworkId), {
+                [`submissions.${studentId}.manualComplete`]: true,
+                [`submissions.${studentId}.status`]: 'completed'
+            });
+            showToast("완료 처리되었습니다.", false);
+        } catch (e) {
+            console.error(e);
+            showToast("처리 실패", true);
+        }
+    },
+
     async openModal(mode) {
         const el = (id) => document.getElementById(this.config.elements[id]);
         const modal = el('modal');

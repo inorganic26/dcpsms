@@ -1,25 +1,20 @@
 // src/teacher/analysisDashboard.js
 
-import { collection, getDocs, doc, getDoc, query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, where, orderBy, onSnapshot, addDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
 export const analysisDashboard = {
     elements: {},
-    // 실시간 감시 취소 함수 저장용
     unsubscribeDailyTest: null,
 
     state: {
         students: [],
-        
-        // 일일 테스트용 상태
         dailyTestSubjectId: null,
-        dailyTestRecords: [], // 전체 기록
-        uniqueDates: [],      // 날짜 목록 (헤더용)
+        dailyTestRecords: [], 
+        uniqueDates: [],      
         matrixPage: 0,
-        itemsPerPage: 5,      // 한 페이지에 보여줄 날짜 수
-
-        // 학습 현황용 상태
+        itemsPerPage: 5,
         learningSubjectId: null,
         learningLessonId: null,
     },
@@ -27,23 +22,18 @@ export const analysisDashboard = {
     init(app) {
         this.app = app;
         this.elements = {
-            // Daily Test Elements
             dailyTestSubjectSelect: document.getElementById('teacher-daily-test-subject-select'),
             dailyTestResultTable: document.getElementById('teacher-daily-test-result-table'),
-            
-            // Learning Status Elements
             learningSubjectSelect: document.getElementById('teacher-learning-subject-select'),
             learningLessonSelect: document.getElementById('teacher-learning-lesson-select'),
             learningResultTable: document.getElementById('teacher-learning-result-table'),
         };
 
         this.elements.dailyTestSubjectSelect?.addEventListener('change', (e) => this.handleDailyTestSubjectChange(e.target.value));
-        
         this.elements.learningSubjectSelect?.addEventListener('change', (e) => this.handleLearningSubjectChange(e.target.value));
         this.elements.learningLessonSelect?.addEventListener('change', (e) => this.handleLearningLessonChange(e.target.value));
         
         document.addEventListener('class-changed', () => {
-            // 반이 바뀌면 기존 감시 해제 및 화면 초기화
             if (this.unsubscribeDailyTest) {
                 this.unsubscribeDailyTest();
                 this.unsubscribeDailyTest = null;
@@ -68,9 +58,6 @@ export const analysisDashboard = {
         }
     },
 
-    // ----------------------------------------
-    // [View 1] Daily Test (일일 테스트 점수판)
-    // ----------------------------------------
     async initDailyTestView() {
         const subjectSelect = this.elements.dailyTestSubjectSelect;
         if (!subjectSelect) return;
@@ -97,7 +84,6 @@ export const analysisDashboard = {
         const container = this.elements.dailyTestResultTable;
         const currentClassId = this.app.state.selectedClassId; 
 
-        // 기존 리스너가 있다면 해제 (다른 과목 선택 시 중복 방지)
         if (this.unsubscribeDailyTest) {
             this.unsubscribeDailyTest();
             this.unsubscribeDailyTest = null;
@@ -111,12 +97,10 @@ export const analysisDashboard = {
         container.innerHTML = '<div class="loader-small mx-auto"></div><p class="text-center mt-2 text-slate-400">실시간 데이터 연결 중...</p>';
 
         try {
-            // ✨ [핵심 수정] getDocs -> onSnapshot (실시간)
-            // 성능 최적화(where classId)와 실시간성(onSnapshot)을 모두 적용
             const q = query(
                 collection(db, "daily_tests"), 
                 where("subjectId", "==", subjectId),
-                where("classId", "==", currentClassId), // 우리 반 데이터만
+                where("classId", "==", currentClassId),
                 orderBy("date", "desc")
             );
             
@@ -139,13 +123,8 @@ export const analysisDashboard = {
                 }
             }, (error) => {
                 console.error("실시간 업데이트 오류:", error);
-                
                 if (error.code === 'failed-precondition') {
-                     container.innerHTML = `<div class="text-red-500 text-center p-4">
-                        데이터베이스 색인(Index) 생성이 필요합니다.<br>
-                        <a href="${error.message.match(/https?:\/\/[^\s]+/)[0]}" target="_blank" class="underline font-bold text-blue-600">여기(링크)를 클릭하여 생성해주세요.</a>
-                        <br><span class="text-xs text-slate-500">(생성 후 몇 분 뒤부터 정상 작동합니다)</span>
-                     </div>`;
+                     container.innerHTML = `<div class="text-red-500 text-center p-4">DB 색인 생성 필요</div>`;
                 } else {
                     container.innerHTML = '<div class="text-red-500 text-center p-4">데이터 로드 실패</div>';
                 }
@@ -161,7 +140,6 @@ export const analysisDashboard = {
         const { uniqueDates, itemsPerPage, matrixPage } = this.state;
         const maxPage = Math.ceil(uniqueDates.length / itemsPerPage) - 1;
         const newPage = matrixPage + delta;
-        
         if (newPage >= 0 && newPage <= maxPage) {
             this.state.matrixPage = newPage;
             this.renderDailyMatrix();
@@ -172,7 +150,6 @@ export const analysisDashboard = {
         const { uniqueDates, dailyTestRecords, matrixPage, itemsPerPage, students } = this.state;
         const container = this.elements.dailyTestResultTable;
 
-        // 데이터가 없으면 렌더링 중단
         if (uniqueDates.length === 0) return;
 
         const startIdx = matrixPage * itemsPerPage;
@@ -180,7 +157,6 @@ export const analysisDashboard = {
         const visibleDates = uniqueDates.slice(startIdx, endIdx);
         const totalPages = Math.ceil(uniqueDates.length / itemsPerPage);
 
-        // 상단 페이지네이션 버튼
         let html = `
             <div class="flex justify-between items-center mb-4 bg-slate-50 p-2 rounded-lg border border-slate-200">
                 <button id="teacher-daily-prev-btn" class="text-sm font-bold text-slate-600 px-3 py-1 hover:bg-white rounded transition disabled:opacity-30" ${matrixPage === 0 ? 'disabled' : ''}>◀ 이전</button>
@@ -195,7 +171,6 @@ export const analysisDashboard = {
                         <th class="p-3 border bg-slate-50 min-w-[60px] text-blue-700">평균</th>
         `;
 
-        // 날짜 헤더 (YYYY-MM-DD -> MM.DD)
         visibleDates.forEach(date => {
             const parts = date.split('-');
             const label = parts.length === 3 ? `${parts[1]}.${parts[2]}` : date;
@@ -203,7 +178,6 @@ export const analysisDashboard = {
         });
         html += `</tr></thead><tbody>`;
 
-        // 학생별 행
         students.forEach(student => {
             const studentRecords = dailyTestRecords.filter(r => r.studentId === student.id);
             const totalScore = studentRecords.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
@@ -215,8 +189,12 @@ export const analysisDashboard = {
 
             visibleDates.forEach(date => {
                 const record = studentRecords.find(r => r.date === date);
+                // ✨ [수정] 점수 클릭 시 수정을 위한 데이터 속성 추가
                 if (!record) {
-                    html += `<td class="p-3 border text-slate-300">-</td>`;
+                    html += `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 teacher-daily-cell" 
+                                data-student-id="${student.id}" data-date="${date}" data-exists="false">
+                                <span class="text-xs text-red-300 font-bold">미응시</span>
+                             </td>`;
                 } else {
                     const score = Number(record.score);
                     let bgClass = "";
@@ -224,35 +202,84 @@ export const analysisDashboard = {
                     else if (score < 70) bgClass = "bg-red-50 text-red-600";
                     
                     const tooltip = record.memo ? `title="메모: ${record.memo}"` : "";
-                    html += `<td class="p-3 border font-bold ${bgClass} cursor-help" ${tooltip}>${score}</td>`;
+                    html += `<td class="p-3 border font-bold ${bgClass} cursor-pointer hover:bg-opacity-80 teacher-daily-cell" 
+                                ${tooltip} data-student-id="${student.id}" data-date="${date}" data-exists="true" 
+                                data-doc-id="${record.id}" data-score="${score}" data-memo="${record.memo || ''}">
+                                ${score}
+                             </td>`;
                 }
             });
             html += `</tr>`;
         });
 
-        // 반 평균 행
         html += `<tr class="bg-slate-100 font-bold border-t-2 border-slate-300">
             <td class="p-3 border sticky left-0 bg-slate-100 z-10">반 평균</td>
             <td class="p-3 border text-slate-400">-</td>`;
-
         visibleDates.forEach(date => {
             const dateRecords = dailyTestRecords.filter(r => r.date === date);
             const dateTotal = dateRecords.reduce((sum, r) => sum + (Number(r.score) || 0), 0);
             const dateAvg = dateRecords.length > 0 ? Math.round(dateTotal / dateRecords.length) : '-';
             html += `<td class="p-3 border text-indigo-700">${dateAvg}</td>`;
         });
-
         html += `</tr></tbody></table>`;
         container.innerHTML = html;
 
-        // 버튼 이벤트 연결 (DOM이 재생성되었으므로 다시 연결)
         container.querySelector('#teacher-daily-prev-btn').onclick = () => this.changeMatrixPage(-1);
         container.querySelector('#teacher-daily-next-btn').onclick = () => this.changeMatrixPage(1);
+
+        // ✨ [신규] 셀 클릭 이벤트 연결 (점수 수정)
+        container.querySelectorAll('.teacher-daily-cell').forEach(cell => {
+            cell.onclick = () => this.handleScoreClick(cell);
+        });
     },
 
-    // ----------------------------------------
-    // [View 2] Learning Status (기존 로직 유지)
-    // ----------------------------------------
+    // ✨ [신규] 점수 입력/수정 핸들러
+    async handleScoreClick(cell) {
+        const { studentId, date, exists, docId, score, memo } = cell.dataset;
+        const student = this.state.students.find(s => s.id === studentId);
+        
+        const newScoreStr = prompt(`${date} ${student.name} 학생의 점수를 입력하세요.\n(0~100)`, exists === "true" ? score : "");
+        if (newScoreStr === null) return; // 취소
+
+        const newScore = Number(newScoreStr);
+        if (isNaN(newScore) || newScore < 0 || newScore > 100) {
+            alert("유효한 점수를 입력해주세요.");
+            return;
+        }
+
+        const newMemo = prompt("메모를 입력하세요 (선택 사항)", exists === "true" ? memo : "");
+
+        try {
+            if (exists === "true" && docId) {
+                await updateDoc(doc(db, "daily_tests", docId), {
+                    score: newScore,
+                    memo: newMemo || "",
+                    updatedAt: serverTimestamp()
+                });
+                showToast("수정되었습니다.");
+            } else {
+                const subjectSelect = this.elements.dailyTestSubjectSelect;
+                const subjectName = subjectSelect.options[subjectSelect.selectedIndex].text;
+
+                await addDoc(collection(db, "daily_tests"), {
+                    studentId: studentId,
+                    studentName: student.name,
+                    classId: this.app.state.selectedClassId,
+                    subjectId: this.state.dailyTestSubjectId,
+                    subjectName: subjectName,
+                    date: date,
+                    score: newScore,
+                    memo: newMemo || "",
+                    createdAt: serverTimestamp()
+                });
+                showToast("입력되었습니다.");
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("저장 실패", true);
+        }
+    },
+
     async initLearningStatusView() {
         const subjectSelect = this.elements.learningSubjectSelect;
         const lessonSelect = this.elements.learningLessonSelect;
