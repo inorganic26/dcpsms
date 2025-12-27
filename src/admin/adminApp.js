@@ -21,54 +21,226 @@ import { lessonManager } from "./lessonManager.js";
 import { studentAssignmentManager } from "./studentAssignmentManager.js";
 import { adminClassVideoManager } from "./adminClassVideoManager.js";
 import { adminHomeworkDashboard } from "./adminHomeworkDashboard.js";
-import { reportManager } from "../shared/reportManager.js";
+import { adminReportManager } from "./adminReportManager.js"; // 리팩토링된 리포트 매니저
 import { adminAnalysisManager } from "./adminAnalysisManager.js"; 
+import { adminAuth } from "./adminAuth.js"; // 리팩토링된 인증 모듈
+
+import { adminState } from "./adminState.js"; // 상태 관리 모듈
 
 export const AdminApp = {
     isInitialized: false,
-    elements: {},
-    state: {
-        currentView: "dashboard",
-        teachers: [], 
-        students: [], 
-        subjects: [],
-        classes: [],
+    
+    // 1. [설정] 화면 요소들의 ID 목록 (문자열)
+    // 매니저들이 찾을 때 사용하는 이름(Key)과 실제 HTML ID(Value)를 매핑합니다.
+    uiIds: {
+        // --- Views (화면들) ---
+        dashboardView: "admin-dashboard-view",
+        subjectMgmtView: "admin-subject-mgmt-view",
+        textbookMgmtView: "admin-textbook-mgmt-view",
+        classMgmtView: "admin-class-mgmt-view",
+        studentMgmtView: "admin-student-mgmt-view",
+        teacherMgmtView: "admin-teacher-mgmt-view",
+        studentAssignmentView: "admin-student-assignment-view",
+        lessonMgmtView: "admin-lesson-mgmt-view",
+        qnaVideoMgmtView: "admin-qna-video-mgmt-view",
+        classVideoMgmtView: "admin-class-video-mgmt-view",
+        homeworkMgmtView: "admin-homework-mgmt-view",
+        reportMgmtView: "admin-report-mgmt-view",
+        dailyTestMgmtView: "admin-daily-test-mgmt-view",
+        learningStatusMgmtView: "admin-learning-status-mgmt-view",
+
+        // --- Menu Buttons (메뉴 버튼) ---
+        gotoSubjectMgmtBtn: "goto-subject-mgmt-btn",
+        gotoTextbookMgmtBtn: "goto-textbook-mgmt-btn",
+        gotoClassMgmtBtn: "goto-class-mgmt-btn",
+        gotoStudentMgmtBtn: "goto-student-mgmt-btn",
+        gotoTeacherMgmtBtn: "goto-teacher-mgmt-btn",
+        gotoStudentAssignmentBtn: "goto-student-assignment-btn",
+        gotoLessonMgmtBtn: "goto-lesson-mgmt-btn",
+        gotoQnaVideoMgmtBtn: "goto-qna-video-mgmt-btn",
+        gotoClassVideoMgmtBtn: "goto-class-video-mgmt-btn",
+        gotoHomeworkMgmtBtn: "goto-homework-mgmt-btn",
+        gotoReportMgmtBtn: "goto-report-mgmt-btn",
+        gotoDailyTestMgmtBtn: "goto-daily-test-mgmt-btn", 
+        gotoLearningStatusMgmtBtn: "goto-learning-status-mgmt-btn",
+
+        // --- Manager들이 사용하는 요소들 (중요!) ---
         
-        selectedSubjectIdForTextbook: null,
-        editingClass: null,
-        selectedClassIdForHomework: null,
-        selectedHomeworkId: null,
-        studentsInClass: new Map(),
-        selectedSubjectIdForMgmt: null,
-        lessons: [],
-        editingLesson: null,
-        generatedQuiz: null,
-        selectedClassIdForQnaVideo: null,
-        selectedClassIdForClassVideo: null,
-        editingQnaVideoId: null,
-        editingClassVideoIndex: null,
-        selectedReportClassId: null,
-        selectedReportDate: null,
-        uploadedReports: [],
+        // Subject & Textbook
+        newSubjectNameInput: 'admin-new-subject-name',
+        addSubjectBtn: 'admin-add-subject-btn',
+        subjectsList: 'admin-subjects-list',
+        subjectSelectForTextbook: 'admin-subject-select-for-textbook',
+        textbookManagementContent: 'admin-textbook-management-content',
+        newTextbookNameInput: 'admin-new-textbook-name',
+        addTextbookBtn: 'admin-add-textbook-btn',
+        textbooksList: 'admin-textbooks-list',
+
+        // Class
+        newClassNameInput: 'admin-new-class-name',
+        addClassBtn: 'admin-add-class-btn',
+        classesList: 'admin-classes-list',
+        editClassModal: 'admin-edit-class-modal',
+        editClassName: 'admin-edit-class-name',
+        closeEditClassModalBtn: 'admin-close-edit-class-modal-btn',
+        cancelEditClassBtn: 'admin-cancel-edit-class-btn',
+        saveClassEditBtn: 'admin-save-class-edit-btn',
+        editClassSubjectsContainer: 'admin-edit-class-subjects-and-textbooks',
+        editClassTypeSelect: 'admin-edit-class-type',
+
+        // Student
+        newStudentNameInput: 'admin-new-student-name',
+        newStudentPhoneInput: 'admin-new-student-phone',
+        newParentPhoneInput: 'admin-new-parent-phone',
+        addStudentBtn: 'admin-add-student-btn',
+        studentsList: 'admin-students-list',
+        editStudentModal: 'admin-edit-student-modal',
+        editStudentNameInput: 'admin-edit-student-name',
+        editStudentPhoneInput: 'admin-edit-student-phone',
+        editParentPhoneInput: 'admin-edit-parent-phone',
+        closeEditStudentModalBtn: 'admin-close-edit-student-modal-btn',
+        cancelEditStudentBtn: 'admin-cancel-edit-student-btn',
+        saveStudentEditBtn: 'admin-save-student-edit-btn',
+        searchStudentInput: 'search-student-input', // 검색창 추가
+        studentPagination: 'admin-student-pagination', // 페이지네이션 추가
+
+        // Teacher
+        newTeacherNameInput: 'admin-new-teacher-name',
+        newTeacherPhoneInput: 'admin-new-teacher-phone',
+        addTeacherBtn: 'admin-add-teacher-btn',
+        teachersList: 'admin-teachers-list',
+        editTeacherModal: 'admin-edit-teacher-modal',
+        editTeacherNameInput: 'admin-edit-teacher-name',
+        editTeacherPhoneInput: 'admin-edit-teacher-phone',
+        closeEditTeacherModalBtn: 'admin-close-edit-teacher-modal-btn',
+        cancelEditTeacherBtn: 'admin-cancel-edit-teacher-btn',
+        saveTeacherEditBtn: 'admin-save-teacher-edit-btn',
+
+        // Lesson (여기가 문제였음)
+        subjectSelectForMgmt: 'admin-subject-select-for-lesson', // lessonManager가 찾는 이름
+        lessonsManagementContent: 'admin-lessons-management-content',
+        lessonPrompt: 'admin-lesson-prompt',
+        lessonsList: 'admin-lessons-list',
+        saveOrderBtn: 'admin-save-lesson-order-btn',
+        showNewLessonModalBtn: 'admin-show-new-lesson-modal-btn',
+        modal: 'admin-new-lesson-modal',
+        modalTitle: 'admin-lesson-modal-title',
+        closeModalBtn: 'admin-close-modal-btn',
+        cancelBtn: 'admin-cancel-btn',
+        lessonTitle: 'admin-lesson-title',
+        video1Url: 'admin-video1-url',
+        addVideo1RevBtn: 'admin-add-video1-rev-btn',
+        quizJsonInput: 'admin-quiz-json-input',
+        previewQuizBtn: 'admin-preview-quiz-btn',
+        questionsPreviewContainer: 'admin-questions-preview-container',
+        questionsPreviewTitle: 'admin-questions-preview-title',
+        questionsPreviewList: 'admin-questions-preview-list',
+        saveLessonBtn: 'admin-save-lesson-btn',
+        saveBtnText: 'admin-save-btn-text',
+        saveLoader: 'admin-save-loader',
+
+        // Videos
+        qnaVideoDateInput: 'admin-qna-video-date',
+        qnaClassSelect: 'admin-qna-class-select',
+        qnaVideoTitleInput: 'admin-qna-video-title',
+        qnaVideoUrlInput: 'admin-qna-video-url',
+        saveQnaVideoBtn: 'admin-save-qna-video-btn',
+        qnaVideosList: 'admin-qna-videos-list',
+        lectureVideoDateInput: 'admin-class-video-date',
+        lectureClassSelect: 'admin-class-video-class-select',
+        lectureVideoListContainer: 'admin-class-video-list-container',
+        addLectureVideoFieldBtn: 'admin-add-class-video-field-btn',
+        saveLectureVideoBtn: 'admin-save-class-video-btn',
+        lectureVideoTitleInput: 'admin-class-video-title',
+        lectureVideoUrlInput: 'admin-class-video-url',
+
+        // Homework
+        homeworkClassSelect: 'admin-homework-class-select',
+        homeworkMainContent: 'admin-homework-main-content',
+        homeworkSelect: 'admin-homework-select',
+        assignHomeworkBtn: 'admin-assign-homework-btn',
+        homeworkManagementButtons: 'admin-homework-management-buttons',
+        editHomeworkBtn: 'admin-edit-homework-btn',
+        deleteHomeworkBtn: 'admin-delete-homework-btn',
+        homeworkContent: 'admin-homework-content',
+        selectedHomeworkTitle: 'admin-selected-homework-title',
+        homeworkTableBody: 'admin-homework-table-body',
+        assignHomeworkModal: 'admin-assign-homework-modal',
+        homeworkModalTitle: 'admin-homework-modal-title',
+        closeHomeworkModalBtn: 'admin-close-homework-modal-btn',
+        cancelHomeworkBtn: 'admin-cancel-homework-btn',
+        saveHomeworkBtn: 'admin-save-homework-btn',
+        homeworkSubjectSelect: 'admin-homework-subject-select',
+        homeworkTextbookSelect: 'admin-homework-textbook-select',
+        homeworkPagesInput: 'admin-homework-pages',
+        homeworkDueDateInput: 'admin-homework-due-date',
+        homeworkTitleInput: 'admin-homework-title',
+        homeworkTotalPagesInput: 'admin-homework-total-pages',
+
+        // Report & Analysis
+        reportClassSelect: 'admin-report-class-select',
+        reportDateInput: 'admin-report-date',
+        reportFilesInput: 'admin-report-files-input',
+        uploadReportsBtn: 'admin-upload-reports-btn',
+        reportUploadStatus: 'admin-report-upload-status',
+        uploadedReportsList: 'admin-uploaded-reports-list',
+        
+        // Analysis Manager
+        dailyTestClassSelect: 'admin-daily-test-class-select',
+        dailyTestSubjectSelect: 'admin-daily-test-subject-select',
+        dailyTestPagination: 'admin-daily-test-pagination',
+        dailyTestPrevBtn: 'admin-daily-test-prev-btn',
+        dailyTestNextBtn: 'admin-daily-test-next-btn',
+        dailyTestPageInfo: 'admin-daily-test-page-info',
+        dailyTestResultTable: 'admin-daily-test-result-table',
+        
+        learningClassSelect: 'admin-learning-class-select',
+        learningSubjectSelect: 'admin-learning-subject-select',
+        learningLessonSelect: 'admin-learning-lesson-select',
+        learningResultTable: 'admin-learning-result-table',
     },
+
+    // 2. [실제 사용] DOM 요소들이 여기에 저장됨 (초기에는 비어있음)
+    elements: {}, 
+    state: adminState.data, 
 
     async init() {
         console.log("[AdminApp.init] 초기화 시작");
         if (this.isInitialized) return;
 
+        // [핵심] ID 목록을 순회하며 실제 DOM 요소로 변환하여 elements에 저장
         this.cacheElements();
-        this.showLoginScreen();
+
+        // 인증 모듈 초기화
+        adminAuth.init(this);
+        
+        // 이벤트 리스너 연결
         this.addEventListeners();
         
+        // 스토어 연결
         this.setupStoreBridges();
 
         console.log("[AdminApp.init] 기본 초기화 완료");
     },
 
+    // [중요 함수] ID(문자열) -> DOM 요소(객체) 변환
+    cacheElements() {
+        this.elements = {};
+        for (const [key, id] of Object.entries(this.uiIds)) {
+            const el = document.getElementById(id);
+            if (el) {
+                this.elements[key] = el;
+            } else {
+                // 개발 중 디버깅을 위해 경고 로그 남김 (선택 사항)
+                // console.warn(`[AdminApp] 요소를 찾을 수 없음: Key=${key}, ID=${id}`);
+            }
+        }
+    },
+
     setupStoreBridges() {
         document.addEventListener(CLASS_EVENTS.UPDATED, () => {
             this.state.classes = getClasses();
-            if (this.state.currentView === 'reportMgmt') this.populateReportClassSelect();
+            if (this.state.currentView === 'reportMgmt') adminReportManager.populateReportClassSelect();
         });
 
         document.addEventListener(SUBJECT_EVENTS.UPDATED, () => {
@@ -85,286 +257,105 @@ export const AdminApp = {
         });
     },
 
-    cacheElements() {
-        this.elements = {
-            initialLogin: document.getElementById("admin-initial-login"),
-            secretPasswordInput: document.getElementById("admin-secret-password"),
-            secretLoginBtn: document.getElementById("admin-secret-login-btn"),
-            mainDashboard: document.getElementById("admin-main-dashboard"),
-            dashboardView: document.getElementById("admin-dashboard-view"),
-            
-            // Views
-            subjectMgmtView: document.getElementById("admin-subject-mgmt-view"),
-            textbookMgmtView: document.getElementById("admin-textbook-mgmt-view"),
-            classMgmtView: document.getElementById("admin-class-mgmt-view"),
-            studentMgmtView: document.getElementById("admin-student-mgmt-view"),
-            teacherMgmtView: document.getElementById("admin-teacher-mgmt-view"),
-            studentAssignmentView: document.getElementById("admin-student-assignment-view"),
-            lessonMgmtView: document.getElementById("admin-lesson-mgmt-view"),
-            qnaVideoMgmtView: document.getElementById("admin-qna-video-mgmt-view"),
-            classVideoMgmtView: document.getElementById("admin-class-video-mgmt-view"),
-            homeworkMgmtView: document.getElementById("admin-homework-mgmt-view"),
-            reportMgmtView: document.getElementById("admin-report-mgmt-view"),
-            dailyTestMgmtView: document.getElementById("admin-daily-test-mgmt-view"),
-            learningStatusMgmtView: document.getElementById("admin-learning-status-mgmt-view"),
-
-            // Menu Buttons
-            gotoSubjectMgmtBtn: document.getElementById("goto-subject-mgmt-btn"),
-            gotoTextbookMgmtBtn: document.getElementById("goto-textbook-mgmt-btn"),
-            gotoClassMgmtBtn: document.getElementById("goto-class-mgmt-btn"),
-            gotoStudentMgmtBtn: document.getElementById("goto-student-mgmt-btn"),
-            gotoTeacherMgmtBtn: document.getElementById("goto-teacher-mgmt-btn"),
-            gotoStudentAssignmentBtn: document.getElementById("goto-student-assignment-btn"),
-            gotoLessonMgmtBtn: document.getElementById("goto-lesson-mgmt-btn"),
-            gotoQnaVideoMgmtBtn: document.getElementById("goto-qna-video-mgmt-btn"),
-            gotoClassVideoMgmtBtn: document.getElementById("goto-class-video-mgmt-btn"),
-            gotoHomeworkMgmtBtn: document.getElementById("goto-homework-mgmt-btn"),
-            gotoReportMgmtBtn: document.getElementById("goto-report-mgmt-btn"),
-            gotoDailyTestMgmtBtn: document.getElementById("goto-daily-test-mgmt-btn"),
-            gotoLearningStatusMgmtBtn: document.getElementById("goto-learning-status-mgmt-btn"),
-
-            // ... (기존 요소 매핑 유지) ...
-            // Subject & Textbook
-            newSubjectNameInput: document.getElementById('admin-new-subject-name'),
-            addSubjectBtn: document.getElementById('admin-add-subject-btn'),
-            subjectsList: document.getElementById('admin-subjects-list'),
-            subjectSelectForTextbook: document.getElementById('admin-subject-select-for-textbook'),
-            textbookManagementContent: document.getElementById('admin-textbook-management-content'),
-            newTextbookNameInput: document.getElementById('admin-new-textbook-name'),
-            addTextbookBtn: document.getElementById('admin-add-textbook-btn'),
-            textbooksList: document.getElementById('admin-textbooks-list'),
-
-            // Class
-            newClassNameInput: document.getElementById('admin-new-class-name'),
-            addClassBtn: document.getElementById('admin-add-class-btn'),
-            classesList: document.getElementById('admin-classes-list'),
-            editClassModal: document.getElementById('admin-edit-class-modal'),
-            editClassName: document.getElementById('admin-edit-class-name'),
-            closeEditClassModalBtn: document.getElementById('admin-close-edit-class-modal-btn'),
-            cancelEditClassBtn: document.getElementById('admin-cancel-edit-class-btn'),
-            saveClassEditBtn: document.getElementById('admin-save-class-edit-btn'),
-            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'),
-            editClassTypeSelect: document.getElementById('admin-edit-class-type'),
-
-            // Student
-            newStudentNameInput: document.getElementById('admin-new-student-name'),
-            newStudentPhoneInput: document.getElementById('admin-new-student-phone'),
-            newParentPhoneInput: document.getElementById('admin-new-parent-phone'),
-            addStudentBtn: document.getElementById('admin-add-student-btn'),
-            studentsList: document.getElementById('admin-students-list'),
-            editStudentModal: document.getElementById('admin-edit-student-modal'),
-            editStudentNameInput: document.getElementById('admin-edit-student-name'),
-            editStudentPhoneInput: document.getElementById('admin-edit-student-phone'),
-            editParentPhoneInput: document.getElementById('admin-edit-parent-phone'),
-            closeEditStudentModalBtn: document.getElementById('admin-close-edit-student-modal-btn'),
-            cancelEditStudentBtn: document.getElementById('admin-cancel-edit-student-btn'),
-            saveStudentEditBtn: document.getElementById('admin-save-student-edit-btn'),
-
-            // Teacher
-            newTeacherNameInput: document.getElementById('admin-new-teacher-name'),
-            newTeacherPhoneInput: document.getElementById('admin-new-teacher-phone'),
-            addTeacherBtn: document.getElementById('admin-add-teacher-btn'),
-            teachersList: document.getElementById('admin-teachers-list'),
-            editTeacherModal: document.getElementById('admin-edit-teacher-modal'),
-            editTeacherNameInput: document.getElementById('admin-edit-teacher-name'),
-            editTeacherPhoneInput: document.getElementById('admin-edit-teacher-phone'),
-            closeEditTeacherModalBtn: document.getElementById('admin-close-edit-teacher-modal-btn'),
-            cancelEditTeacherBtn: document.getElementById('admin-cancel-edit-teacher-btn'),
-            saveTeacherEditBtn: document.getElementById('admin-save-teacher-edit-btn'),
-
-            // Lesson
-            subjectSelectForMgmt: document.getElementById('admin-subject-select-for-lesson'),
-            lessonsManagementContent: document.getElementById('admin-lessons-management-content'),
-            lessonPrompt: document.getElementById('admin-lesson-prompt'),
-            lessonsList: document.getElementById('admin-lessons-list'),
-            saveOrderBtn: document.getElementById('admin-save-lesson-order-btn'),
-            showNewLessonModalBtn: document.getElementById('admin-show-new-lesson-modal-btn'),
-            modal: document.getElementById('admin-new-lesson-modal'),
-            modalTitle: document.getElementById('admin-lesson-modal-title'),
-            closeModalBtn: document.getElementById('admin-close-modal-btn'),
-            cancelBtn: document.getElementById('admin-cancel-btn'),
-            lessonTitle: document.getElementById('admin-lesson-title'),
-            video1Url: document.getElementById('admin-video1-url'),
-            addVideo1RevBtn: document.getElementById('admin-add-video1-rev-btn'),
-            quizJsonInput: document.getElementById('admin-quiz-json-input'),
-            previewQuizBtn: document.getElementById('admin-preview-quiz-btn'),
-            questionsPreviewContainer: document.getElementById('admin-questions-preview-container'),
-            questionsPreviewTitle: document.getElementById('admin-questions-preview-title'),
-            questionsPreviewList: document.getElementById('admin-questions-preview-list'),
-            saveLessonBtn: document.getElementById('admin-save-lesson-btn'),
-            saveBtnText: document.getElementById('admin-save-btn-text'),
-            saveLoader: document.getElementById('admin-save-loader'),
-
-            // Videos
-            qnaVideoDateInput: document.getElementById('admin-qna-video-date'),
-            qnaClassSelect: document.getElementById('admin-qna-class-select'),
-            qnaVideoTitleInput: document.getElementById('admin-qna-video-title'),
-            qnaVideoUrlInput: document.getElementById('admin-qna-video-url'),
-            saveQnaVideoBtn: document.getElementById('admin-save-qna-video-btn'),
-            qnaVideosList: document.getElementById('admin-qna-videos-list'),
-            lectureVideoDateInput: document.getElementById('admin-class-video-date'),
-            lectureClassSelect: document.getElementById('admin-class-video-class-select'),
-            lectureVideoListContainer: document.getElementById('admin-class-video-list-container'),
-            addLectureVideoFieldBtn: document.getElementById('admin-add-class-video-field-btn'),
-            saveLectureVideoBtn: document.getElementById('admin-save-class-video-btn'),
-            lectureVideoTitleInput: document.getElementById('admin-class-video-title'),
-            lectureVideoUrlInput: document.getElementById('admin-class-video-url'),
-
-            // Homework
-            homeworkClassSelect: document.getElementById('admin-homework-class-select'),
-            homeworkMainContent: document.getElementById('admin-homework-main-content'),
-            homeworkSelect: document.getElementById('admin-homework-select'),
-            assignHomeworkBtn: document.getElementById('admin-assign-homework-btn'),
-            homeworkManagementButtons: document.getElementById('admin-homework-management-buttons'),
-            editHomeworkBtn: document.getElementById('admin-edit-homework-btn'),
-            deleteHomeworkBtn: document.getElementById('admin-delete-homework-btn'),
-            homeworkContent: document.getElementById('admin-homework-content'),
-            selectedHomeworkTitle: document.getElementById('admin-selected-homework-title'),
-            homeworkTableBody: document.getElementById('admin-homework-table-body'),
-            assignHomeworkModal: document.getElementById('admin-assign-homework-modal'),
-            homeworkModalTitle: document.getElementById('admin-homework-modal-title'),
-            closeHomeworkModalBtn: document.getElementById('admin-close-homework-modal-btn'),
-            cancelHomeworkBtn: document.getElementById('admin-cancel-homework-btn'),
-            saveHomeworkBtn: document.getElementById('admin-save-homework-btn'),
-            homeworkSubjectSelect: document.getElementById('admin-homework-subject-select'),
-            homeworkTextbookSelect: document.getElementById('admin-homework-textbook-select'),
-            homeworkPagesInput: document.getElementById('admin-homework-pages'),
-            homeworkDueDateInput: document.getElementById('admin-homework-due-date'),
-            homeworkTitleInput: document.getElementById('admin-homework-title'),
-
-            // Report
-            reportClassSelect: document.getElementById('admin-report-class-select'),
-            reportDateInput: document.getElementById('admin-report-date'),
-            reportFilesInput: document.getElementById('admin-report-files-input'),
-            uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
-            reportUploadStatus: document.getElementById('admin-report-upload-status'),
-            uploadedReportsList: document.getElementById('admin-uploaded-reports-list'),
-        };
-    },
-
     addEventListeners() {
-        this.elements.secretLoginBtn?.addEventListener("click", () => this.handleAdminLogin());
-        this.elements.secretPasswordInput?.addEventListener("keypress", (e) => {
-            if (e.key === "Enter") this.handleAdminLogin();
-        });
+        // 메뉴 버튼 연결 (uiIds를 사용하여 매핑)
+        const menuMapping = {
+            "gotoSubjectMgmtBtn": "subjectMgmt",
+            "gotoTextbookMgmtBtn": "textbookMgmt",
+            "gotoClassMgmtBtn": "classMgmt",
+            "gotoStudentMgmtBtn": "studentMgmt",
+            "gotoTeacherMgmtBtn": "teacherMgmt",
+            "gotoStudentAssignmentBtn": "studentAssignment",
+            "gotoLessonMgmtBtn": "lessonMgmt",
+            "gotoQnaVideoMgmtBtn": "qnaVideoMgmt",
+            "gotoClassVideoMgmtBtn": "classVideoMgmt",
+            "gotoHomeworkMgmtBtn": "homeworkMgmt",
+            "gotoReportMgmtBtn": "reportMgmt",
+            "gotoDailyTestMgmtBtn": "dailyTestMgmt", 
+            "gotoLearningStatusMgmtBtn": "learningStatusMgmt",
+        };
 
-        const menuButtons = [
-            { key: "gotoSubjectMgmtBtn", view: "subjectMgmt" },
-            { key: "gotoTextbookMgmtBtn", view: "textbookMgmt" },
-            { key: "gotoClassMgmtBtn", view: "classMgmt" },
-            { key: "gotoStudentMgmtBtn", view: "studentMgmt" },
-            { key: "gotoTeacherMgmtBtn", view: "teacherMgmt" },
-            { key: "gotoStudentAssignmentBtn", view: "studentAssignment" },
-            { key: "gotoLessonMgmtBtn", view: "lessonMgmt" },
-            { key: "gotoQnaVideoMgmtBtn", view: "qnaVideoMgmt" },
-            { key: "gotoClassVideoMgmtBtn", view: "classVideoMgmt" },
-            { key: "gotoHomeworkMgmtBtn", view: "homeworkMgmt" },
-            { key: "gotoReportMgmtBtn", view: "reportMgmt" },
-            { key: "gotoDailyTestMgmtBtn", view: "dailyTestMgmt" }, 
-            { key: "gotoLearningStatusMgmtBtn", view: "learningStatusMgmt" },
-        ];
-
-        menuButtons.forEach(({ key, view }) => {
-            const buttonElement = this.elements[key];
-            if (buttonElement) {
-                buttonElement.addEventListener("click", () => this.showView(view));
+        Object.entries(menuMapping).forEach(([btnKey, viewName]) => {
+            // this.elements에서 DOM 요소를 가져옴
+            const btn = this.elements[btnKey];
+            if (btn) {
+                btn.addEventListener("click", () => this.showView(viewName));
             }
         });
 
         document.querySelectorAll(".back-to-admin-dashboard-btn")
             .forEach((b) => b.addEventListener("click", () => this.showView("dashboard")));
-
-        this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload());
-        this.elements.reportClassSelect?.addEventListener('change', () => this.loadAndRenderUploadedReports());
-        this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
     },
 
-    showLoginScreen() {
-        this.elements.initialLogin?.style.setProperty("display", "flex");
-        this.elements.mainDashboard?.style.setProperty("display", "none");
-    },
-
-    async handleAdminLogin() {
-        const password = this.elements.secretPasswordInput?.value || "";
-        if (!password) { showToast("비밀번호 입력 필요", true); return; }
-        showToast("로그인 중...", false);
-
-        try {
-            if (!auth.currentUser) await signInAnonymously(auth);
-            
-            const functions = getFunctions(app, 'asia-northeast3');
-            const verifyPassword = httpsCallable(functions, 'verifyAdminPassword');
-            
-            await verifyPassword({ password });
-            await auth.currentUser.getIdToken(true);
-
-            showToast("관리자 로그인 성공", false);
-            this.elements.initialLogin.style.display = "none";
-            this.elements.mainDashboard.style.display = "block";
-
-            setTimeout(() => {
-                if (!this.isInitialized) this.initializeAppUI(true);
-                this.showView("dashboard");
-            }, 50);
-        } catch (e) {
-            console.error(e);
-            showToast("로그인 실패: 비밀번호 확인 필요", true);
-        }
-    },
-
+    // 로그인 성공 후 호출되는 함수
     initializeAppUI(loadData = true) {
         if (this.isInitialized) return;
+        
         try {
+            // 요소를 한 번 더 캐싱 (혹시 동적으로 생긴 요소가 있을까봐)
+            this.cacheElements();
+
+            // 각 매니저 초기화
+            // 이제 this.elements 안에 실제 DOM 요소가 들어있으므로 에러가 나지 않음
             studentManager.init(this);
             classManager.init(this);
             subjectManager.init(this);
             teacherManager.init(this);
-            
             textbookManager.init(this);
             lessonManager.init(this);
             studentAssignmentManager.init(this);
             adminClassVideoManager.init(this);
             adminHomeworkDashboard.init(this);
             adminAnalysisManager.init(this);
+            adminReportManager.init(this);
 
             this.isInitialized = true;
+            console.log("[AdminApp] 모든 매니저 초기화 완료");
+
         } catch (e) {
-            console.error("초기화 오류", e);
+            console.error("매니저 초기화 중 오류 발생", e);
         }
     },
 
     showView(viewName) {
-        if (!this.elements.mainDashboard) return;
-        Object.keys(this.elements).forEach((key) => {
-            if (key.endsWith("View") && this.elements[key]) this.elements[key].style.display = "none";
+        // 1. 모든 뷰 숨기기 (uiIds를 순회하며 ID로 숨김)
+        Object.keys(this.uiIds).forEach((key) => {
+            if (key.endsWith("View")) {
+                const id = this.uiIds[key];
+                const el = document.getElementById(id);
+                if (el) el.style.display = "none";
+            }
         });
 
-        const viewElementKey = `${viewName}View`;
-        const targetViewElement = this.elements[viewElementKey];
+        // 2. 타겟 뷰 보이기
+        const viewKey = `${viewName}View`;
+        const targetViewId = this.uiIds[viewKey];
+        const targetViewElement = document.getElementById(targetViewId);
 
         if (targetViewElement) {
             targetViewElement.style.display = "block";
             this.state.currentView = viewName;
 
+            // 뷰 진입 시 필요한 초기화 로직
             switch (viewName) {
                 case "homeworkMgmt": adminHomeworkDashboard.initView?.(); break;
                 case "qnaVideoMgmt": adminClassVideoManager.initQnaView?.(); break;
                 case "classVideoMgmt": adminClassVideoManager.initLectureView?.(); break;
-                case "reportMgmt": 
-                    this.populateReportClassSelect(); 
-                    this.loadAndRenderUploadedReports(); 
-                    break;
+                case "reportMgmt": adminReportManager.initView?.(); break;
                 case "studentAssignment": 
                     studentAssignmentManager.populateSelects?.(); 
                     studentAssignmentManager.resetView?.(); 
                     break;
                 case "textbookMgmt": 
                     textbookManager.populateSubjectSelect?.(); 
-                    textbookManager.handleSubjectSelectForTextbook?.(this.elements.subjectSelectForTextbook.value || ''); 
+                    // elements에서 DOM 요소를 가져와서 값 읽기
+                    const subSelect = this.elements.subjectSelectForTextbook;
+                    textbookManager.handleSubjectSelectForTextbook?.(subSelect?.value || ''); 
                     break;
                 case "lessonMgmt": 
                     lessonManager.populateSubjectSelect?.(); 
-                    lessonManager.handleSubjectSelectForLesson?.(this.elements.subjectSelectForMgmt.value || ''); 
+                    const mgmtSelect = this.elements.subjectSelectForMgmt;
+                    lessonManager.handleSubjectSelectForLesson?.(mgmtSelect?.value || ''); 
                     break;
                 case "dailyTestMgmt": 
                     adminAnalysisManager.initDailyTestView?.();
@@ -374,126 +365,14 @@ export const AdminApp = {
                     break;
             }
         } else {
-            this.elements.dashboardView.style.display = "block";
+            // 기본값: 대시보드
+            const dash = document.getElementById(this.uiIds.dashboardView);
+            if(dash) dash.style.display = "block";
             this.state.currentView = "dashboard";
         }
-    },
-
-    populateReportClassSelect() {
-        const sel = this.elements.reportClassSelect;
-        if (!sel) return;
-        
-        const classes = this.state.classes; 
-        const currentSelection = sel.value;
-        
-        sel.innerHTML = '<option value="">-- 반 선택 --</option>';
-        if (!classes || classes.length === 0) {
-            sel.innerHTML += '<option value="" disabled>등록된 반 없음</option>';
-            return;
-        }
-        
-        classes.forEach((c) =>
-            sel.insertAdjacentHTML("beforeend", `<option value="${c.id}">${c.name}</option>`)
-        );
-        if (classes.some(c => c.id === currentSelection)) {
-            sel.value = currentSelection;
-        }
-    },
-    
-    async handleReportUpload() {
-        const dateInput = this.elements.reportDateInput;
-        const filesInput = this.elements.reportFilesInput;
-        const statusEl = this.elements.reportUploadStatus;
-        const uploadBtn = this.elements.uploadReportsBtn;
-
-        if (!dateInput || !filesInput || !statusEl || !uploadBtn) return;
-
-        const classId = this.elements.reportClassSelect?.value;
-        const testDateRaw = dateInput.value;
-        const files = filesInput.files;
-
-        if (!classId) { showToast("반 선택 필요"); return; }
-        if (!testDateRaw || !files.length) { showToast("날짜/파일 선택 필요"); return; }
-
-        const testDate = testDateRaw.replace(/-/g, '');
-        uploadBtn.disabled = true;
-        statusEl.innerHTML = `<span class="text-blue-600">업로드 중...</span>`;
-
-        const uploadPromises = [];
-        for (const file of files) {
-            uploadPromises.push(
-                reportManager.uploadReport(file, classId, testDate)
-            );
-        }
-
-        try {
-            await Promise.all(uploadPromises);
-            statusEl.innerHTML = `<span class="text-green-600">완료</span>`;
-            showToast(`업로드 완료`, false);
-            filesInput.value = '';
-            await this.loadAndRenderUploadedReports();
-        } catch (error) {
-            console.error(error);
-            statusEl.innerHTML = `<span class="text-red-600">오류 발생</span>`;
-            showToast("업로드 오류", true);
-        } finally {
-            uploadBtn.disabled = false;
-        }
-    },
-
-    async loadAndRenderUploadedReports() {
-        const cls = this.elements.reportClassSelect?.value;
-        const date = this.elements.reportDateInput?.value;
-        const list = this.elements.uploadedReportsList;
-
-        if (!cls || !date || !list) return;
-
-        list.innerHTML = 'Loading...';
-        try {
-            const yyyymmdd = date.replace(/-/g, "");
-            const reports = await reportManager.listReportsForDateAndClass(cls, yyyymmdd);
-            
-            list.innerHTML = "";
-            if (!reports.length) { list.innerHTML = "없음"; return; }
-
-            const ul = document.createElement("ul");
-            ul.className = 'space-y-2 mt-2';
-            reports.forEach(r => {
-                const li = document.createElement("li");
-                li.className = "flex justify-between border p-2 rounded text-sm";
-                li.innerHTML = `<span>${r.fileName}</span> 
-                    <div class="flex gap-2">
-                        <a href="${r.url}" target="_blank" class="text-blue-500 font-bold">보기</a>
-                        <button class="text-red-500 font-bold del-btn">삭제</button>
-                    </div>`;
-                
-                li.querySelector('.del-btn').addEventListener('click', async () => {
-                    if(confirm('삭제?')) {
-                        const path = `reports/${cls}/${yyyymmdd}/${r.fileName}`;
-                        await this.tryDeleteReport(cls, date, r.fileName, path);
-                        this.loadAndRenderUploadedReports();
-                    }
-                });
-                ul.appendChild(li);
-            });
-            list.appendChild(ul);
-        } catch (e) {
-            list.innerHTML = "로딩 실패";
-        }
-    },
-
-    async tryDeleteReport(classId, dateStr, fileName, primaryPath) {
-        let success = await reportManager.deleteReport(primaryPath);
-        if (!success) {
-             const rootPath = `reports/${classId}/${fileName}`;
-             success = await reportManager.deleteReport(rootPath);
-        }
-        showToast(success ? "삭제됨" : "삭제 실패", !success);
-        return success;
     }
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-    console.log("[AdminApp] Start");
     AdminApp.init();
 });

@@ -11,12 +11,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // 2. [수정됨] 관리자 권한 확인 (임시 완화)
-    // 원래는 토큰(request.auth.token.role)을 검사해야 하지만, 
-    // Cloud Functions 문제로 권한 오류가 나므로 '로그인만 하면 OK'로 변경합니다.
+    // 2. [수정됨] 관리자(선생님) 권한 확인 (DB 조회 방식)
+    // 설명: 코드를 수정할 필요 없이, 'teachers' 컬렉션에 내 UID로 된 문서가 있으면 관리자로 인정합니다.
     function isAdminOrTeacher() {
-      // return isAuthenticated() && 'role' in request.auth.token && ... (기존 엄격한 규칙)
-      return isAuthenticated(); // ✨ [변경] 로그인만 되어 있으면 관리자 권한 인정
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
     }
 
     // =========================================
@@ -32,6 +31,8 @@ service cloud.firestore {
     // =========================================
     match /teachers/{teacherId} {
       allow read: if true;
+      // 주의: 선생님 본인 정보를 수정하거나 추가할 때도 관리자 권한이 필요합니다.
+      // 최초 1명은 Firebase 콘솔에서 직접 추가해야 합니다.
       allow write: if isAdminOrTeacher();
     }
 
@@ -40,6 +41,7 @@ service cloud.firestore {
     // =========================================
     match /students/{studentId} {
       allow read: if true;
+      // 학생 정보 수정/삭제는 관리자만 가능
       allow write: if isAdminOrTeacher();
     }
 
@@ -59,9 +61,13 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isAdminOrTeacher();
 
+        // 레슨별 제출물 (submissions)
         match /submissions/{studentDocId} {
-          allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
-          allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
+          // 관리자는 모두 볼 수 있고, 학생은 본인 것만 볼 수 있음
+          allow read: if isAdminOrTeacher() ||
+            (isAuthenticated() && request.auth.uid == studentDocId);
+          // 학생은 본인 문서(studentDocId)에만 쓰기 가능
+          allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId && request.auth.uid == studentDocId;
           allow delete: if isAdminOrTeacher();
         }
       }
@@ -72,14 +78,15 @@ service cloud.firestore {
     // =========================================
     match /homeworks/{homeworkId} {
       allow read: if true;
-      // 학생 숙제 제출(update) 허용
-      allow update: if isAuthenticated();
-      // 숙제 생성/삭제는 관리자만
-      allow create, delete: if isAdminOrTeacher();
-      
+      // 숙제 생성/수정/삭제는 관리자만
+      allow create, update, delete: if isAdminOrTeacher();
+
+      // 숙제 제출물 (submissions)
       match /submissions/{studentDocId} {
-        allow read: if isAdminOrTeacher() || (isAuthenticated() && request.auth.uid == studentDocId);
-        allow write: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
+        allow read: if isAdminOrTeacher() ||
+          (isAuthenticated() && request.auth.uid == studentDocId);
+        
+        allow write: if isAuthenticated() && request.auth.uid == studentDocId;
       }
     }
 
@@ -105,7 +112,8 @@ service cloud.firestore {
     // 일일 테스트 (daily_tests)
     // =========================================
     match /daily_tests/{testId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAdminOrTeacher();
     }
 
     // 기본 거부

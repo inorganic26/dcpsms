@@ -1,28 +1,35 @@
 // src/admin/textbookManager.js
 
-// ✨ 'where' 추가 import 필수
 import { collection, onSnapshot, addDoc, doc, deleteDoc, query, orderBy, where } from "firebase/firestore";
 import { db } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
 
 export const textbookManager = {
     textbookUnsubscribe: null,
+    app: null, // app 객체 참조 저장
 
     init(app) {
         this.app = app;
         
-        // 요소가 존재하는지 확인 후 이벤트 연결
-        if (this.app.elements.subjectSelectForTextbook) {
-            this.app.elements.subjectSelectForTextbook.addEventListener('change', (e) => this.handleSubjectSelectForTextbook(e.target.value));
+        // [수정] 안전장치 추가: 요소가 있고 + addEventListener 함수도 있는지 확인
+        const subjectSelect = this.app.elements.subjectSelectForTextbook;
+        
+        if (subjectSelect && typeof subjectSelect.addEventListener === 'function') {
+            subjectSelect.addEventListener('change', (e) => this.handleSubjectSelectForTextbook(e.target.value));
+        } else {
+            console.warn("[TextbookManager] 과목 선택 박스(subjectSelectForTextbook)를 찾을 수 없거나 이벤트 연결 불가:", subjectSelect);
         }
-        if (this.app.elements.addTextbookBtn) {
-            this.app.elements.addTextbookBtn.addEventListener('click', () => this.addNewTextbook());
+
+        const addBtn = this.app.elements.addTextbookBtn;
+        if (addBtn && typeof addBtn.addEventListener === 'function') {
+            addBtn.addEventListener('click', () => this.addNewTextbook());
         }
     },
 
     populateSubjectSelect() {
         const select = this.app.elements.subjectSelectForTextbook;
-        if (!select) return;
+        // select가 없거나 DOM 요소가 아니면 중단
+        if (!select || !select.innerHTML) return;
 
         const subjects = this.app.state.subjects || [];
         const currentSelection = this.app.state.selectedSubjectIdForTextbook;
@@ -65,8 +72,6 @@ export const textbookManager = {
     listenForTextbooks(subjectId) {
         if (!subjectId) return;
 
-        // ✨ [핵심 수정] 하위 컬렉션 대신 최상위 'textbooks' 컬렉션에서 subjectId로 필터링
-        // 기존: collection(db, `subjects/${subjectId}/textbooks`)
         const q = query(
             collection(db, "textbooks"), 
             where("subjectId", "==", subjectId), 
@@ -99,7 +104,6 @@ export const textbookManager = {
             div.innerHTML = `<span class="font-medium text-slate-700">${book.name}</span> <button data-id="${book.id}" class="delete-textbook-btn text-red-500 hover:text-red-700 text-sm font-semibold">삭제</button>`;
             listEl.appendChild(div);
             
-            // 이벤트 위임 대신 개별 리스너 부착 (간단한 구현)
             div.querySelector('.delete-textbook-btn').addEventListener('click', (e) => this.deleteTextbook(e.target.dataset.id));
         });
     },
@@ -119,7 +123,6 @@ export const textbookManager = {
         }
 
         try {
-            // ✨ [핵심 수정] 최상위 컬렉션에 subjectId 포함하여 저장
             await addDoc(collection(db, "textbooks"), { 
                 name: textbookName,
                 subjectId: subjectId,
@@ -137,7 +140,6 @@ export const textbookManager = {
     async deleteTextbook(textbookId) {
         if (!confirm("정말로 이 교재를 삭제하시겠습니까?")) return;
         try {
-            // ✨ [핵심 수정] 최상위 컬렉션에서 삭제
             await deleteDoc(doc(db, "textbooks", textbookId));
             showToast("교재가 삭제되었습니다.", false);
         } catch (error) { 

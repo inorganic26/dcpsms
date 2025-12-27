@@ -11,7 +11,7 @@ import {
     updateDoc,
     orderBy
 } from "firebase/firestore";
-import { signInWithCustomToken } from "firebase/auth";
+import { signInWithCustomToken, signOut, onAuthStateChanged } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db, auth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
@@ -23,7 +23,8 @@ import { lessonManager } from './lessonManager.js';
 import { classEditor } from '../shared/classEditor.js'; 
 import { classVideoManager } from './classVideoManager.js';
 import { reportManager } from '../shared/reportManager.js';
-import { analysisDashboard } from './analysisDashboard.js'; 
+import { analysisDashboard } from './analysisDashboard.js';
+import { subjectTextbookManager } from './subjectTextbookManager.js';
 
 const TeacherApp = {
     isInitialized: false,
@@ -59,11 +60,17 @@ const TeacherApp = {
 
         this.cacheElements();
 
+        // 자동 로그인 방지 (앱 시작 시 로그아웃)
+        signOut(auth).then(() => {
+            console.log("Logged out for security.");
+        });
+
         this.elements.loginBtn?.addEventListener('click', () => {
             const name = this.elements.nameInput?.value;
             const password = this.elements.passwordInput?.value;
             this.handleLogin(name, password);
         });
+        
         this.elements.passwordInput?.addEventListener('keyup', (e) => {
             if (e.key === 'Enter') {
                 const name = this.elements.nameInput?.value;
@@ -127,25 +134,25 @@ const TeacherApp = {
     initializeDashboard() {
         if (this.isInitialized) return;
         this.isInitialized = true;
-        console.log("[TeacherApp] Initializing dashboard...");
-
+        
+        // 매니저 연결
         this.homeworkDashboard = homeworkDashboard;
         this.lessonManager = lessonManager;
         this.classEditor = classEditor;
         this.classVideoManager = classVideoManager;
-        this.analysisDashboard = analysisDashboard; 
+        this.analysisDashboard = analysisDashboard;
+        this.subjectTextbookManager = subjectTextbookManager;
 
         try {
             this.homeworkDashboard.init(this);
             this.lessonManager.init(this);
             this.classEditor.init(this);
             this.classVideoManager.init(this);
-            this.analysisDashboard.init(this); 
+            this.analysisDashboard.init(this);
+            this.subjectTextbookManager.init(this);
 
         } catch (e) {
             console.error("Error initializing modules:", e);
-            showToast("앱 초기화 중 오류 발생", true);
-            return;
         }
 
         this.addEventListeners();
@@ -153,40 +160,20 @@ const TeacherApp = {
         this.listenForSubjects(); 
 
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'none';
-
-        console.log("[TeacherApp] Dashboard initialized.");
     },
 
     async promptPasswordChange(teacherId) {
         let newPassword = null;
-        let isValid = false;
-
-        while (!isValid) {
-            newPassword = prompt("최초 로그인입니다. 사용할 새 비밀번호를 입력하세요 (6자리 이상).");
-            
-            if (newPassword === null) {
-                showToast("비밀번호 변경 취소. (권장하지 않음)");
-                return;
-            }
-            
-            newPassword = newPassword.trim();
-            if (newPassword.length >= 6) {
-                isValid = true;
-            } else {
-                alert("비밀번호는 6자리 이상이어야 합니다.");
-            }
+        while (true) {
+            newPassword = prompt("새 비밀번호를 입력하세요 (6자리 이상).");
+            if (newPassword === null) return;
+            if (newPassword.trim().length >= 6) break;
+            alert("6자리 이상이어야 합니다.");
         }
-
         try {
-            await updateDoc(doc(db, 'teachers', teacherId), {
-                password: newPassword,
-                isInitialPassword: false
-            });
-            showToast("비밀번호가 변경되었습니다.", false);
-        } catch (error) {
-            console.error("비밀번호 변경 실패:", error);
-            showToast("비밀번호 변경 실패", true);
-        }
+            await updateDoc(doc(db, 'teachers', teacherId), { password: newPassword, isInitialPassword: false });
+            showToast("비밀번호 변경 완료", false);
+        } catch (error) { showToast("변경 실패", true); }
     },
 
     cacheElements() {
@@ -208,8 +195,8 @@ const TeacherApp = {
                 'class-mgmt': document.getElementById('view-class-mgmt'),
                 'class-video-mgmt': document.getElementById('view-class-video-mgmt'),
                 'report-mgmt': document.getElementById('view-report-mgmt'),
-                'daily-test-mgmt': document.getElementById('view-daily-test-mgmt'), // ✨ 추가됨
-                'learning-status-mgmt': document.getElementById('view-learning-status-mgmt'), // ✨ 추가됨
+                'daily-test-mgmt': document.getElementById('view-daily-test-mgmt'),
+                'learning-status-mgmt': document.getElementById('view-learning-status-mgmt'),
             },
 
             studentListContainer: document.getElementById('teacher-student-list-container'),
@@ -221,7 +208,7 @@ const TeacherApp = {
             editClassBtn: document.getElementById('teacher-edit-class-btn'),
             manageSubjectsTextbooksBtn: document.getElementById('teacher-manage-subjects-textbooks-btn'),
             
-            // Homework
+            // Homework IDs
             homeworkDashboardControls: document.getElementById('homework-dashboard-controls'),
             homeworkSelect: document.getElementById('teacher-homework-select'),
             assignHomeworkBtn: document.getElementById('teacher-assign-homework-btn'),
@@ -241,8 +228,7 @@ const TeacherApp = {
             homeworkPagesInput: document.getElementById('teacher-homework-pages'),
             homeworkDueDateInput: document.getElementById('teacher-homework-due-date'),
             
-            // Lesson
-            lessonMgmtControls: document.getElementById('lesson-mgmt-controls'),
+            // Lesson IDs
             subjectSelectForMgmt: document.getElementById('teacher-subject-select-mgmt'),
             lessonsManagementContent: document.getElementById('teacher-lessons-management-content'),
             lessonPrompt: document.getElementById('teacher-lesson-prompt'),
@@ -255,10 +241,7 @@ const TeacherApp = {
             cancelBtn: document.getElementById('teacher-cancel-btn'),
             lessonTitle: document.getElementById('teacher-lesson-title'),
             video1Url: document.getElementById('teacher-video1-url'),
-            video2Url: document.getElementById('teacher-video2-url'),
             addVideo1RevBtn: document.getElementById('teacher-add-video1-rev-btn'),
-            addVideo2RevBtn: document.getElementById('teacher-add-video2-rev-btn'),
-            videoRevUrlsContainer: (type) => `teacher-video${type}-rev-urls-container`,
             quizJsonInput: document.getElementById('teacher-quiz-json-input'),
             previewQuizBtn: document.getElementById('teacher-preview-quiz-btn'),
             questionsPreviewContainer: document.getElementById('teacher-questions-preview-container'),
@@ -289,7 +272,7 @@ const TeacherApp = {
             closeSubjectTextbookModalBtn: document.getElementById('teacher-close-subject-textbook-modal-btn'),
             closeSubjectTextbookModalBtnFooter: document.getElementById('teacher-close-subject-textbook-modal-btn-footer'),
             
-            // Videos
+            // Videos & Reports
             qnaVideoDateInput: document.getElementById('qna-video-date'),
             qnaVideoTitleInput: document.getElementById('qna-video-title'),
             qnaVideoUrlInput: document.getElementById('qna-video-url'),
@@ -303,17 +286,12 @@ const TeacherApp = {
             lectureVideoUrlInput: document.getElementById('class-video-url'),
             gotoClassVideoMgmtBtn: document.querySelector('[data-view="class-video-mgmt"]'),
             
-            // Report
             reportDateInput: document.getElementById('teacher-report-date'),
             reportFilesInput: document.getElementById('teacher-report-files-input'),
             reportCurrentClassSpan: document.getElementById('teacher-report-current-class'),
             uploadReportsBtn: document.getElementById('teacher-upload-reports-btn'),
             reportUploadStatus: document.getElementById('teacher-report-upload-status'),
             uploadedReportsList: document.getElementById('teacher-uploaded-reports-list'),
-            
-            // Analysis (분리됨)
-            // dailyTest... 와 learning... 요소는 analysisDashboard 내부에서 직접 ID로 참조하므로 여기서는 생략 가능하지만,
-            // 전체 구조 통일성을 위해 남겨둘 수도 있음.
         };
     },
 
@@ -332,31 +310,23 @@ const TeacherApp = {
                 }
             });
         }
-
+        
         this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload());
         this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
-
         this.elements.uploadedReportsList?.addEventListener('click', async (e) => {
-            const viewBtn = e.target.closest('.view-report-btn');
-            const deleteBtn = e.target.closest('.delete-report-btn');
-
-            if (viewBtn && viewBtn.dataset.url) {
-                const fileUrl = viewBtn.dataset.url;
-                if (fileUrl) window.open(fileUrl, '_blank');
+            if (e.target.closest('.delete-report-btn')) {
+                const btn = e.target.closest('.delete-report-btn');
+                this.handleDeleteReport(btn.dataset.path, btn.dataset.filename);
             }
-
-            if (deleteBtn && deleteBtn.dataset.path) {
-                this.handleDeleteReport(deleteBtn.dataset.path, deleteBtn.dataset.filename);
+            if (e.target.closest('.view-report-btn')) {
+                const btn = e.target.closest('.view-report-btn');
+                window.open(btn.dataset.url, '_blank');
             }
         });
 
         document.addEventListener('subjectsUpdated', () => {
             this.state.isSubjectsLoading = false;
             this.updateSubjectDropdowns();
-            if (this.classEditor?.managerInstance?.isSubjectTextbookMgmtModalOpen?.()) {
-                this.classEditor.managerInstance.renderSubjectListForMgmt();
-                this.classEditor.managerInstance.populateSubjectSelectForTextbookMgmt();
-            }
             if (this.state.currentView === 'class-mgmt') this.displayCurrentClassInfo();
         });
 
@@ -365,13 +335,8 @@ const TeacherApp = {
                 this.initReportUploadView();
                 this.loadAndRenderUploadedReports();
             }
-            // ✨ 화면 초기화
-            if (this.state.currentView === 'daily-test-mgmt') {
-                this.analysisDashboard.initDailyTestView();
-            }
-            if (this.state.currentView === 'learning-status-mgmt') {
-                this.analysisDashboard.initLearningStatusView();
-            }
+            if (this.state.currentView === 'daily-test-mgmt') this.analysisDashboard.initDailyTestView();
+            if (this.state.currentView === 'learning-status-mgmt') this.analysisDashboard.initLearningStatusView();
         });
     },
 
@@ -391,39 +356,19 @@ const TeacherApp = {
     handleViewChange(viewName) {
         this.state.currentView = viewName;
         if (this.elements.navButtonsContainer) this.elements.navButtonsContainer.style.display = 'none';
-        
         Object.values(this.elements.views).forEach(view => { if (view) view.style.display = 'none'; });
 
         const viewToShow = this.elements.views[viewName];
-        if (viewToShow) {
-            viewToShow.style.display = 'block';
-        } else {
-            this.showDashboardMenu();
-            return;
-        }
+        if (viewToShow) viewToShow.style.display = 'block';
+        else { this.showDashboardMenu(); return; }
+
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'block';
 
         switch (viewName) {
-            case 'homework-dashboard': {
-                this.homeworkDashboard?.managerInstance?.populateHomeworkSelect();
-                const elements = this.homeworkDashboard?.managerInstance?.config?.elements;
-                if (elements) {
-                    const mgmtButtons = document.getElementById(elements.homeworkManagementButtons);
-                    const content = document.getElementById(elements.homeworkContent);
-                    const select = document.getElementById(elements.homeworkSelect);
-                    
-                    if (mgmtButtons) mgmtButtons.style.display = 'none';
-                    if (content) content.style.display = 'none';
-                    if (select) select.value = '';
-                }
-                break;
-            }
+            case 'homework-dashboard': this.homeworkDashboard?.managerInstance?.populateHomeworkSelect(); break;
             case 'qna-video-mgmt': this.classVideoManager?.initQnaView(); break;
             case 'lesson-mgmt':
                 this.populateSubjectSelectForMgmt();
-                if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'none';
-                if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block';
-                if (this.elements.subjectSelectForMgmt) this.elements.subjectSelectForMgmt.value = '';
                 break;
             case 'student-list-mgmt': this.renderStudentList(); break;
             case 'class-mgmt': this.displayCurrentClassInfo(); break;
@@ -432,68 +377,66 @@ const TeacherApp = {
                 this.initReportUploadView();
                 this.loadAndRenderUploadedReports();
                 break;
-                
-            // ✨ [추가] 분리된 뷰 초기화
-            case 'daily-test-mgmt': 
-                this.analysisDashboard.initDailyTestView(); 
-                break;
-            case 'learning-status-mgmt': 
-                this.analysisDashboard.initLearningStatusView(); 
-                break;
-                
-            default: this.showDashboardMenu(); break;
+            case 'daily-test-mgmt': this.analysisDashboard.initDailyTestView(); break;
+            case 'learning-status-mgmt': this.analysisDashboard.initLearningStatusView(); break;
         }
     },
 
     async handleClassSelection(event) {
         const selectedOption = event.target.options[event.target.selectedIndex];
         const newClassId = selectedOption.value;
-        const newClassName = selectedOption.text;
 
         this.state.selectedClassId = newClassId;
-        this.state.selectedClassName = newClassName;
-        this.state.selectedHomeworkId = null;
-        this.state.selectedSubjectIdForMgmt = null;
-        this.state.selectedLessonId = null;
-        this.state.selectedSubjectId = null;
-        this.state.selectedClassData = null;
+        this.state.selectedClassName = selectedOption.text;
+        
         this.state.studentsInClass.clear();
         this.state.textbooksBySubject = {};
         this.state.selectedReportDate = null;
         this.state.uploadedReports = [];
 
-        if (!this.state.selectedClassId) {
-            if (this.elements.mainContent) this.elements.mainContent.style.display = 'none';
-            if (this.state.currentView === 'student-list-mgmt') this.renderStudentList();
-            if (this.state.currentView === 'class-mgmt') this.displayCurrentClassInfo();
-            if (this.elements.gotoClassVideoMgmtBtn) this.elements.gotoClassVideoMgmtBtn.style.display = 'none';
-            this.homeworkDashboard.managerInstance?.resetUIState();
-            document.dispatchEvent(new CustomEvent('class-changed'));
+        if (!newClassId) {
+            this.showDashboardMenu();
             return;
         }
 
         this.state.isClassDataLoading = true;
-        if (this.state.currentView === 'class-mgmt') this.displayCurrentClassInfo();
-        if (this.state.currentView === 'student-list-mgmt') this.renderStudentList();
-
-        await this.fetchClassData(this.state.selectedClassId);
+        if (this.state.currentView === 'student-list-mgmt') this.renderStudentList(); // Show loading
+        
+        try {
+            // 학생 로드 (단일/배열 필드 모두 지원)
+            const q1 = query(collection(db, 'students'), where('classId', '==', newClassId));
+            const q2 = query(collection(db, 'students'), where('classIds', 'array-contains', newClassId));
+            const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+            
+            s1.forEach(d => this.state.studentsInClass.set(d.id, d.data().name));
+            s2.forEach(d => this.state.studentsInClass.set(d.id, d.data().name));
+            
+            // 반 정보 로드
+            const classDoc = await getDoc(doc(db, 'classes', newClassId));
+            this.state.selectedClassData = classDoc.exists() ? { id: classDoc.id, ...classDoc.data() } : null;
+            
+        } catch(e) { console.error(e); }
+        
         this.state.isClassDataLoading = false;
 
-        this.showDashboardMenu();
-        this.homeworkDashboard.managerInstance?.populateHomeworkSelect();
         document.dispatchEvent(new CustomEvent('class-changed'));
+        
+        if (this.state.currentView === 'student-list-mgmt') this.renderStudentList();
+        this.showDashboardMenu();
     },
 
+    // [이전에 생략되었던 함수 복원]
     async fetchClassData(classId) {
         this.state.studentsInClass.clear();
         this.state.selectedClassData = null;
 
         try {
-            const studentsQuery = query(collection(db, 'students'), where('classId', '==', classId));
-            const studentsSnapshot = await getDocs(studentsQuery);
-            studentsSnapshot.forEach(docSnap => {
-                this.state.studentsInClass.set(docSnap.id, docSnap.data().name);
-            });
+            const q1 = query(collection(db, 'students'), where('classId', '==', classId));
+            const q2 = query(collection(db, 'students'), where('classIds', 'array-contains', classId));
+            const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+            
+            s1.forEach(docSnap => this.state.studentsInClass.set(docSnap.id, docSnap.data().name));
+            s2.forEach(docSnap => this.state.studentsInClass.set(docSnap.id, docSnap.data().name));
         } catch (error) { console.error("Error fetching students:", error); }
 
         try {
@@ -517,11 +460,11 @@ const TeacherApp = {
             return;
         }
         if (!this.state.selectedClassId) {
-            container.innerHTML = '<p class="text-sm text-slate-500 p-4">반 선택 필요</p>';
+            container.innerHTML = '<p class="text-sm text-slate-500 p-4">반을 먼저 선택해주세요.</p>';
             return;
         }
         if (this.state.studentsInClass.size === 0) {
-            container.innerHTML = '<p class="text-sm text-slate-500 p-4">학생 없음</p>';
+            container.innerHTML = '<p class="text-sm text-slate-500 p-4">등록된 학생이 없습니다.</p>';
             return;
         }
 
@@ -529,7 +472,7 @@ const TeacherApp = {
             .sort(([, a], [, b]) => a.localeCompare(b));
         sortedStudents.forEach(([id, name]) => {
             const div = document.createElement('div');
-            div.className = "p-3 border-b border-slate-100 bg-white text-sm";
+            div.className = "p-3 border-b border-slate-100 bg-white text-sm hover:bg-slate-50";
             div.textContent = name;
             container.appendChild(div);
         });
@@ -539,13 +482,6 @@ const TeacherApp = {
         if (this.state.currentView !== 'class-mgmt') return;
         const { currentClassInfo, currentClassType, currentClassSubjectsList } = this.elements;
         if (!currentClassInfo) return;
-
-        if (this.state.isClassDataLoading) {
-            currentClassInfo.style.display = 'block';
-            currentClassType.textContent = '로딩 중...';
-            currentClassSubjectsList.innerHTML = '<li>로딩 중...</li>';
-            return;
-        }
 
         const classData = this.state.selectedClassData;
         if (!classData) {
@@ -557,103 +493,36 @@ const TeacherApp = {
         currentClassType.textContent = classData.classType === 'live-lecture' ? '현강반' : '자기주도반';
         currentClassSubjectsList.innerHTML = '';
 
-        if (this.state.isSubjectsLoading) {
-            currentClassSubjectsList.innerHTML = '<li>과목 로딩 중...</li>';
-            return;
-        }
-
         const classSubjects = classData.subjects || {};
         const subjectIds = Object.keys(classSubjects);
 
         if (subjectIds.length === 0) {
-            currentClassSubjectsList.innerHTML = '<li>과목 없음</li>';
+            currentClassSubjectsList.innerHTML = '<li>연결된 과목 없음</li>';
             return;
         }
 
-        const neededSubjectIds = subjectIds.filter(
-            id => !this.state.textbooksBySubject[id] && !this.state.areTextbooksLoading[id]
-        );
-
-        if (neededSubjectIds.length > 0) {
-            neededSubjectIds.forEach(id => this.state.areTextbooksLoading[id] = true);
-            currentClassSubjectsList.innerHTML = '<li>교재 로딩 중...</li>';
-            try {
-                const textbookPromises = neededSubjectIds.map(id => 
-                    getDocs(query(collection(db, 'textbooks'), where('subjectId', '==', id)))
-                );
-                const textbookSnapshots = await Promise.all(textbookPromises);
-
-                neededSubjectIds.forEach((id, index) => {
-                    this.state.textbooksBySubject[id] = textbookSnapshots[index].docs.map(d => ({
-                        id: d.id,
-                        name: d.data().name
-                    }));
-                    this.state.areTextbooksLoading[id] = false;
-                });
-                this.displayCurrentClassInfo();
-                return;
-            } catch (error) {
-                console.error(error);
-                neededSubjectIds.forEach(id => this.state.areTextbooksLoading[id] = false);
-            }
-        }
-
-        currentClassSubjectsList.innerHTML = '';
-        subjectIds.forEach(subjectId => {
-            const subjectInfo = this.state.subjects.find(s => s.id === subjectId);
-            const subjectName = subjectInfo ? subjectInfo.name : `과목(${subjectId})`;
-            const textbookIds = classSubjects[subjectId]?.textbooks || [];
-
+        subjectIds.forEach(subId => {
+            const subName = this.state.subjects.find(s => s.id === subId)?.name || '알 수 없는 과목';
             const li = document.createElement('li');
-            li.textContent = `${subjectName}`;
-            const textbooksP = document.createElement('p');
-            textbooksP.className = "text-xs pl-4";
-
-            if (textbookIds.length > 0) {
-                if (this.state.textbooksBySubject[subjectId]) {
-                    const textbookList = this.state.textbooksBySubject[subjectId];
-                    const names = textbookIds.map(id => textbookList.find(tb => tb.id === id)?.name).filter(Boolean);
-                    textbooksP.textContent = names.length > 0 ? `교재: ${names.join(', ')}` : `교재: ${textbookIds.length}개`;
-                    textbooksP.classList.add("text-slate-500");
-                } else {
-                    textbooksP.textContent = "교재 로딩 중...";
-                }
-            } else {
-                textbooksP.textContent = "교재 없음";
-                textbooksP.classList.add("text-slate-400");
-            }
-            li.appendChild(textbooksP);
+            li.textContent = subName;
             currentClassSubjectsList.appendChild(li);
         });
     },
 
     listenForSubjects() {
         this.state.isSubjectsLoading = true;
-        try {
-            const q = query(collection(db, 'subjects'), orderBy("name"));
-            onSnapshot(q, (snapshot) => {
-                const subjects = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-                this.state.subjects = subjects;
-                setSubjects(subjects);
-
-                this.state.isSubjectsLoading = false;
-                document.dispatchEvent(new CustomEvent('subjectsUpdated'));
-            }, (error) => {
-                console.error(error);
-                this.state.isSubjectsLoading = false;
-            });
-        } catch (error) {
-            console.error(error);
+        const q = query(collection(db, 'subjects'), orderBy("name"));
+        onSnapshot(q, (snapshot) => {
+            const subjects = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            this.state.subjects = subjects;
+            setSubjects(subjects);
             this.state.isSubjectsLoading = false;
-        }
+            document.dispatchEvent(new CustomEvent('subjectsUpdated'));
+        });
     },
 
     updateSubjectDropdowns() {
-        if (this.state.isSubjectsLoading) return;
         if (this.state.currentView === 'lesson-mgmt') this.populateSubjectSelectForMgmt();
-        if (this.homeworkDashboard.managerInstance && this.elements.assignHomeworkModal?.style.display === 'flex') {
-            this.homeworkDashboard.managerInstance.populateSubjectsForHomeworkModal();
-        }
     },
 
     async populateClassSelect() {
@@ -661,74 +530,36 @@ const TeacherApp = {
         if (!select) return;
         select.disabled = true;
         select.innerHTML = '<option>로딩 중...</option>';
-
         try {
-            const snapshot = await getDocs(query(collection(db, 'classes'), orderBy("name")));
+            const snap = await getDocs(query(collection(db, 'classes'), orderBy("name")));
             select.innerHTML = '<option value="">-- 반 선택 --</option>';
-            if (snapshot.empty) select.innerHTML += '<option disabled>반 없음</option>';
-            else {
-                snapshot.forEach(docSnap => {
-                    const option = document.createElement('option');
-                    option.value = docSnap.id;
-                    option.textContent = docSnap.data().name;
-                    select.appendChild(option);
-                });
-            }
-        } catch (error) {
-            console.error(error);
-            select.innerHTML = '<option>로드 실패</option>';
-        } finally {
-            select.disabled = false;
-        }
+            snap.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.data().name;
+                select.appendChild(opt);
+            });
+        } catch(e) { select.innerHTML = '<option>로드 실패</option>'; }
+        finally { select.disabled = false; }
     },
 
     populateSubjectSelectForMgmt() {
         const select = this.elements.subjectSelectForMgmt;
         if (!select) return;
-
-        if (this.state.isSubjectsLoading) {
-            select.innerHTML = '<option>로딩 중...</option>';
-            select.disabled = true;
-            return;
-        }
-
-        const currentSubjectId = select.value || this.state.selectedSubjectIdForMgmt;
+        const current = select.value || this.state.selectedSubjectIdForMgmt;
         select.innerHTML = '<option value="">-- 과목 선택 --</option>';
-
-        if (!this.state.subjects || this.state.subjects.length === 0) {
-            select.innerHTML += '<option disabled>과목 없음</option>';
-            select.disabled = true;
-            return;
-        }
-
-        select.disabled = false;
-        this.state.subjects.forEach(sub => {
-            const option = document.createElement('option');
-            option.value = sub.id;
-            option.textContent = sub.name;
-            select.appendChild(option);
+        this.state.subjects.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            select.appendChild(opt);
         });
-
-        if (currentSubjectId && this.state.subjects.some(s => s.id === currentSubjectId)) {
-            select.value = currentSubjectId;
-            this.state.selectedSubjectIdForMgmt = currentSubjectId;
-            if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'block';
-            if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'none';
-            if (this.lessonManager?.managerInstance?.handleLessonFilterChange) {
-                this.lessonManager.managerInstance.handleLessonFilterChange();
-            }
-        } else {
-            this.state.selectedSubjectIdForMgmt = null;
-            if (this.elements.lessonsList) this.elements.lessonsList.innerHTML = '';
-            select.value = '';
-            if (this.elements.lessonsManagementContent) this.elements.lessonsManagementContent.style.display = 'none';
-            if (this.elements.lessonPrompt) this.elements.lessonPrompt.style.display = 'block';
-        }
+        if (current) select.value = current;
     },
 
     initReportUploadView() {
         if (this.elements.reportCurrentClassSpan) {
-            this.elements.reportCurrentClassSpan.textContent = this.state.selectedClassName || '반 선택 필요';
+            this.elements.reportCurrentClassSpan.textContent = this.state.selectedClassName || '-';
         }
         this.state.selectedReportDate = null;
         this.state.uploadedReports = [];
