@@ -1,39 +1,42 @@
 // src/admin/adminReportManager.js
+
 import { reportManager as sharedReportManager } from "../shared/reportManager.js";
 import { showToast } from "../shared/utils.js";
 
 export const adminReportManager = {
     app: null,
-    elements: {
-        reportClassSelect: 'admin-report-class-select',
-        reportDateInput: 'admin-report-date',
-        reportFilesInput: 'admin-report-files-input',
-        uploadReportsBtn: 'admin-upload-reports-btn',
-        reportUploadStatus: 'admin-report-upload-status',
-        uploadedReportsList: 'admin-uploaded-reports-list'
-    },
+    elements: {},
 
     init(app) {
         this.app = app;
+        this.cacheElements();
         this.bindEvents();
     },
 
-    bindEvents() {
-        const el = (id) => document.getElementById(this.elements[id]);
-        
-        el('uploadReportsBtn')?.addEventListener('click', () => this.handleReportUpload());
-        el('reportClassSelect')?.addEventListener('change', () => this.loadAndRenderUploadedReports());
-        el('reportDateInput')?.addEventListener('change', () => this.loadAndRenderUploadedReports());
+    cacheElements() {
+        this.elements = {
+            reportClassSelect: document.getElementById('admin-report-class-select'),
+            reportDateInput: document.getElementById('admin-report-date'),
+            reportFilesInput: document.getElementById('admin-report-files-input'),
+            uploadReportsBtn: document.getElementById('admin-upload-reports-btn'),
+            reportUploadStatus: document.getElementById('admin-report-upload-status'),
+            uploadedReportsList: document.getElementById('admin-uploaded-reports-list')
+        };
     },
 
-    // 뷰 초기화 시 호출
+    bindEvents() {
+        this.elements.uploadReportsBtn?.addEventListener('click', () => this.handleReportUpload());
+        this.elements.reportClassSelect?.addEventListener('change', () => this.loadAndRenderUploadedReports());
+        this.elements.reportDateInput?.addEventListener('change', () => this.loadAndRenderUploadedReports());
+    },
+
     initView() {
         this.populateReportClassSelect();
         this.loadAndRenderUploadedReports();
     },
 
     populateReportClassSelect() {
-        const sel = document.getElementById(this.elements.reportClassSelect);
+        const sel = this.elements.reportClassSelect;
         if (!sel) return;
         
         const classes = this.app.state.classes || []; 
@@ -54,12 +57,11 @@ export const adminReportManager = {
     },
     
     async handleReportUpload() {
-        const el = (id) => document.getElementById(this.elements[id]);
-        const dateInput = el('reportDateInput');
-        const filesInput = el('reportFilesInput');
-        const statusEl = el('reportUploadStatus');
-        const uploadBtn = el('uploadReportsBtn');
-        const classSelect = el('reportClassSelect');
+        const dateInput = this.elements.reportDateInput;
+        const filesInput = this.elements.reportFilesInput;
+        const statusEl = this.elements.reportUploadStatus;
+        const uploadBtn = this.elements.uploadReportsBtn;
+        const classSelect = this.elements.reportClassSelect;
 
         if (!dateInput || !filesInput || !statusEl || !uploadBtn) return;
 
@@ -76,9 +78,7 @@ export const adminReportManager = {
 
         const uploadPromises = [];
         for (const file of files) {
-            uploadPromises.push(
-                sharedReportManager.uploadReport(file, classId, testDate)
-            );
+            uploadPromises.push(sharedReportManager.uploadReport(file, classId, testDate));
         }
 
         try {
@@ -97,10 +97,9 @@ export const adminReportManager = {
     },
 
     async loadAndRenderUploadedReports() {
-        const el = (id) => document.getElementById(this.elements[id]);
-        const cls = el('reportClassSelect')?.value;
-        const date = el('reportDateInput')?.value;
-        const list = el('uploadedReportsList');
+        const cls = this.elements.reportClassSelect?.value;
+        const date = this.elements.reportDateInput?.value;
+        const list = this.elements.uploadedReportsList;
 
         if (!cls || !date || !list) return;
 
@@ -128,7 +127,7 @@ export const adminReportManager = {
                     if(confirm(`'${r.fileName}' 파일을 삭제하시겠습니까?`)) {
                         const path = `reports/${cls}/${yyyymmdd}/${r.fileName}`;
                         await this.tryDeleteReport(cls, date, r.fileName, path);
-                        this.loadAndRenderUploadedReports(); // 목록 갱신
+                        this.loadAndRenderUploadedReports();
                     }
                 });
                 ul.appendChild(li);
@@ -141,9 +140,7 @@ export const adminReportManager = {
     },
 
     async tryDeleteReport(classId, dateStr, fileName, primaryPath) {
-        // 1차 시도
         let success = await sharedReportManager.deleteReport(primaryPath);
-        // 실패 시 레거시 경로 시도
         if (!success) {
              const rootPath = `reports/${classId}/${fileName}`;
              success = await sharedReportManager.deleteReport(rootPath);

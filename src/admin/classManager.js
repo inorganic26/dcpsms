@@ -1,6 +1,6 @@
 // src/admin/classManager.js
 
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, writeBatch } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 import { getSubjects } from "../store/subjectStore.js"; 
@@ -13,20 +13,33 @@ export const classManager = {
 
     init(app) {
         this.app = app;
-        this.elements = app.elements;
+        this.cacheElements();
         this.addEventListeners();
         this.loadClasses(); 
 
-        document.addEventListener('classesUpdated', () => {
-            this.loadClasses();
-        });
-        
-        // ✨ 교재 데이터가 로드되면 화면 갱신 (모달이 열려있을 경우 대비)
+        document.addEventListener('classesUpdated', () => this.loadClasses());
         document.addEventListener('textbooks-updated', () => {
              if (this.app.state.editingClass) {
                  this.renderSubjectSettings(this.app.state.editingClass.subjects || {});
              }
         });
+    },
+
+    cacheElements() {
+        this.elements = {
+            newClassNameInput: document.getElementById('admin-new-class-name'),
+            addClassBtn: document.getElementById('admin-add-class-btn'),
+            classesList: document.getElementById('admin-classes-list'),
+            
+            editClassModal: document.getElementById('admin-edit-class-modal'),
+            editClassName: document.getElementById('admin-edit-class-name'),
+            editClassTypeSelect: document.getElementById('admin-edit-class-type'),
+            editClassSubjectsContainer: document.getElementById('admin-edit-class-subjects-and-textbooks'),
+            
+            closeEditClassModalBtn: document.getElementById('admin-close-edit-class-modal-btn'),
+            cancelEditClassBtn: document.getElementById('admin-cancel-edit-class-btn'),
+            saveClassEditBtn: document.getElementById('admin-save-class-edit-btn'),
+        };
     },
 
     addEventListeners() {
@@ -42,24 +55,15 @@ export const classManager = {
         if (!name) { showToast("반 이름을 입력하세요.", true); return; }
 
         try {
-            await addDoc(collection(db, "classes"), {
-                name,
-                classType: 'live-lecture', 
-                subjects: {},
-                createdAt: new Date()
-            });
+            await addDoc(collection(db, "classes"), { name, classType: 'live-lecture', subjects: {}, createdAt: new Date() });
             showToast("반이 생성되었습니다.", false);
             nameInput.value = "";
-        } catch (error) {
-            console.error(error);
-            showToast("생성 실패", true);
-        }
+        } catch (error) { console.error(error); showToast("생성 실패", true); }
     },
 
     async loadClasses() {
         const listEl = this.elements.classesList;
         if (!listEl) return;
-
         const classes = getClasses(); 
         listEl.innerHTML = "";
 
@@ -71,28 +75,18 @@ export const classManager = {
         classes.forEach(cls => {
             const div = document.createElement("div");
             div.className = "flex justify-between items-center p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition mb-2";
-            
             const typeBadge = cls.classType === 'live-lecture' 
                 ? '<span class="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold mr-2">현강</span>' 
                 : '<span class="text-xs bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold mr-2">자습</span>';
 
             div.innerHTML = `
-                <div>
-                    <h3 class="font-bold text-slate-700 text-lg flex items-center">${typeBadge}${cls.name}</h3>
-                </div>
+                <div><h3 class="font-bold text-slate-700 text-lg flex items-center">${typeBadge}${cls.name}</h3></div>
                 <div class="flex gap-2">
-                    <button class="edit-btn text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50 transition" title="수정">
-                        <span class="material-icons">edit</span>
-                    </button>
-                    <button class="delete-btn text-slate-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition" title="삭제">
-                        <span class="material-icons">delete</span>
-                    </button>
-                </div>
-            `;
-
+                    <button class="edit-btn text-slate-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50 transition"><span class="material-icons">edit</span></button>
+                    <button class="delete-btn text-slate-400 hover:text-red-600 p-2 rounded-full hover:bg-red-50 transition"><span class="material-icons">delete</span></button>
+                </div>`;
             div.querySelector(".edit-btn").addEventListener("click", () => this.openEditModal(cls));
             div.querySelector(".delete-btn").addEventListener("click", () => this.deleteClass(cls.id, cls.name));
-
             listEl.appendChild(div);
         });
     },
@@ -100,45 +94,41 @@ export const classManager = {
     openEditModal(cls) {
         this.app.state.editingClass = cls;
         const modal = this.elements.editClassModal;
-        const nameInput = this.elements.editClassName;
-        const typeSelect = this.elements.editClassTypeSelect;
-        
-        nameInput.value = cls.name;
-        typeSelect.value = cls.classType || 'live-lecture'; 
+        if(!modal) return;
 
-        // ✨ 모달 열 때 교재 목록 렌더링
+        this.elements.editClassName.value = cls.name;
+        this.elements.editClassTypeSelect.value = cls.classType || 'live-lecture'; 
         this.renderSubjectSettings(cls.subjects || {});
         
         modal.classList.remove('hidden');
-        modal.classList.add('flex');
+        modal.style.display = 'flex';
     },
 
     closeEditModal() {
-        this.elements.editClassModal.classList.add('hidden');
-        this.elements.editClassModal.classList.remove('flex');
+        const modal = this.elements.editClassModal;
+        if(modal) {
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+        }
         this.app.state.editingClass = null;
     },
 
-    // ✨ [핵심 수정] 과목/교재 설정 렌더링 (최상위 교재 컬렉션 사용)
     renderSubjectSettings(currentSubjects) {
         const container = this.elements.editClassSubjectsContainer;
         if(!container) return;
         
         const allSubjects = getSubjects();
-        const allTextbooks = getTextbooks(); // 여기서 최상위 교재 목록을 가져옴
-
+        const allTextbooks = getTextbooks(); 
         container.innerHTML = '';
         
         if (allSubjects.length === 0) {
-            container.innerHTML = '<p class="text-sm text-slate-400 p-2">등록된 과목이 없습니다. 과목 관리에서 먼저 등록해주세요.</p>';
-            return;
+            container.innerHTML = '<p class="text-sm text-slate-400 p-2">등록된 과목이 없습니다.</p>'; return;
         }
         
         allSubjects.forEach(subj => {
             const isChecked = !!currentSubjects[subj.id];
             const div = document.createElement('div');
             div.className = "mb-3 pb-3 border-b border-slate-200 last:border-0";
-            
             div.innerHTML = `
                 <div class="flex items-center gap-2 mb-2">
                     <input type="checkbox" id="subj-${subj.id}" class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" ${isChecked ? 'checked' : ''}>
@@ -147,31 +137,21 @@ export const classManager = {
                 <div id="textbooks-${subj.id}" class="pl-6 space-y-1 ${isChecked ? '' : 'hidden'}"></div>
             `;
 
-            // ✨ 교재 필터링: subjectId가 일치하는 교재 찾기
             const tbContainer = div.querySelector(`#textbooks-${subj.id}`);
             const subjTextbooks = allTextbooks.filter(tb => tb.subjectId === subj.id);
             
             if (subjTextbooks.length === 0) {
-                tbContainer.innerHTML = '<p class="text-xs text-slate-400">등록된 교재 없음 (교재 관리에서 등록 필요)</p>';
+                tbContainer.innerHTML = '<p class="text-xs text-slate-400">등록된 교재 없음</p>';
             } else {
                 subjTextbooks.forEach(tb => {
-                    // 기존 설정에 이 교재 ID가 포함되어 있는지 확인
                     const isTbChecked = currentSubjects[subj.id]?.textbooks?.includes(tb.id);
                     const tbDiv = document.createElement('div');
                     tbDiv.className = "flex items-center gap-2";
-                    tbDiv.innerHTML = `
-                        <input type="checkbox" class="tb-check w-3 h-3 text-blue-500 rounded border-gray-300" value="${tb.id}" ${isTbChecked ? 'checked' : ''}>
-                        <span class="text-sm text-slate-600">${tb.name}</span>
-                    `;
+                    tbDiv.innerHTML = `<input type="checkbox" class="tb-check w-3 h-3 text-blue-500 rounded border-gray-300" value="${tb.id}" ${isTbChecked ? 'checked' : ''}><span class="text-sm text-slate-600">${tb.name}</span>`;
                     tbContainer.appendChild(tbDiv);
                 });
             }
-
-            const subjCheck = div.querySelector(`#subj-${subj.id}`);
-            subjCheck.addEventListener('change', (e) => {
-                tbContainer.classList.toggle('hidden', !e.target.checked);
-            });
-
+            div.querySelector(`#subj-${subj.id}`).addEventListener('change', (e) => tbContainer.classList.toggle('hidden', !e.target.checked));
             container.appendChild(div);
         });
     },
@@ -182,7 +162,6 @@ export const classManager = {
 
         const newName = this.elements.editClassName.value.trim();
         const newType = this.elements.editClassTypeSelect.value;
-        
         if (!newName) { showToast("반 이름을 입력하세요.", true); return; }
 
         const subjectsData = {};
@@ -193,48 +172,26 @@ export const classManager = {
             const subjId = chk.id.replace('subj-', '');
             const tbChecks = container.querySelectorAll(`#textbooks-${subjId} .tb-check:checked`);
             const tbIds = Array.from(tbChecks).map(cb => cb.value);
-            
-            subjectsData[subjId] = {
-                active: true,
-                textbooks: tbIds
-            };
+            subjectsData[subjId] = { active: true, textbooks: tbIds };
         });
 
         try {
-            await updateDoc(doc(db, "classes", cls.id), {
-                name: newName,
-                classType: newType, 
-                subjects: subjectsData
-            });
-            showToast("반 정보가 수정되었습니다.", false);
+            await updateDoc(doc(db, "classes", cls.id), { name: newName, classType: newType, subjects: subjectsData });
+            showToast("수정되었습니다.", false);
             this.closeEditModal();
-        } catch (error) {
-            console.error(error);
-            showToast("수정 실패", true);
-        }
+        } catch (error) { console.error(error); showToast("수정 실패", true); }
     },
 
     async deleteClass(classId, className) {
-        if (!confirm(`'${className}' 반을 정말 삭제하시겠습니까?\n\n⚠️ 주의: 이 반에 속해있던 학생들은 모두 '미배정' 상태로 변경됩니다.`)) return;
-
+        if (!confirm(`'${className}' 반을 삭제하시겠습니까?\n학생들은 미배정 처리됩니다.`)) return;
         try {
             const batch = writeBatch(db);
-            const classRef = doc(db, "classes", classId);
-            batch.delete(classRef);
-
+            batch.delete(doc(db, "classes", classId));
             const q = query(collection(db, "students"), where("classId", "==", classId));
             const snapshot = await getDocs(q);
-            
-            snapshot.forEach(docSnap => {
-                batch.update(docSnap.ref, { classId: null });
-            });
-
+            snapshot.forEach(docSnap => batch.update(docSnap.ref, { classId: null }));
             await batch.commit();
-            showToast("반이 삭제되었고, 학생들은 미배정 처리되었습니다.", false);
-            
-        } catch (error) {
-            console.error("반 삭제 중 오류:", error);
-            showToast("삭제 중 오류가 발생했습니다.", true);
-        }
+            showToast("반이 삭제되었습니다.", false);
+        } catch (error) { console.error(error); showToast("삭제 실패", true); }
     }
 };

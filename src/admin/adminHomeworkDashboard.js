@@ -1,87 +1,80 @@
 // src/admin/adminHomeworkDashboard.js
 
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 import { homeworkManagerHelper } from "../shared/homeworkManager.js";
 
 export const adminHomeworkDashboard = {
-    elements: {
-        modal: 'admin-assign-homework-modal',
-        modalTitle: 'admin-homework-modal-title',
-        titleInput: 'admin-homework-title',
-        subjectSelect: 'admin-homework-subject-select',
-        textbookSelect: 'admin-homework-textbook-select',
-        pagesInput: 'admin-homework-pages',
-        totalPagesInput: 'admin-homework-total-pages',
-        dueDateInput: 'admin-homework-due-date',
-        
-        saveBtn: 'admin-save-homework-btn',
-        closeBtn: 'admin-close-homework-modal-btn',
-        cancelBtn: 'admin-cancel-homework-btn',
-        
-        classSelect: 'admin-homework-class-select',
-        homeworkMainContent: 'admin-homework-main-content',
-        homeworkListSelect: 'admin-homework-select',
-        homeworkContent: 'admin-homework-content',
-        homeworkTableBody: 'admin-homework-table-body',
-        selectedHomeworkTitle: 'admin-selected-homework-title',
-        mgmtButtons: 'admin-homework-management-buttons',
-        editBtn: 'admin-edit-homework-btn',
-        deleteBtn: 'admin-delete-homework-btn',
-        placeholder: 'admin-homework-placeholder',
-        
-        assignBtn: 'admin-assign-homework-btn',
-    },
-    
+    elements: {},
     state: {
         selectedClassId: null,
         selectedHomeworkId: null,
         editingHomework: null,
-        // 렌더링용 데이터 캐시
         cachedHomeworkData: null,
         cachedSubmissions: {},
         cachedStudents: [],
     },
-
-    // 리스너 관리
     unsubHomework: null,
     unsubSubmissions: null,
 
     init(app) {
         this.app = app;
+        this.cacheElements();
         this.addEventListeners();
         this.populateClassSelect(); 
     },
 
-    addEventListeners() {
-        const el = (id) => document.getElementById(this.elements[id]);
+    cacheElements() {
+        this.elements = {
+            modal: document.getElementById('admin-assign-homework-modal'),
+            modalTitle: document.getElementById('admin-homework-modal-title'),
+            titleInput: document.getElementById('admin-homework-title'),
+            subjectSelect: document.getElementById('admin-homework-subject-select'),
+            textbookSelect: document.getElementById('admin-homework-textbook-select'),
+            pagesInput: document.getElementById('admin-homework-pages'),
+            totalPagesInput: document.getElementById('admin-homework-total-pages'),
+            dueDateInput: document.getElementById('admin-homework-due-date'),
+            
+            saveBtn: document.getElementById('admin-save-homework-btn'),
+            closeBtn: document.getElementById('admin-close-homework-modal-btn'),
+            cancelBtn: document.getElementById('admin-cancel-homework-btn'),
+            
+            classSelect: document.getElementById('admin-homework-class-select'),
+            homeworkMainContent: document.getElementById('admin-homework-main-content'),
+            homeworkListSelect: document.getElementById('admin-homework-select'),
+            homeworkContent: document.getElementById('admin-homework-content'),
+            homeworkTableBody: document.getElementById('admin-homework-table-body'),
+            selectedHomeworkTitle: document.getElementById('admin-selected-homework-title'),
+            mgmtButtons: document.getElementById('admin-homework-management-buttons'),
+            editBtn: document.getElementById('admin-edit-homework-btn'),
+            deleteBtn: document.getElementById('admin-delete-homework-btn'),
+            placeholder: document.getElementById('admin-homework-placeholder'),
+            assignBtn: document.getElementById('admin-assign-homework-btn'),
+        };
+    },
 
-        el('classSelect')?.addEventListener('change', (e) => this.handleClassChange(e.target.value));
-        el('homeworkListSelect')?.addEventListener('change', (e) => this.loadHomeworkDetails(e.target.value));
-        el('assignBtn')?.addEventListener('click', () => this.openModal('create'));
-        
-        el('saveBtn')?.addEventListener('click', () => this.saveHomework());
-        el('closeBtn')?.addEventListener('click', () => this.closeModal());
-        el('cancelBtn')?.addEventListener('click', () => this.closeModal());
-        el('editBtn')?.addEventListener('click', () => this.openModal('edit'));
-        el('deleteBtn')?.addEventListener('click', () => this.deleteHomework());
-        el('subjectSelect')?.addEventListener('change', (e) => this.handleSubjectChange(e.target.value));
+    addEventListeners() {
+        this.elements.classSelect?.addEventListener('change', (e) => this.handleClassChange(e.target.value));
+        this.elements.homeworkListSelect?.addEventListener('change', (e) => this.loadHomeworkDetails(e.target.value));
+        this.elements.assignBtn?.addEventListener('click', () => this.openModal('create'));
+        this.elements.saveBtn?.addEventListener('click', () => this.saveHomework());
+        this.elements.closeBtn?.addEventListener('click', () => this.closeModal());
+        this.elements.cancelBtn?.addEventListener('click', () => this.closeModal());
+        this.elements.editBtn?.addEventListener('click', () => this.openModal('edit'));
+        this.elements.deleteBtn?.addEventListener('click', () => this.deleteHomework());
+        this.elements.subjectSelect?.addEventListener('change', (e) => this.handleSubjectChange(e.target.value));
     },
 
     async populateClassSelect() {
-        const select = document.getElementById(this.elements.classSelect);
+        const select = this.elements.classSelect;
         if (!select) return;
-        if (select.options.length > 1 && select.options[1].value !== "") return;
-
         select.innerHTML = '<option value="">로딩 중...</option>';
         try {
             const q = query(collection(db, 'classes'), orderBy('name'));
             const snap = await getDocs(q);
             select.innerHTML = '<option value="">-- 반 선택 --</option>';
-            snap.forEach(doc => {
-                select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`;
-            });
+            snap.forEach(doc => select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`);
         } catch (e) {
             console.error(e);
             select.innerHTML = '<option value="">로드 실패</option>';
@@ -92,18 +85,16 @@ export const adminHomeworkDashboard = {
         this.state.selectedClassId = classId;
         this.state.selectedHomeworkId = null;
         
-        const mainContent = document.getElementById(this.elements.homeworkMainContent);
         if (classId) {
-            if(mainContent) mainContent.style.display = 'block';
+            if(this.elements.homeworkMainContent) this.elements.homeworkMainContent.style.display = 'block';
             this.loadHomeworkList(classId);
         } else {
-            if(mainContent) mainContent.style.display = 'none';
+            if(this.elements.homeworkMainContent) this.elements.homeworkMainContent.style.display = 'none';
         }
         
-        const el = (id) => document.getElementById(this.elements[id]);
-        if(el('homeworkContent')) el('homeworkContent').style.display = 'none';
-        if(el('placeholder')) el('placeholder').style.display = 'flex';
-        if(el('mgmtButtons')) el('mgmtButtons').style.display = 'none';
+        if(this.elements.homeworkContent) this.elements.homeworkContent.style.display = 'none';
+        if(this.elements.placeholder) this.elements.placeholder.style.display = 'flex';
+        if(this.elements.mgmtButtons) this.elements.mgmtButtons.style.display = 'none';
 
         this.clearListeners();
     },
@@ -114,23 +105,19 @@ export const adminHomeworkDashboard = {
     },
 
     async loadHomeworkList(classId) {
-        const select = document.getElementById(this.elements.homeworkListSelect);
+        const select = this.elements.homeworkListSelect;
         if (!select) return;
         select.innerHTML = '<option>로딩 중...</option>';
         try {
             const q = query(collection(db, 'homeworks'), where('classId', '==', classId), orderBy('createdAt', 'desc'));
             const snap = await getDocs(q);
-            select.innerHTML = ''; 
+            select.innerHTML = '<option value="">-- 숙제 선택 --</option>';
             if (snap.empty) {
-                select.innerHTML = '<option disabled>(등록된 숙제 없음)</option>';
+                select.innerHTML += '<option disabled>(등록된 숙제 없음)</option>';
             } else {
-                select.innerHTML = '<option value="">-- 숙제 선택 --</option>';
                 snap.forEach(doc => {
                     const data = doc.data();
-                    const opt = document.createElement('option');
-                    opt.value = doc.id;
-                    opt.text = data.title ? data.title : "(제목 없음)";
-                    select.add(opt);
+                    select.innerHTML += `<option value="${doc.id}">${data.title || "(제목 없음)"}</option>`;
                 });
             }
         } catch (e) { select.innerHTML = '<option>로드 실패</option>'; }
@@ -141,214 +128,147 @@ export const adminHomeworkDashboard = {
         this.clearListeners();
 
         this.state.selectedHomeworkId = homeworkId;
-        
-        // 초기화
         this.state.cachedHomeworkData = null;
         this.state.cachedSubmissions = {};
         this.state.cachedStudents = [];
 
-        const el = (id) => document.getElementById(this.elements[id]);
-        el('homeworkContent').style.display = 'flex';
-        el('homeworkContent').classList.remove('hidden');
-        el('placeholder').style.display = 'none';
-        el('mgmtButtons').style.display = 'flex';
-        el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터를 불러오는 중...</td></tr>';
+        this.elements.homeworkContent.style.display = 'flex';
+        this.elements.homeworkContent.classList.remove('hidden');
+        this.elements.placeholder.style.display = 'none';
+        this.elements.mgmtButtons.style.display = 'flex';
+        this.elements.homeworkTableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터를 불러오는 중...</td></tr>';
 
-        // 1. 학생 목록 미리 로드
+        // 학생 목록 로드
         try {
             const studentsSnap = await getDocs(collection(db, 'students'));
             this.state.cachedStudents = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        } catch (e) {
-            console.error("학생 목록 로드 실패", e);
-        }
+        } catch (e) { console.error("학생 목록 로드 실패", e); }
 
-        // 2. 숙제 기본 정보 리스너 (구형 데이터 포함)
+        // 숙제 정보 리스너
         this.unsubHomework = onSnapshot(doc(db, 'homeworks', homeworkId), (docSnap) => {
             if (!docSnap.exists()) {
-                el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
+                this.elements.homeworkTableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
                 return;
             }
             const hwData = docSnap.data();
             this.state.editingHomework = { id: homeworkId, ...hwData };
             this.state.cachedHomeworkData = hwData;
-            el('selectedHomeworkTitle').textContent = hwData.title || "(제목 없음)";
-            
+            this.elements.selectedHomeworkTitle.textContent = hwData.title || "(제목 없음)";
             this.renderHomeworkTable();
         });
 
-        // 3. 제출 현황 리스너 (신규 서브컬렉션 구독)
+        // 제출 현황 리스너
         const subColRef = collection(db, 'homeworks', homeworkId, 'submissions');
         this.unsubSubmissions = onSnapshot(subColRef, (snapshot) => {
             const submissions = {};
-            snapshot.forEach(doc => {
-                submissions[doc.id] = doc.data();
-            });
+            snapshot.forEach(doc => submissions[doc.id] = doc.data());
             this.state.cachedSubmissions = submissions;
             this.renderHomeworkTable();
         });
     },
 
     renderHomeworkTable() {
-        const hwData = this.state.cachedHomeworkData;
-        const newSubmissions = this.state.cachedSubmissions; // 신규 데이터
-        const students = this.state.cachedStudents;
-        const currentClassId = this.state.selectedClassId;
-
-        // 데이터 로딩 대기
+        const { cachedHomeworkData: hwData, cachedSubmissions: newSubmissions, cachedStudents: students, selectedClassId: currentClassId } = this.state;
         if (!hwData || !students.length) return;
 
-        // [핵심] 구형 데이터(필드 저장 방식) 가져오기
-        const oldSubmissions = hwData.submissions || {};
-
-        const el = (id) => document.getElementById(this.elements[id]);
-        const tbody = el('homeworkTableBody');
-        const classSelect = document.getElementById(this.elements.classSelect);
-        const className = classSelect && classSelect.selectedIndex > -1 ? classSelect.options[classSelect.selectedIndex].text : '반';
+        const oldSubmissions = hwData.submissions || {}; // Fallback
+        const tbody = this.elements.homeworkTableBody;
+        const className = this.elements.classSelect.options[this.elements.classSelect.selectedIndex].text;
 
         tbody.innerHTML = '';
         let hasStudent = false;
 
         students.forEach(student => {
-            // 해당 반 학생인지 확인
-            let isInClass = false;
+            let isInClass = student.classId === currentClassId;
             if (student.classIds && Array.isArray(student.classIds)) {
                 if (student.classIds.includes(currentClassId)) isInClass = true;
-            } else if (student.classId === currentClassId) { 
-                isInClass = true; 
             }
 
             if (isInClass) {
                 hasStudent = true;
-                
-                // [핵심] 신규 데이터가 있으면 그걸 쓰고, 없으면 구형 데이터를 씁니다 (Fallback)
                 const sub = newSubmissions[student.id] || oldSubmissions[student.id];
-                
                 const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                 const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
                 const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, className);
 
-                let actionBtn = '';
-                if (sub && !sub.manualComplete) {
-                    actionBtn = `
-                        <button class="admin-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
-                                data-student-id="${student.id}" title="페이지 수가 부족해도 완료로 처리합니다">
-                            ✅ 확인
-                        </button>
-                    `;
-                }
+                let actionBtn = (sub && !sub.manualComplete) ? `
+                    <button class="admin-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
+                            data-student-id="${student.id}" title="강제 완료 처리">✅ 확인</button>` : '';
 
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-slate-50 border-b";
-                tr.innerHTML = `
-                    <td class="p-3 font-medium text-slate-700">${student.name}</td>
-                    <td class="p-3 ${statusInfo.color}">
-                        ${statusInfo.text}
-                        ${actionBtn}
-                    </td>
-                    <td class="p-3 text-xs text-slate-500">${date}</td>
-                    <td class="p-3 text-center">
-                        <div>${buttonHtml}</div>
-                    </td>
-                `;
-                tbody.appendChild(tr);
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 border-b">
+                        <td class="p-3 font-medium text-slate-700">${student.name}</td>
+                        <td class="p-3 ${statusInfo.color}">${statusInfo.text} ${actionBtn}</td>
+                        <td class="p-3 text-xs text-slate-500">${date}</td>
+                        <td class="p-3 text-center"><div>${buttonHtml}</div></td>
+                    </tr>`;
             }
         });
 
-        // 관리자 버튼 이벤트 위임
         tbody.querySelectorAll('.admin-force-complete-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const sId = e.target.dataset.studentId;
-                this.forceCompleteHomework(this.state.selectedHomeworkId, sId);
-            });
+            btn.addEventListener('click', (e) => this.forceCompleteHomework(this.state.selectedHomeworkId, e.target.dataset.studentId));
         });
 
-        if (!hasStudent) {
-            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">이 반에 등록된 학생이 없습니다.</td></tr>';
-        }
+        if (!hasStudent) tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">이 반에 등록된 학생이 없습니다.</td></tr>';
     },
 
     async forceCompleteHomework(homeworkId, studentId) {
         if (!confirm("페이지 수가 부족해도 '완료' 상태로 변경하시겠습니까?")) return;
         try {
-            // 강제 완료 시에는 무조건 '신규 방식(서브컬렉션)'으로 저장하여 마이그레이션 효과를 냄
-            const subRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
-            await setDoc(subRef, {
-                studentDocId: studentId,
-                manualComplete: true,
-                status: 'completed',
-                updatedAt: serverTimestamp()
+            await setDoc(doc(db, 'homeworks', homeworkId, 'submissions', studentId), {
+                studentDocId: studentId, manualComplete: true, status: 'completed', updatedAt: serverTimestamp()
             }, { merge: true });
-
             showToast("완료 처리되었습니다.", false);
-        } catch (e) {
-            console.error(e);
-            showToast("처리 실패: " + e.message, true);
-        }
+        } catch (e) { console.error(e); showToast("처리 실패", true); }
     },
 
     async openModal(mode) {
-        const el = (id) => document.getElementById(this.elements[id]);
-        const modal = el('modal');
-        const titleEl = el('modalTitle');
-
-        if (!modal) return;
-
         const isEdit = mode === 'edit';
-        if (titleEl) titleEl.textContent = isEdit ? '숙제 수정' : '새 숙제 등록';
-        
+        this.elements.modalTitle.textContent = isEdit ? '숙제 수정' : '새 숙제 등록';
         await this.loadSubjects();
 
         if (isEdit && this.state.editingHomework) {
             const hw = this.state.editingHomework;
-            el('titleInput').value = hw.title;
-            el('pagesInput').value = hw.pages || '';
-            if(el('totalPagesInput')) el('totalPagesInput').value = hw.totalPages || '';
-            el('dueDateInput').value = hw.dueDate || '';
+            this.elements.titleInput.value = hw.title;
+            this.elements.pagesInput.value = hw.pages || '';
+            if(this.elements.totalPagesInput) this.elements.totalPagesInput.value = hw.totalPages || '';
+            this.elements.dueDateInput.value = hw.dueDate || '';
             
-            const subjSelect = el('subjectSelect');
-            if (hw.subjectId && subjSelect) {
-                subjSelect.value = hw.subjectId;
+            if (hw.subjectId) {
+                this.elements.subjectSelect.value = hw.subjectId;
                 await this.handleSubjectChange(hw.subjectId);
-                el('textbookSelect').value = hw.textbookId || '';
+                this.elements.textbookSelect.value = hw.textbookId || '';
             }
         } else {
-            el('titleInput').value = '';
-            el('pagesInput').value = '';
-            if(el('totalPagesInput')) el('totalPagesInput').value = '';
-            el('dueDateInput').value = '';
-            if(el('subjectSelect')) el('subjectSelect').value = '';
-            if(el('textbookSelect')) {
-                el('textbookSelect').innerHTML = '<option value="">교재 선택</option>';
-                el('textbookSelect').disabled = true;
-            }
+            this.elements.titleInput.value = '';
+            this.elements.pagesInput.value = '';
+            if(this.elements.totalPagesInput) this.elements.totalPagesInput.value = '';
+            this.elements.dueDateInput.value = '';
+            this.elements.subjectSelect.value = '';
+            this.elements.textbookSelect.innerHTML = '<option value="">교재 선택</option>';
+            this.elements.textbookSelect.disabled = true;
             this.state.editingHomework = null;
         }
-
-        modal.style.display = 'flex';
-        modal.classList.remove('hidden');
+        this.elements.modal.style.display = 'flex';
     },
 
     closeModal() {
-        const modal = document.getElementById(this.elements.modal);
-        if(modal) { modal.style.display = 'none'; modal.classList.add('hidden'); }
+        this.elements.modal.style.display = 'none';
         this.state.editingHomework = null;
     },
 
     async loadSubjects() {
-        const select = document.getElementById(this.elements.subjectSelect);
-        if (!select) return;
+        const select = this.elements.subjectSelect;
         select.innerHTML = '<option value="">로딩 중...</option>';
         try {
-            const q = query(collection(db, 'subjects'), orderBy('name'));
-            const snap = await getDocs(q);
-            select.innerHTML = '<option value="">과목 선택</option>';
-            snap.forEach(doc => { select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`; });
+            const snap = await getDocs(query(collection(db, 'subjects'), orderBy('name')));
+            select.innerHTML = '<option value="">-- 과목 선택 --</option>';
+            snap.forEach(doc => select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`);
         } catch (e) { select.innerHTML = '<option>로드 실패</option>'; }
     },
 
     async handleSubjectChange(subjectId) {
-        const select = document.getElementById(this.elements.textbookSelect);
-        if(!select) return;
+        const select = this.elements.textbookSelect;
         select.innerHTML = '<option value="">로딩 중...</option>';
         select.disabled = true;
         if (!subjectId) { select.innerHTML = '<option value="">교재 선택</option>'; return; }
@@ -356,41 +276,37 @@ export const adminHomeworkDashboard = {
         try {
             const q = query(collection(db, 'textbooks'), where('subjectId', '==', subjectId));
             const snap = await getDocs(q);
-            select.innerHTML = '<option value="">교재 선택</option>';
-            snap.forEach(doc => { select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`; });
+            select.innerHTML = '<option value="">-- 교재 선택 --</option>';
+            snap.forEach(doc => select.innerHTML += `<option value="${doc.id}">${doc.data().name}</option>`);
             select.disabled = false;
         } catch (e) { select.innerHTML = '<option>로드 실패</option>'; }
     },
 
     async saveHomework() {
-        const el = (id) => document.getElementById(this.elements[id]);
-        
         const classId = this.state.selectedClassId;
         if (!classId) { showToast("반이 선택되지 않았습니다."); return; }
 
-        const title = el('titleInput')?.value;
-        const subjectId = el('subjectSelect')?.value;
-        const textbookId = el('textbookSelect')?.value;
-        const pages = el('pagesInput')?.value;
-        const dueDate = el('dueDateInput')?.value;
-        const totalPages = el('totalPagesInput') ? Number(el('totalPagesInput').value) : 0;
-
-        if (!title || !subjectId) { showToast("제목과 과목은 필수입니다.", true); return; }
-
         const data = {
-            classId, title, subjectId, textbookId, pages, dueDate,
-            totalPages,
+            classId,
+            title: this.elements.titleInput.value,
+            subjectId: this.elements.subjectSelect.value,
+            textbookId: this.elements.textbookSelect.value,
+            pages: this.elements.pagesInput.value,
+            dueDate: this.elements.dueDateInput.value,
+            totalPages: Number(this.elements.totalPagesInput?.value) || 0,
             updatedAt: serverTimestamp()
         };
+
+        if (!data.title || !data.subjectId) { showToast("제목과 과목은 필수입니다.", true); return; }
 
         try {
             if (this.state.editingHomework) {
                 await updateDoc(doc(db, 'homeworks', this.state.editingHomework.id), data);
-                showToast("수정되었습니다.", false);
+                showToast("수정되었습니다.");
             } else {
                 data.createdAt = serverTimestamp();
                 await addDoc(collection(db, 'homeworks'), data);
-                showToast("등록되었습니다.", false);
+                showToast("등록되었습니다.");
             }
             this.closeModal();
             this.loadHomeworkList(classId);
@@ -398,16 +314,14 @@ export const adminHomeworkDashboard = {
     },
 
     async deleteHomework() {
-        if (!this.state.selectedHomeworkId) return;
-        if (!confirm("정말 삭제하시겠습니까?")) return;
+        if (!this.state.selectedHomeworkId || !confirm("정말 삭제하시겠습니까?")) return;
         try {
             await deleteDoc(doc(db, 'homeworks', this.state.selectedHomeworkId));
-            showToast("삭제되었습니다.", false);
+            showToast("삭제되었습니다.");
             this.loadHomeworkList(this.state.selectedClassId);
-            const el = (id) => document.getElementById(this.elements[id]);
-            if(el('homeworkContent')) el('homeworkContent').style.display = 'none';
-            if(el('placeholder')) el('placeholder').style.display = 'flex';
-            if(el('mgmtButtons')) el('mgmtButtons').style.display = 'none';
+            this.elements.homeworkContent.style.display = 'none';
+            this.elements.placeholder.style.display = 'flex';
+            this.elements.mgmtButtons.style.display = 'none';
         } catch (e) { showToast("삭제 실패", true); }
     }
 };

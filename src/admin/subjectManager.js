@@ -1,19 +1,23 @@
 // src/admin/subjectManager.js
+
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
-// ✨ Store 도입
 import { setSubjects, getSubjects, SUBJECT_EVENTS } from "../store/subjectStore.js";
 
 export const subjectManager = {
     elements: {},
 
-    init(adminAppInstance) {
-        this.elements = adminAppInstance.elements;
+    init() {
+        // App 의존성 없이 스스로 요소 찾기
+        this.elements = {
+            addSubjectBtn: document.getElementById('admin-add-subject-btn'),
+            subjectsList: document.getElementById('admin-subjects-list'),
+            newSubjectNameInput: document.getElementById('admin-new-subject-name'),
+        };
 
         this.elements.addSubjectBtn?.addEventListener('click', () => this.handleAddSubject());
         
-        // 삭제 버튼 위임 처리
         this.elements.subjectsList?.addEventListener('click', (e) => {
             if (e.target.classList.contains('delete-subject-btn')) {
                 const id = e.target.dataset.id;
@@ -21,11 +25,7 @@ export const subjectManager = {
             }
         });
 
-        // ✨ Store 구독
-        document.addEventListener(SUBJECT_EVENTS.UPDATED, () => {
-            this.renderList();
-        });
-
+        document.addEventListener(SUBJECT_EVENTS.UPDATED, () => this.renderList());
         this.listenForSubjects();
     },
 
@@ -54,27 +54,19 @@ export const subjectManager = {
         subjects.forEach(sub => {
             const div = document.createElement('div');
             div.className = 'p-2 border rounded bg-white flex justify-between items-center';
-            div.innerHTML = `
-                <span>${sub.name}</span>
-                <button data-id="${sub.id}" class="delete-subject-btn text-red-500 text-xs font-bold">삭제</button>
-            `;
+            div.innerHTML = `<span>${sub.name}</span><button data-id="${sub.id}" class="delete-subject-btn text-red-500 text-xs font-bold">삭제</button>`;
             listEl.appendChild(div);
         });
     },
 
     async handleAddSubject() {
-        const name = this.elements.newSubjectNameInput.value.trim();
-        if (!name) {
-            showToast("과목 이름을 입력하세요.", true);
-            return;
-        }
+        const name = this.elements.newSubjectNameInput?.value.trim();
+        if (!name) { showToast("과목 이름을 입력하세요.", true); return; }
         try {
             await addDoc(collection(db, "subjects"), { name });
             showToast("과목 추가 완료", false);
-            this.elements.newSubjectNameInput.value = '';
-        } catch (e) {
-            showToast("추가 실패", true);
-        }
+            if(this.elements.newSubjectNameInput) this.elements.newSubjectNameInput.value = '';
+        } catch (e) { showToast("추가 실패", true); }
     },
 
     async handleDeleteSubject(id) {
@@ -82,8 +74,6 @@ export const subjectManager = {
         try {
             await deleteDoc(doc(db, "subjects", id));
             showToast("과목 삭제 완료", false);
-        } catch (e) {
-            showToast("삭제 실패", true);
-        }
+        } catch (e) { showToast("삭제 실패", true); }
     }
 };
