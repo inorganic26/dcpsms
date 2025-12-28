@@ -78,6 +78,11 @@
               <svg class="w-8 h-8 mb-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
               <h3>일일 테스트 결과</h3>
             </div>
+            
+            <div data-view="weekly-test-mgmt" class="teacher-nav-btn dashboard-card">
+              <svg class="w-8 h-8 mb-2 text-fuchsia-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <h3>주간 테스트 결과</h3>
+            </div>
 
             <div data-view="learning-status-mgmt" class="teacher-nav-btn dashboard-card">
               <svg class="w-8 h-8 mb-2 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"></path></svg>
@@ -147,6 +152,24 @@
                     </div>
                     <div id="teacher-daily-test-result-table" class="overflow-x-auto min-h-[300px]">
                         <p class="text-center text-slate-400 py-10">과목을 선택하면 점수표가 표시됩니다.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-weekly-test-mgmt" class="teacher-view" style="display:none;">
+                <button class="back-to-teacher-menu btn btn-secondary btn-sm mb-4">&larr; 메뉴로</button>
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-3xl font-bold text-slate-800">주간 테스트 관리</h1>
+                    <button id="teacher-add-weekly-test-btn" class="px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-xl hover:bg-purple-700 transition shadow-sm flex items-center gap-2">
+                        <span class="material-icons text-base">add</span> 성적 추가
+                    </button>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div id="teacher-weekly-test-result-table" class="overflow-x-auto min-h-[150px]"></div>
+                    <div id="teacher-weekly-test-pagination" class="flex justify-center items-center gap-4 mt-4 hidden">
+                        <button id="teacher-weekly-test-prev-btn" class="p-2 bg-slate-100 rounded-lg hover:bg-slate-200">◀</button>
+                        <span id="teacher-weekly-test-page-info" class="text-sm font-bold text-slate-600">1 / 1</span>
+                        <button id="teacher-weekly-test-next-btn" class="p-2 bg-slate-100 rounded-lg hover:bg-slate-200">▶</button>
                     </div>
                 </div>
             </div>
@@ -488,6 +511,30 @@
           <button id="teacher-close-subject-textbook-modal-btn-footer" class="btn-secondary">닫기</button>
         </footer>
       </div>
+  </div>
+
+  <div id="teacher-weekly-test-modal" class="modal-backdrop" style="display:none;">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+        <h3 class="text-xl font-bold text-slate-800 mb-4">주간테스트 성적 등록</h3>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-1">학생 선택</label>
+                <select id="teacher-weekly-modal-student" class="w-full p-3 bg-slate-50 rounded-xl text-sm border-none outline-none bg-slate-50"></select>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-1">날짜 (금/토/일)</label>
+                <input type="date" id="teacher-weekly-modal-date" class="w-full p-3 bg-slate-50 rounded-xl text-sm border-none outline-none">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-1">점수</label>
+                <input type="number" id="teacher-weekly-modal-score" placeholder="0~100" class="w-full p-3 bg-slate-50 rounded-xl text-sm border-none outline-none">
+            </div>
+            <div class="flex gap-2 mt-6">
+                <button id="teacher-weekly-modal-close-btn" class="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200">취소</button>
+                <button id="teacher-weekly-modal-save-btn" class="flex-1 py-3 bg-purple-600 text-white font-bold rounded-xl hover:bg-purple-700 shadow-md">저장</button>
+            </div>
+        </div>
+    </div>
   </div>
 
   <script type="module">

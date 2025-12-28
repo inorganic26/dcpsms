@@ -39,13 +39,13 @@ export const studentDashboard = {
     },
 
     addSystemCards(container) {
-        // 숙제 확인
+        // [숙제 확인]
         container.appendChild(this.createCard(
             'assignment', '숙제 확인', 'bg-yellow-50 text-yellow-600 group-hover:bg-yellow-100',
             () => this.app.showHomeworkScreen()
         ));
 
-        // 일일 테스트
+        // [일일 테스트]
         container.appendChild(this.createCard(
             'edit_note', '일일 테스트', 'bg-orange-50 text-orange-600 group-hover:bg-orange-100',
             () => {
@@ -55,19 +55,25 @@ export const studentDashboard = {
             }
         ));
 
-        // 수업 영상
+        // [주간 테스트] (추가된 부분)
+        container.appendChild(this.createCard(
+            'event_available', '주간 테스트', 'bg-rose-50 text-rose-600 group-hover:bg-rose-100',
+            () => this.app.showWeeklyTestScreen()
+        ));
+
+        // [수업 영상]
         container.appendChild(this.createCard(
             'ondemand_video', '수업 영상', 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100',
             () => classVideoManager.showDateSelectionScreen('class')
         ));
 
-        // 질문 영상
+        // [질문 영상]
         container.appendChild(this.createCard(
             'question_answer', '질문 영상', 'bg-cyan-50 text-cyan-600 group-hover:bg-cyan-100',
             () => classVideoManager.showDateSelectionScreen('qna')
         ));
 
-        // 성적표 확인
+        // [성적표 확인]
         container.appendChild(this.createCard(
             'assessment', '성적표 확인', 'bg-lime-50 text-lime-600 group-hover:bg-lime-100',
             () => this.app.showReportListScreen()

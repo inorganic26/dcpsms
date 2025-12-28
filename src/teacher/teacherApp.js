@@ -20,7 +20,7 @@ import { setSubjects } from "../store/subjectStore.js";
 
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
-import { classEditor } from '../shared/classEditor.js'; 
+import { classEditor } from './classEditor.js'; 
 import { classVideoManager } from './classVideoManager.js';
 import { reportManager } from '../shared/reportManager.js';
 import { analysisDashboard } from './analysisDashboard.js';
@@ -187,6 +187,7 @@ const TeacherApp = {
             mainContent: document.getElementById('teacher-main-content'),
             navButtonsContainer: document.getElementById('teacher-navigation-buttons'),
 
+            // [수정] 뷰 목록에 주간 테스트 화면 추가
             views: {
                 'homework-dashboard': document.getElementById('view-homework-dashboard'),
                 'qna-video-mgmt': document.getElementById('view-qna-video-mgmt'),
@@ -196,6 +197,7 @@ const TeacherApp = {
                 'class-video-mgmt': document.getElementById('view-class-video-mgmt'),
                 'report-mgmt': document.getElementById('view-report-mgmt'),
                 'daily-test-mgmt': document.getElementById('view-daily-test-mgmt'),
+                'weekly-test-mgmt': document.getElementById('view-weekly-test-mgmt'), // [추가됨]
                 'learning-status-mgmt': document.getElementById('view-learning-status-mgmt'),
             },
 
@@ -298,9 +300,12 @@ const TeacherApp = {
     addEventListeners() {
         this.elements.classSelect?.addEventListener('change', (e) => this.handleClassSelection(e));
 
+        // 메인 대시보드 내비게이션 버튼 클릭 이벤트
         this.elements.navButtonsContainer?.addEventListener('click', (e) => {
             const card = e.target.closest('.teacher-nav-btn');
-            if (card?.dataset.view) this.handleViewChange(card.dataset.view);
+            if (card?.dataset.view) {
+                this.handleViewChange(card.dataset.view);
+            }
         });
 
         if (this.elements.mainContent) {
@@ -331,11 +336,13 @@ const TeacherApp = {
         });
 
         document.addEventListener('class-changed', () => {
+            // 반이 변경되면 현재 보고 있는 뷰를 새로고침
             if (this.state.currentView === 'report-mgmt') {
                 this.initReportUploadView();
                 this.loadAndRenderUploadedReports();
             }
             if (this.state.currentView === 'daily-test-mgmt') this.analysisDashboard.initDailyTestView();
+            if (this.state.currentView === 'weekly-test-mgmt') this.analysisDashboard.initWeeklyTestView(); // [추가됨]
             if (this.state.currentView === 'learning-status-mgmt') this.analysisDashboard.initLearningStatusView();
         });
     },
@@ -343,8 +350,11 @@ const TeacherApp = {
     showDashboardMenu() {
         this.state.currentView = 'dashboard';
         if (this.elements.navButtonsContainer) this.elements.navButtonsContainer.style.display = 'grid';
+        
+        // 모든 뷰 숨기기
         Object.values(this.elements.views).forEach(view => { if (view) view.style.display = 'none'; });
 
+        // 현강반일 경우에만 '수업 영상 관리' 버튼 보이기
         if (this.elements.gotoClassVideoMgmtBtn) {
             const isLiveLecture = this.state.selectedClassData?.classType === 'live-lecture';
             this.elements.gotoClassVideoMgmtBtn.style.display = isLiveLecture ? 'flex' : 'none';
@@ -355,20 +365,26 @@ const TeacherApp = {
 
     handleViewChange(viewName) {
         this.state.currentView = viewName;
+        
+        // 대시보드 메뉴 숨기기
         if (this.elements.navButtonsContainer) this.elements.navButtonsContainer.style.display = 'none';
+        
+        // 모든 뷰 숨기기
         Object.values(this.elements.views).forEach(view => { if (view) view.style.display = 'none'; });
 
+        // 선택된 뷰 보이기
         const viewToShow = this.elements.views[viewName];
         if (viewToShow) viewToShow.style.display = 'block';
         else { this.showDashboardMenu(); return; }
 
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'block';
         
-        // [추가] 화면 이동 시 반 선택 드롭다운 상태 유지 보장
+        // 화면 이동 시 반 선택 드롭다운 상태 유지 보장
         if (this.elements.classSelect && this.state.selectedClassId) {
             this.elements.classSelect.value = this.state.selectedClassId;
         }
 
+        // 뷰별 초기화 로직
         switch (viewName) {
             case 'homework-dashboard': this.homeworkDashboard?.managerInstance?.populateHomeworkSelect(); break;
             case 'qna-video-mgmt': this.classVideoManager?.initQnaView(); break;
@@ -383,6 +399,7 @@ const TeacherApp = {
                 this.loadAndRenderUploadedReports();
                 break;
             case 'daily-test-mgmt': this.analysisDashboard.initDailyTestView(); break;
+            case 'weekly-test-mgmt': this.analysisDashboard.initWeeklyTestView(); break; // [추가됨]
             case 'learning-status-mgmt': this.analysisDashboard.initLearningStatusView(); break;
         }
     },
@@ -400,7 +417,6 @@ const TeacherApp = {
         this.state.uploadedReports = [];
 
         if (!newClassId) {
-            // 반 선택을 취소한 경우에만 대시보드로 복귀
             this.showDashboardMenu();
             return;
         }
@@ -425,14 +441,12 @@ const TeacherApp = {
 
         document.dispatchEvent(new CustomEvent('class-changed'));
         
-        // [수정] 무조건 showDashboardMenu()를 호출하지 않고, 현재 화면이 대시보드일 때만 메뉴 갱신
-        // 그 외(질문영상 등)에 있다면 그 화면을 유지합니다.
+        // 현재 화면 유지 또는 대시보드 복귀 로직
         if (this.state.currentView === 'dashboard' || !this.state.currentView) {
             this.showDashboardMenu();
         } else if (this.state.currentView === 'student-list-mgmt') {
             this.renderStudentList();
         }
-        // 다른 뷰(질문영상, 숙제 등)에서는 'class-changed' 이벤트가 데이터를 갱신하므로 아무것도 안 해도 됩니다.
     },
 
     async fetchClassData(classId) {
@@ -548,7 +562,7 @@ const TeacherApp = {
                 opt.textContent = d.data().name;
                 select.appendChild(opt);
             });
-            // [추가] 목록을 다시 그릴 때, 이미 선택된 반이 있다면 그 값을 유지
+            
             if (this.state.selectedClassId) {
                 select.value = this.state.selectedClassId;
             }

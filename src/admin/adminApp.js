@@ -21,17 +21,16 @@ import { lessonManager } from "./lessonManager.js";
 import { studentAssignmentManager } from "./studentAssignmentManager.js";
 import { adminClassVideoManager } from "./adminClassVideoManager.js";
 import { adminHomeworkDashboard } from "./adminHomeworkDashboard.js";
-import { adminReportManager } from "./adminReportManager.js"; // 리팩토링된 리포트 매니저
+import { adminReportManager } from "./adminReportManager.js"; 
 import { adminAnalysisManager } from "./adminAnalysisManager.js"; 
-import { adminAuth } from "./adminAuth.js"; // 리팩토링된 인증 모듈
+import { adminAuth } from "./adminAuth.js"; 
 
-import { adminState } from "./adminState.js"; // 상태 관리 모듈
+import { adminState } from "./adminState.js"; 
 
 export const AdminApp = {
     isInitialized: false,
     
-    // 1. [설정] 화면 요소들의 ID 목록 (문자열)
-    // 매니저들이 찾을 때 사용하는 이름(Key)과 실제 HTML ID(Value)를 매핑합니다.
+    // 1. [설정] 화면 요소들의 ID 목록
     uiIds: {
         // --- Views (화면들) ---
         dashboardView: "admin-dashboard-view",
@@ -47,6 +46,7 @@ export const AdminApp = {
         homeworkMgmtView: "admin-homework-mgmt-view",
         reportMgmtView: "admin-report-mgmt-view",
         dailyTestMgmtView: "admin-daily-test-mgmt-view",
+        weeklyTestMgmtView: "admin-weekly-test-mgmt-view", // [추가됨] 주간테스트 화면 ID
         learningStatusMgmtView: "admin-learning-status-mgmt-view",
 
         // --- Menu Buttons (메뉴 버튼) ---
@@ -62,9 +62,10 @@ export const AdminApp = {
         gotoHomeworkMgmtBtn: "goto-homework-mgmt-btn",
         gotoReportMgmtBtn: "goto-report-mgmt-btn",
         gotoDailyTestMgmtBtn: "goto-daily-test-mgmt-btn", 
+        gotoWeeklyTestMgmtBtn: "goto-weekly-test-mgmt-btn", // [추가됨] 주간테스트 버튼 ID
         gotoLearningStatusMgmtBtn: "goto-learning-status-mgmt-btn",
 
-        // --- Manager들이 사용하는 요소들 (중요!) ---
+        // --- Manager들이 사용하는 요소들 ---
         
         // Subject & Textbook
         newSubjectNameInput: 'admin-new-subject-name',
@@ -101,8 +102,8 @@ export const AdminApp = {
         closeEditStudentModalBtn: 'admin-close-edit-student-modal-btn',
         cancelEditStudentBtn: 'admin-cancel-edit-student-btn',
         saveStudentEditBtn: 'admin-save-student-edit-btn',
-        searchStudentInput: 'search-student-input', // 검색창 추가
-        studentPagination: 'admin-student-pagination', // 페이지네이션 추가
+        searchStudentInput: 'search-student-input',
+        studentPagination: 'admin-student-pagination',
 
         // Teacher
         newTeacherNameInput: 'admin-new-teacher-name',
@@ -116,8 +117,8 @@ export const AdminApp = {
         cancelEditTeacherBtn: 'admin-cancel-edit-teacher-btn',
         saveTeacherEditBtn: 'admin-save-teacher-edit-btn',
 
-        // Lesson (여기가 문제였음)
-        subjectSelectForMgmt: 'admin-subject-select-for-lesson', // lessonManager가 찾는 이름
+        // Lesson
+        subjectSelectForMgmt: 'admin-subject-select-for-lesson',
         lessonsManagementContent: 'admin-lessons-management-content',
         lessonPrompt: 'admin-lesson-prompt',
         lessonsList: 'admin-lessons-list',
@@ -194,13 +195,22 @@ export const AdminApp = {
         dailyTestPageInfo: 'admin-daily-test-page-info',
         dailyTestResultTable: 'admin-daily-test-result-table',
         
+        // [추가됨] 주간테스트 매니저용 ID
+        weeklyClassSelect: 'admin-weekly-test-class-select',
+        weeklyResultTable: 'admin-weekly-test-result-table',
+        weeklyPagination: 'admin-weekly-test-pagination',
+        weeklyPrevBtn: 'admin-weekly-test-prev-btn',
+        weeklyNextBtn: 'admin-weekly-test-next-btn',
+        weeklyPageInfo: 'admin-weekly-test-page-info',
+        addWeeklyTestBtn: 'admin-add-weekly-test-btn',
+        weeklyModal: 'admin-weekly-test-modal',
+        
         learningClassSelect: 'admin-learning-class-select',
         learningSubjectSelect: 'admin-learning-subject-select',
         learningLessonSelect: 'admin-learning-lesson-select',
         learningResultTable: 'admin-learning-result-table',
     },
 
-    // 2. [실제 사용] DOM 요소들이 여기에 저장됨 (초기에는 비어있음)
     elements: {}, 
     state: adminState.data, 
 
@@ -208,31 +218,20 @@ export const AdminApp = {
         console.log("[AdminApp.init] 초기화 시작");
         if (this.isInitialized) return;
 
-        // [핵심] ID 목록을 순회하며 실제 DOM 요소로 변환하여 elements에 저장
         this.cacheElements();
-
-        // 인증 모듈 초기화
         adminAuth.init(this);
-        
-        // 이벤트 리스너 연결
         this.addEventListeners();
-        
-        // 스토어 연결
         this.setupStoreBridges();
 
         console.log("[AdminApp.init] 기본 초기화 완료");
     },
 
-    // [중요 함수] ID(문자열) -> DOM 요소(객체) 변환
     cacheElements() {
         this.elements = {};
         for (const [key, id] of Object.entries(this.uiIds)) {
             const el = document.getElementById(id);
             if (el) {
                 this.elements[key] = el;
-            } else {
-                // 개발 중 디버깅을 위해 경고 로그 남김 (선택 사항)
-                // console.warn(`[AdminApp] 요소를 찾을 수 없음: Key=${key}, ID=${id}`);
             }
         }
     },
@@ -258,7 +257,7 @@ export const AdminApp = {
     },
 
     addEventListeners() {
-        // 메뉴 버튼 연결 (uiIds를 사용하여 매핑)
+        // 메뉴 버튼 연결 매핑
         const menuMapping = {
             "gotoSubjectMgmtBtn": "subjectMgmt",
             "gotoTextbookMgmtBtn": "textbookMgmt",
@@ -272,11 +271,11 @@ export const AdminApp = {
             "gotoHomeworkMgmtBtn": "homeworkMgmt",
             "gotoReportMgmtBtn": "reportMgmt",
             "gotoDailyTestMgmtBtn": "dailyTestMgmt", 
+            "gotoWeeklyTestMgmtBtn": "weeklyTestMgmt", // [추가됨] 주간테스트 연결
             "gotoLearningStatusMgmtBtn": "learningStatusMgmt",
         };
 
         Object.entries(menuMapping).forEach(([btnKey, viewName]) => {
-            // this.elements에서 DOM 요소를 가져옴
             const btn = this.elements[btnKey];
             if (btn) {
                 btn.addEventListener("click", () => this.showView(viewName));
@@ -287,16 +286,13 @@ export const AdminApp = {
             .forEach((b) => b.addEventListener("click", () => this.showView("dashboard")));
     },
 
-    // 로그인 성공 후 호출되는 함수
     initializeAppUI(loadData = true) {
         if (this.isInitialized) return;
         
         try {
-            // 요소를 한 번 더 캐싱 (혹시 동적으로 생긴 요소가 있을까봐)
             this.cacheElements();
 
-            // 각 매니저 초기화
-            // 이제 this.elements 안에 실제 DOM 요소가 들어있으므로 에러가 나지 않음
+            // 매니저 초기화
             studentManager.init(this);
             classManager.init(this);
             subjectManager.init(this);
@@ -318,7 +314,7 @@ export const AdminApp = {
     },
 
     showView(viewName) {
-        // 1. 모든 뷰 숨기기 (uiIds를 순회하며 ID로 숨김)
+        // 1. 모든 뷰 숨기기
         Object.keys(this.uiIds).forEach((key) => {
             if (key.endsWith("View")) {
                 const id = this.uiIds[key];
@@ -336,7 +332,7 @@ export const AdminApp = {
             targetViewElement.style.display = "block";
             this.state.currentView = viewName;
 
-            // 뷰 진입 시 필요한 초기화 로직
+            // 뷰별 초기화 로직 실행
             switch (viewName) {
                 case "homeworkMgmt": adminHomeworkDashboard.initView?.(); break;
                 case "qnaVideoMgmt": adminClassVideoManager.initQnaView?.(); break;
@@ -348,7 +344,6 @@ export const AdminApp = {
                     break;
                 case "textbookMgmt": 
                     textbookManager.populateSubjectSelect?.(); 
-                    // elements에서 DOM 요소를 가져와서 값 읽기
                     const subSelect = this.elements.subjectSelectForTextbook;
                     textbookManager.handleSubjectSelectForTextbook?.(subSelect?.value || ''); 
                     break;
@@ -359,6 +354,10 @@ export const AdminApp = {
                     break;
                 case "dailyTestMgmt": 
                     adminAnalysisManager.initDailyTestView?.();
+                    break;
+                // [추가됨] 주간테스트 화면 진입 시 초기화
+                case "weeklyTestMgmt": 
+                    adminAnalysisManager.initWeeklyTestView?.();
                     break;
                 case "learningStatusMgmt": 
                     adminAnalysisManager.initLearningStatusView?.();
