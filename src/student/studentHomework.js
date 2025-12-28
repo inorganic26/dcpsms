@@ -8,7 +8,7 @@ import { showToast } from "../shared/utils.js";
 export const studentHomework = {
     app: null,
     unsubscribe: null,
-    submissionListeners: {}, 
+    submissionListeners: {},
     isInitialized: false,
     
     elements: {
@@ -21,7 +21,7 @@ export const studentHomework = {
     },
     state: {
         homeworks: [],
-        mySubmissions: {}, 
+        mySubmissions: {},
         selectedHomework: null,
         selectedFiles: [], 
     },
@@ -41,7 +41,6 @@ export const studentHomework = {
     listenForHomework(classId) {
         if (this.unsubscribe) this.unsubscribe();
 
-        // 기존 리스너 초기화
         Object.values(this.submissionListeners).forEach(unsub => unsub());
         this.submissionListeners = {};
         this.state.mySubmissions = {};
@@ -71,7 +70,6 @@ export const studentHomework = {
         homeworks.forEach(hw => {
             if (this.submissionListeners[hw.id]) return;
 
-            // [핵심] 하위 컬렉션(submissions)을 감시합니다.
             const subRef = doc(db, 'homeworks', hw.id, 'submissions', studentId);
             
             this.submissionListeners[hw.id] = onSnapshot(subRef, (docSnap) => {
@@ -138,10 +136,17 @@ export const studentHomework = {
         if (title) title.textContent = homework.title;
         
         if (content) {
+            // [수정됨] 제출 필요 장수 표시 로직
+            const totalPages = homework.totalPages ? Number(homework.totalPages) : 0;
+            const pagesInfo = totalPages > 0 
+                ? `<p class="mt-2 pt-2 border-t border-slate-200"><strong class="text-indigo-600">📸 제출 필요: 총 ${totalPages}장</strong></p>` 
+                : `<p class="mt-2 pt-2 border-t border-slate-200 text-slate-400">제출 장수 제한 없음</p>`;
+
             content.innerHTML = `
                 <div class="bg-slate-50 p-4 rounded-xl mb-4 text-sm text-slate-600">
                     <p><strong>마감일:</strong> ${homework.dueDate || '없음'}</p>
                     <p><strong>페이지:</strong> ${homework.pages || '-'}</p>
+                    ${pagesInfo}
                 </div>
             `;
         }
@@ -156,7 +161,8 @@ export const studentHomework = {
                         <span class="text-xs text-slate-400">(여러 장 선택 가능)</span>
                     </p>
                 </div>
-                <div id="selected-files-preview" class="mt-3 space-y-2 text-sm text-slate-600 max-h-40 overflow-y-auto"></div>
+                <div id="file-count-status" class="mt-2 text-sm text-right font-bold hidden"></div>
+                <div id="selected-files-preview" class="mt-2 space-y-2 text-sm text-slate-600 max-h-40 overflow-y-auto"></div>
                 <button id="real-submit-btn" class="w-full mt-6 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
                     제출하기
                 </button>
@@ -164,17 +170,36 @@ export const studentHomework = {
 
             const fileInput = document.getElementById('homework-file-input');
             const preview = document.getElementById('selected-files-preview');
+            const countStatus = document.getElementById('file-count-status');
             const submitBtn = document.getElementById('real-submit-btn');
 
             fileInput.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files);
                 const validFiles = files.filter(f => f.size > 0);
+                
                 if (validFiles.length < files.length) {
                     showToast("내용이 없는(0KB) 파일이 제외되었습니다.", true);
                 }
+
                 this.state.selectedFiles = validFiles;
-                
-                if (this.state.selectedFiles.length > 0) {
+                const currentCount = this.state.selectedFiles.length;
+                const requiredCount = homework.totalPages ? Number(homework.totalPages) : 0;
+
+                // [추가됨] 실시간 장수 체크 및 피드백 표시
+                if (currentCount > 0) {
+                    countStatus.style.display = 'block';
+                    if (requiredCount > 0) {
+                        if (currentCount === requiredCount) {
+                            countStatus.innerHTML = `<span class="text-green-600">현재 ${currentCount}장 / 총 ${requiredCount}장 (완료)</span>`;
+                        } else if (currentCount < requiredCount) {
+                            countStatus.innerHTML = `<span class="text-red-500">현재 ${currentCount}장 / 총 ${requiredCount}장 (부족)</span>`;
+                        } else {
+                            countStatus.innerHTML = `<span class="text-orange-500">현재 ${currentCount}장 / 총 ${requiredCount}장 (초과)</span>`;
+                        }
+                    } else {
+                        countStatus.innerHTML = `<span class="text-slate-500">현재 ${currentCount}장 선택됨</span>`;
+                    }
+
                     preview.innerHTML = this.state.selectedFiles.map((f) => 
                         `<div class="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg">
                             <span class="material-icons-round text-sm text-indigo-500">description</span>
@@ -184,6 +209,7 @@ export const studentHomework = {
                     ).join('');
                     submitBtn.disabled = false;
                 } else {
+                    countStatus.style.display = 'none';
                     preview.innerHTML = '';
                     submitBtn.disabled = true;
                 }
@@ -210,6 +236,16 @@ export const studentHomework = {
     async submitHomework(btn) {
         if (this.state.selectedFiles.length === 0) return showToast("파일을 선택해주세요.", true);
         
+        // 제출 전 장수 확인 (경고만 띄우고 막지는 않음)
+        const requiredCount = this.state.selectedHomework.totalPages ? Number(this.state.selectedHomework.totalPages) : 0;
+        const currentCount = this.state.selectedFiles.length;
+
+        if (requiredCount > 0 && currentCount < requiredCount) {
+            if(!confirm(`⚠️ 사진이 ${requiredCount}장 필요한데, ${currentCount}장만 선택되었습니다.\n그래도 제출하시겠습니까?`)) {
+                return;
+            }
+        }
+        
         window.onbeforeunload = () => "업로드 중입니다. 정말 나가시겠습니까?";
         
         const originalText = btn.innerHTML;
@@ -221,7 +257,6 @@ export const studentHomework = {
             const studentId = this.app.state.studentDocId;
             const homeworkId = this.state.selectedHomework.id;
             
-            // 1. Storage 업로드
             const uploadPromises = this.state.selectedFiles.map(async (file) => {
                 const uniqueName = `${Date.now()}_${file.name}`;
                 const fileRef = ref(storage, `homework_submissions/${homeworkId}/${studentId}/${uniqueName}`);
@@ -232,13 +267,10 @@ export const studentHomework = {
 
             const uploadedFiles = await Promise.all(uploadPromises);
 
-            // 2. Firestore 저장 (Subcollection 사용)
-            // [중요] 경로: homeworks -> {숙제ID} -> submissions -> {학생ID}
             const submissionRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
 
-            // [중요] studentDocId 필드를 반드시 포함해야 규칙을 통과합니다.
             await setDoc(submissionRef, {
-                studentDocId: studentId, 
+                studentDocId: studentId,
                 studentName: this.app.state.studentName,
                 status: 'completed',
                 submittedAt: serverTimestamp(),

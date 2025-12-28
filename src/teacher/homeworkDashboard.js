@@ -1,13 +1,14 @@
 // src/teacher/homeworkDashboard.js
 
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 import { homeworkManagerHelper } from "../shared/homeworkManager.js";
 
 export const homeworkDashboard = {
     managerInstance: null,
-    unsubscribe: null,
+    unsubHomework: null,
+    unsubSubmissions: null,
 
     config: {
         elements: {
@@ -37,6 +38,8 @@ export const homeworkDashboard = {
         selectedClassId: null,
         selectedHomeworkId: null,
         editingHomework: null,
+        cachedHomeworkData: null,
+        cachedSubmissions: {},
     },
 
     init(app) {
@@ -46,7 +49,6 @@ export const homeworkDashboard = {
     },
 
     refresh() {
-        // TeacherApp에서 호출하는 갱신 함수
         this.state.selectedClassId = this.app.state.selectedClassId;
         this.resetUIState();
         this.populateHomeworkSelect();
@@ -63,19 +65,19 @@ export const homeworkDashboard = {
         el('editBtn')?.addEventListener('click', () => this.openModal('edit'));
         el('deleteBtn')?.addEventListener('click', () => this.deleteHomework());
         el('subjectSelect')?.addEventListener('change', (e) => this.handleSubjectChange(e.target.value));
-        
-        // TeacherApp의 이벤트 리스너와 중복될 수 있으므로 refresh() 호출 권장
     },
 
     resetUIState() {
-        if (this.unsubscribe) {
-            this.unsubscribe();
-            this.unsubscribe = null;
-        }
+        this.clearListeners();
         const el = (id) => document.getElementById(this.config.elements[id]);
         if(el('homeworkContent')) el('homeworkContent').style.display = 'none';
         if(el('homeworkManagementButtons')) el('homeworkManagementButtons').style.display = 'none';
         if(el('homeworkSelect')) el('homeworkSelect').innerHTML = '<option value="">-- 숙제 선택 --</option>';
+    },
+
+    clearListeners() {
+        if (this.unsubHomework) { this.unsubHomework(); this.unsubHomework = null; }
+        if (this.unsubSubmissions) { this.unsubSubmissions(); this.unsubSubmissions = null; }
     },
 
     async populateHomeworkSelect() {
@@ -105,94 +107,111 @@ export const homeworkDashboard = {
 
     loadHomeworkDetails(homeworkId) {
         if (!homeworkId) return;
-        
-        if (this.unsubscribe) {
-            this.unsubscribe();
-            this.unsubscribe = null;
-        }
+        this.clearListeners();
 
         this.state.selectedHomeworkId = homeworkId;
+        this.state.cachedHomeworkData = null;
+        this.state.cachedSubmissions = {};
+
         const el = (id) => document.getElementById(this.config.elements[id]);
         
         el('homeworkContent').style.display = 'block';
         el('homeworkManagementButtons').style.display = 'flex';
         el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터 연결 중...</td></tr>';
 
-        const docRef = doc(db, 'homeworks', homeworkId);
-        
-        // [중요] TeacherApp에서 불러온 학생 명단(Map)을 사용
-        const studentsInClass = this.app.state.studentsInClass;
-
-        this.unsubscribe = onSnapshot(docRef, (docSnap) => {
+        // 1. 숙제 문서 리스너
+        this.unsubHomework = onSnapshot(doc(db, 'homeworks', homeworkId), (docSnap) => {
             if (!docSnap.exists()) {
                 el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">삭제된 숙제입니다.</td></tr>';
                 return;
             }
-
             const hwData = docSnap.data();
             this.state.editingHomework = { id: homeworkId, ...hwData };
+            this.state.cachedHomeworkData = hwData;
             el('selectedHomeworkTitle').textContent = hwData.title;
-
-            const submissions = hwData.submissions || {};
-            const tbody = el('homeworkTableBody');
-            tbody.innerHTML = '';
-
-            // [디버깅용] 학생 수 확인
-            // console.log("숙제 표시할 학생 수:", studentsInClass.size);
-
-            if (!studentsInClass || studentsInClass.size === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">등록된 학생이 없습니다.</td></tr>';
-                return;
-            }
-
-            const sortedStudents = Array.from(studentsInClass.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-
-            sortedStudents.forEach(([id, name]) => {
-                const sub = submissions[id];
-                const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
-                const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
-                const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, '반'); 
-
-                let actionBtn = '';
-                if (sub && !sub.manualComplete) {
-                    actionBtn = `<button class="teacher-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded" data-student-id="${id}">✅ 확인</button>`;
-                }
-
-                const tr = document.createElement('tr');
-                tr.className = "border-b hover:bg-slate-50";
-                tr.innerHTML = `
-                    <td class="py-3 px-4">${name}</td>
-                    <td class="py-3 px-4 ${statusInfo.color}">${statusInfo.text} ${actionBtn}</td>
-                    <td class="py-3 px-4 text-xs text-slate-500">
-                        <div class="mb-1">${date}</div>
-                        <div>${buttonHtml}</div>
-                    </td>`;
-                tbody.appendChild(tr);
-            });
-
-            tbody.querySelectorAll('.teacher-force-complete-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => this.forceCompleteHomework(homeworkId, e.target.dataset.studentId));
-            });
-
+            
+            this.renderHomeworkTable();
         }, (error) => {
             console.error(error);
             el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">연결 끊김</td></tr>';
         });
+
+        // 2. [변경] 서브컬렉션 리스너
+        const subColRef = collection(db, 'homeworks', homeworkId, 'submissions');
+        this.unsubSubmissions = onSnapshot(subColRef, (snapshot) => {
+            const submissions = {};
+            snapshot.forEach(doc => {
+                submissions[doc.id] = doc.data();
+            });
+            this.state.cachedSubmissions = submissions;
+            this.renderHomeworkTable();
+        });
     },
 
-    // (나머지 forceCompleteHomework, openModal, closeModal, saveHomework, deleteHomework는 기존과 동일)
-    // 아래 생략된 부분은 기존 코드 그대로 사용하시면 됩니다. (변경 없음)
+    renderHomeworkTable() {
+        const hwData = this.state.cachedHomeworkData;
+        const submissions = this.state.cachedSubmissions;
+        const studentsInClass = this.app.state.studentsInClass;
+        
+        if (!hwData || !studentsInClass) return;
+
+        const el = (id) => document.getElementById(this.config.elements[id]);
+        const tbody = el('homeworkTableBody');
+        tbody.innerHTML = '';
+
+        if (studentsInClass.size === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">등록된 학생이 없습니다.</td></tr>';
+            return;
+        }
+
+        const sortedStudents = Array.from(studentsInClass.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+
+        sortedStudents.forEach(([id, name]) => {
+            const sub = submissions[id]; // 서브컬렉션에서 찾기
+            const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
+            const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
+            const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, '반'); 
+
+            let actionBtn = '';
+            if (sub && !sub.manualComplete) {
+                actionBtn = `<button class="teacher-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded" data-student-id="${id}">✅ 확인</button>`;
+            }
+
+            const tr = document.createElement('tr');
+            tr.className = "border-b hover:bg-slate-50";
+            tr.innerHTML = `
+                <td class="py-3 px-4">${name}</td>
+                <td class="py-3 px-4 ${statusInfo.color}">${statusInfo.text} ${actionBtn}</td>
+                <td class="py-3 px-4 text-xs text-slate-500">
+                    <div class="mb-1">${date}</div>
+                    <div>${buttonHtml}</div>
+                </td>`;
+            tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll('.teacher-force-complete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.forceCompleteHomework(this.state.selectedHomeworkId, e.target.dataset.studentId));
+        });
+    },
+
     async forceCompleteHomework(homeworkId, studentId) {
         if (!confirm("완료 처리하시겠습니까?")) return;
         try {
-            await updateDoc(doc(db, 'homeworks', homeworkId), {
-                [`submissions.${studentId}.manualComplete`]: true,
-                [`submissions.${studentId}.status`]: 'completed'
-            });
-        } catch (e) { showToast("실패", true); }
+            // [변경] 서브컬렉션 setDoc 사용
+            const subRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
+            await setDoc(subRef, {
+                studentDocId: studentId,
+                manualComplete: true,
+                status: 'completed',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            
+            showToast("완료 처리됨");
+        } catch (e) { 
+            console.error(e);
+            showToast("실패", true); 
+        }
     },
-    
-    // ... (기존 openModal, closeModal 등 유지)
     
     async openModal(mode) {
         const el = (id) => document.getElementById(this.config.elements[id]);
@@ -255,7 +274,6 @@ export const homeworkDashboard = {
     },
 
     async saveHomework() {
-        // 기존 코드와 동일
         const el = (id) => document.getElementById(this.config.elements[id]);
         const classId = this.app.state.selectedClassId;
         if (!classId) { showToast("반 선택 필요"); return; }
@@ -277,7 +295,6 @@ export const homeworkDashboard = {
                 showToast("수정됨");
             } else {
                 data.createdAt = serverTimestamp();
-                data.submissions = {};
                 await addDoc(collection(db, 'homeworks'), data);
                 showToast("출제됨");
             }
@@ -287,7 +304,6 @@ export const homeworkDashboard = {
     },
 
     async deleteHomework() {
-        // 기존 코드와 동일
         if (!this.state.selectedHomeworkId || !confirm("삭제?")) return;
         try {
             await deleteDoc(doc(db, 'homeworks', this.state.selectedHomeworkId));

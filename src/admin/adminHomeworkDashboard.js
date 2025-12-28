@@ -1,6 +1,6 @@
 // src/admin/adminHomeworkDashboard.js
 
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 import { homeworkManagerHelper } from "../shared/homeworkManager.js";
@@ -38,9 +38,15 @@ export const adminHomeworkDashboard = {
         selectedClassId: null,
         selectedHomeworkId: null,
         editingHomework: null,
+        // [추가] 렌더링용 데이터 캐시
+        cachedHomeworkData: null,
+        cachedSubmissions: {},
+        cachedStudents: [],
     },
 
-    unsubscribe: null,
+    // 리스너 관리
+    unsubHomework: null,
+    unsubSubmissions: null,
 
     init(app) {
         this.app = app;
@@ -99,7 +105,12 @@ export const adminHomeworkDashboard = {
         if(el('placeholder')) el('placeholder').style.display = 'flex';
         if(el('mgmtButtons')) el('mgmtButtons').style.display = 'none';
 
-        if(this.unsubscribe) { this.unsubscribe(); this.unsubscribe = null; }
+        this.clearListeners();
+    },
+
+    clearListeners() {
+        if (this.unsubHomework) { this.unsubHomework(); this.unsubHomework = null; }
+        if (this.unsubSubmissions) { this.unsubSubmissions(); this.unsubSubmissions = null; }
     },
 
     async loadHomeworkList(classId) {
@@ -127,104 +138,147 @@ export const adminHomeworkDashboard = {
 
     async loadHomeworkDetails(homeworkId) {
         if (!homeworkId) return;
-        if (this.unsubscribe) { this.unsubscribe(); this.unsubscribe = null; }
+        this.clearListeners();
 
         this.state.selectedHomeworkId = homeworkId;
-        const currentClassId = this.state.selectedClassId;
         
+        // 초기화
+        this.state.cachedHomeworkData = null;
+        this.state.cachedSubmissions = {};
+        this.state.cachedStudents = [];
+
         const el = (id) => document.getElementById(this.elements[id]);
         el('homeworkContent').style.display = 'flex';
         el('homeworkContent').classList.remove('hidden');
         el('placeholder').style.display = 'none';
         el('mgmtButtons').style.display = 'flex';
-        el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">로딩 중...</td></tr>';
+        el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터를 불러오는 중...</td></tr>';
 
-        const classSelect = document.getElementById(this.elements.classSelect);
-        const className = classSelect && classSelect.selectedIndex > -1 ? classSelect.options[classSelect.selectedIndex].text : '반';
+        // 1. 학생 목록 미리 로드 (성능 최적화)
+        try {
+            const studentsSnap = await getDocs(collection(db, 'students'));
+            this.state.cachedStudents = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (e) {
+            console.error("학생 목록 로드 실패", e);
+        }
 
-        this.unsubscribe = onSnapshot(doc(db, 'homeworks', homeworkId), async (docSnap) => {
+        // 2. 숙제 기본 정보 리스너
+        this.unsubHomework = onSnapshot(doc(db, 'homeworks', homeworkId), (docSnap) => {
             if (!docSnap.exists()) {
                 el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
                 return;
             }
             const hwData = docSnap.data();
             this.state.editingHomework = { id: homeworkId, ...hwData };
+            this.state.cachedHomeworkData = hwData;
             el('selectedHomeworkTitle').textContent = hwData.title || "(제목 없음)";
+            
+            this.renderHomeworkTable();
+        });
 
-            const studentsSnap = await getDocs(collection(db, 'students'));
-            const submissions = hwData.submissions || {};
-            const tbody = el('homeworkTableBody');
-            tbody.innerHTML = '';
+        // 3. [변경] 제출 현황 리스너 (서브컬렉션 구독)
+        const subColRef = collection(db, 'homeworks', homeworkId, 'submissions');
+        this.unsubSubmissions = onSnapshot(subColRef, (snapshot) => {
+            const submissions = {};
+            snapshot.forEach(doc => {
+                submissions[doc.id] = doc.data();
+            });
+            this.state.cachedSubmissions = submissions;
+            this.renderHomeworkTable();
+        });
+    },
 
-            let hasStudent = false;
+    renderHomeworkTable() {
+        const hwData = this.state.cachedHomeworkData;
+        const submissions = this.state.cachedSubmissions;
+        const students = this.state.cachedStudents;
+        const currentClassId = this.state.selectedClassId;
 
-            studentsSnap.forEach(sDoc => {
-                const student = sDoc.data();
-                let isInClass = false;
-                if (student.classIds && Array.isArray(student.classIds)) {
-                    if (student.classIds.includes(currentClassId)) isInClass = true;
-                } else if (student.classId === currentClassId) { isInClass = true; }
+        // 데이터가 아직 다 안 왔으면 대기
+        if (!hwData || !students.length) return;
 
-                if (isInClass) {
-                    hasStudent = true;
-                    const sub = submissions[sDoc.id];
-                    const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
-                    
-                    const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
-                    const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, className);
+        const el = (id) => document.getElementById(this.elements[id]);
+        const tbody = el('homeworkTableBody');
+        const classSelect = document.getElementById(this.elements.classSelect);
+        const className = classSelect && classSelect.selectedIndex > -1 ? classSelect.options[classSelect.selectedIndex].text : '반';
 
-                    let actionBtn = '';
-                    if (sub && !sub.manualComplete) {
-                        actionBtn = `
-                            <button class="admin-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
-                                    data-student-id="${sDoc.id}" title="페이지 수가 부족해도 완료로 처리합니다">
-                                ✅ 확인
-                            </button>
-                        `;
-                    }
+        tbody.innerHTML = '';
+        let hasStudent = false;
 
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-slate-50 border-b";
-                    tr.innerHTML = `
-                        <td class="p-3 font-medium text-slate-700">${student.name}</td>
-                        <td class="p-3 ${statusInfo.color}">
-                            ${statusInfo.text}
-                            ${actionBtn}
-                        </td>
-                        <td class="p-3 text-xs text-slate-500">${date}</td>
-                        <td class="p-3 text-center">
-                            <div>${buttonHtml}</div>
-                        </td>
+        students.forEach(student => {
+            // 해당 반 학생인지 확인
+            let isInClass = false;
+            if (student.classIds && Array.isArray(student.classIds)) {
+                if (student.classIds.includes(currentClassId)) isInClass = true;
+            } else if (student.classId === currentClassId) { 
+                isInClass = true; 
+            }
+
+            if (isInClass) {
+                hasStudent = true;
+                const sub = submissions[student.id]; // 서브컬렉션 데이터 매칭
+                const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
+                
+                const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
+                const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, className);
+
+                let actionBtn = '';
+                if (sub && !sub.manualComplete) {
+                    actionBtn = `
+                        <button class="admin-force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
+                                data-student-id="${student.id}" title="페이지 수가 부족해도 완료로 처리합니다">
+                            ✅ 확인
+                        </button>
                     `;
-                    tbody.appendChild(tr);
                 }
-            });
 
-            // 관리자 버튼 이벤트 위임
-            tbody.querySelectorAll('.admin-force-complete-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const sId = e.target.dataset.studentId;
-                    this.forceCompleteHomework(homeworkId, sId);
-                });
-            });
-
-            if (!hasStudent) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">이 반에 등록된 학생이 없습니다.</td></tr>';
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50 border-b";
+                tr.innerHTML = `
+                    <td class="p-3 font-medium text-slate-700">${student.name}</td>
+                    <td class="p-3 ${statusInfo.color}">
+                        ${statusInfo.text}
+                        ${actionBtn}
+                    </td>
+                    <td class="p-3 text-xs text-slate-500">${date}</td>
+                    <td class="p-3 text-center">
+                        <div>${buttonHtml}</div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
             }
         });
+
+        // 관리자 버튼 이벤트 위임
+        tbody.querySelectorAll('.admin-force-complete-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const sId = e.target.dataset.studentId;
+                this.forceCompleteHomework(this.state.selectedHomeworkId, sId);
+            });
+        });
+
+        if (!hasStudent) {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">이 반에 등록된 학생이 없습니다.</td></tr>';
+        }
     },
 
     async forceCompleteHomework(homeworkId, studentId) {
         if (!confirm("페이지 수가 부족해도 '완료' 상태로 변경하시겠습니까?")) return;
         try {
-            await updateDoc(doc(db, 'homeworks', homeworkId), {
-                [`submissions.${studentId}.manualComplete`]: true,
-                [`submissions.${studentId}.status`]: 'completed'
-            });
+            // [변경] 서브컬렉션에 setDoc으로 저장 (updateDoc 대신 setDoc merge 사용)
+            // 이유: 아직 제출 안 한 학생일 수도 있으므로 문서를 새로 만들어야 할 수도 있음
+            const subRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
+            await setDoc(subRef, {
+                studentDocId: studentId,
+                manualComplete: true,
+                status: 'completed',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
             showToast("완료 처리되었습니다.", false);
         } catch (e) {
             console.error(e);
-            showToast("처리 실패", true);
+            showToast("처리 실패: " + e.message, true);
         }
     },
 
@@ -331,7 +385,7 @@ export const adminHomeworkDashboard = {
                 showToast("수정되었습니다.", false);
             } else {
                 data.createdAt = serverTimestamp();
-                data.submissions = {};
+                // data.submissions = {}; // 더 이상 필요 없음 (서브컬렉션 사용)
                 await addDoc(collection(db, 'homeworks'), data);
                 showToast("등록되었습니다.", false);
             }
