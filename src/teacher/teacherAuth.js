@@ -1,178 +1,71 @@
 // src/teacher/teacherAuth.js
 
-import { 
-    signInWithCustomToken, 
-    signOut, 
-    onAuthStateChanged,
-    setPersistence, 
-    browserSessionPersistence 
-} from "firebase/auth";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import app, { auth, db } from "../shared/firebase.js";
-import { showToast } from "../shared/utils.js";
+import { getAuth, signInAnonymously, signOut } from "firebase/auth";
+import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../shared/firebase.js";
+
+const auth = getAuth();
 
 export const teacherAuth = {
-    app: null,
-    elements: {
-        loginContainer: 'teacher-login-container',
-        dashboardContainer: 'teacher-dashboard-container',
-        nameInput: 'teacher-name',
-        passwordInput: 'teacher-password',
-        loginBtn: 'teacher-login-btn',
-    },
-    dom: {},
+    teacherData: null,
 
-    async init(app) {
-        this.app = app;
-        this.cacheElements();
-        this.bindEvents();
-        
-        // [핵심 수정] 앱 실행 시 무조건 로그아웃 (자동 로그인 방지)
-        // 사용자가 명시적으로 로그인 버튼을 눌러야만 합니다.
-        try {
-            await signOut(auth);
-            await setPersistence(auth, browserSessionPersistence);
-            console.log("[Auth] 초기화: 자동 로그인 방지됨");
-            this.showLoginScreen();
-        } catch (error) {
-            console.error("[Auth] 초기화 오류:", error);
-        }
-
-        // 로그인 상태 변화 감지 (로그인 버튼 클릭 후 처리용)
-        this.checkAuthStatus();
-    },
-
-    cacheElements() {
-        this.dom = {};
-        for (const [key, id] of Object.entries(this.elements)) {
-            this.dom[key] = document.getElementById(id);
-        }
-        this.dom.portalBtns = document.querySelectorAll('.back-to-portal-btn');
-    },
-
-    bindEvents() {
-        this.dom.loginBtn?.addEventListener('click', () => this.handleLogin());
-        this.dom.passwordInput?.addEventListener('keyup', (e) => {
-            if (e.key === 'Enter') this.handleLogin();
-        });
-
-        this.dom.portalBtns?.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.handleLogout();
-            });
-        });
-    },
-
-    checkAuthStatus() {
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // 로그인 버튼을 눌러서 성공했을 때만 실행됨
-                console.log("[Auth] 로그인 성공:", user.uid);
-                await this.loadTeacherProfile(user.uid);
+    // 초기화
+    init(callback) {
+        auth.onAuthStateChanged((user) => {
+            if (user && this.teacherData) {
+                callback(this.teacherData);
             } else {
-                // 로그아웃 상태면 로그인 화면 유지
-                this.showLoginScreen();
+                callback(null);
             }
         });
     },
 
-    async loadTeacherProfile(uid) {
+    // 로그인 (이름 + 전화번호 뒷 4자리)
+    async login(name, phoneLast4) {
         try {
-            const docRef = doc(db, "teachers", uid);
-            const docSnap = await getDoc(docRef);
-
-            if (docSnap.exists()) {
-                const teacherData = { id: uid, ...docSnap.data() };
-                this.app.state.teacherData = teacherData;
-                this.app.state.teacherId = uid;
-
-                if (teacherData.isInitialPassword) {
-                    this.showDashboard();
-                    this.promptPasswordChange(uid);
-                } else {
-                    showToast(`${teacherData.name} 선생님, 환영합니다.`, false);
-                    this.showDashboard();
-                }
-                
-                // 앱 UI 초기화 (반 목록 로드 등)
-                if (this.app.initializeAppUI) {
-                    this.app.initializeAppUI();
-                }
-
-            } else {
-                showToast("선생님 정보를 찾을 수 없습니다.", true);
-                await signOut(auth);
-            }
-        } catch (e) {
-            console.error("프로필 로드 오류:", e);
-            this.showLoginScreen();
-        }
-    },
-
-    async handleLogin() {
-        const name = this.dom.nameInput?.value.trim();
-        const password = this.dom.passwordInput?.value.trim();
-
-        if (!name || !password) {
-            showToast("이름과 비밀번호를 입력해주세요.", true);
-            return;
-        }
-        
-        showToast("로그인 확인 중...", false);
-
-        try {
-            const functions = getFunctions(app, 'asia-northeast3');
-            const verifyLogin = httpsCallable(functions, 'verifyTeacherLogin');
-            const result = await verifyLogin({ name, password });
+            // 1. 선생님 정보 조회
+            const teachersRef = collection(db, "teachers");
+            const q = query(teachersRef, where("name", "==", name));
+            const querySnapshot = await getDocs(q);
             
-            if (!result.data.success) {
-                showToast(result.data.message, true);
-                return;
+            let targetTeacher = null;
+
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                if (data.phone && data.phone.endsWith(phoneLast4)) {
+                    targetTeacher = { id: doc.id, ...data };
+                }
+            });
+
+            if (!targetTeacher) {
+                return { success: false, message: "정보가 일치하는 선생님을 찾을 수 없습니다." };
             }
 
-            // 성공 시 로그인 세션 시작 (이때 onAuthStateChanged가 반응함)
-            await signInWithCustomToken(auth, result.data.token);
+            // 2. [핵심] 익명 로그인으로 '인증 토큰(UID)' 발급
+            const userCredential = await signInAnonymously(auth);
+            const myUid = userCredential.user.uid;
+
+            // 3. [핵심] 발급받은 UID를 'teachers' 컬렉션에 등록 (권한 획득용)
+            // 보안 규칙(isAdminOrTeacher)을 통과하기 위해 내 UID로 된 문서를 만듭니다.
+            await setDoc(doc(db, "teachers", myUid), {
+                name: targetTeacher.name,
+                originalId: targetTeacher.id, // 원본 ID 저장
+                role: 'teacher',
+                phone: targetTeacher.phone,
+                lastLogin: serverTimestamp()
+            }, { merge: true });
+
+            this.teacherData = targetTeacher;
+            return { success: true };
 
         } catch (error) {
-            console.error("로그인 에러:", error);
-            showToast("서버 연결 실패", true);
+            console.error("Login Error:", error);
+            return { success: false, message: "로그인 중 오류가 발생했습니다." };
         }
     },
 
-    async handleLogout() {
-        if(confirm("로그아웃 하시겠습니까?")) {
-            await signOut(auth);
-            window.location.href = "/";
-        }
-    },
-
-    async promptPasswordChange(uid) {
-        setTimeout(async () => {
-            const newPw = prompt("새 비밀번호를 설정해주세요 (6자리 이상)");
-            if(newPw && newPw.length >= 6) {
-                try {
-                    await updateDoc(doc(db, "teachers", uid), { 
-                        password: newPw, isInitialPassword: false 
-                    });
-                    alert("비밀번호가 변경되었습니다.");
-                } catch(e) {
-                    alert("비밀번호 저장 실패");
-                }
-            }
-        }, 500);
-    },
-
-    showLoginScreen() {
-        if(this.dom.loginContainer) this.dom.loginContainer.style.display = 'flex';
-        if(this.dom.dashboardContainer) this.dom.dashboardContainer.style.display = 'none';
-        // 입력창 비우기 (보안)
-        if(this.dom.passwordInput) this.dom.passwordInput.value = '';
-    },
-
-    showDashboard() {
-        if(this.dom.loginContainer) this.dom.loginContainer.style.display = 'none';
-        if(this.dom.dashboardContainer) this.dom.dashboardContainer.style.display = 'block';
+    async logout() {
+        this.teacherData = null;
+        await signOut(auth);
     }
 };

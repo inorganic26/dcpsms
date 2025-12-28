@@ -136,7 +136,7 @@ export const homeworkDashboard = {
             el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">연결 끊김</td></tr>';
         });
 
-        // 2. [변경] 서브컬렉션 리스너
+        // 2. 서브컬렉션 리스너
         const subColRef = collection(db, 'homeworks', homeworkId, 'submissions');
         this.unsubSubmissions = onSnapshot(subColRef, (snapshot) => {
             const submissions = {};
@@ -150,10 +150,13 @@ export const homeworkDashboard = {
 
     renderHomeworkTable() {
         const hwData = this.state.cachedHomeworkData;
-        const submissions = this.state.cachedSubmissions;
+        const newSubmissions = this.state.cachedSubmissions; // 신규 데이터
         const studentsInClass = this.app.state.studentsInClass;
         
         if (!hwData || !studentsInClass) return;
+
+        // [핵심] 구형 데이터 가져오기
+        const oldSubmissions = hwData.submissions || {};
 
         const el = (id) => document.getElementById(this.config.elements[id]);
         const tbody = el('homeworkTableBody');
@@ -167,7 +170,9 @@ export const homeworkDashboard = {
         const sortedStudents = Array.from(studentsInClass.entries()).sort((a, b) => a[1].localeCompare(b[1]));
 
         sortedStudents.forEach(([id, name]) => {
-            const sub = submissions[id]; // 서브컬렉션에서 찾기
+            // [핵심] 신규 데이터 먼저 확인 -> 없으면 구형 데이터 확인
+            const sub = newSubmissions[id] || oldSubmissions[id];
+            
             const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
             const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
             const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, '반'); 
@@ -197,7 +202,7 @@ export const homeworkDashboard = {
     async forceCompleteHomework(homeworkId, studentId) {
         if (!confirm("완료 처리하시겠습니까?")) return;
         try {
-            // [변경] 서브컬렉션 setDoc 사용
+            // 강제 완료는 신규 방식으로 저장
             const subRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
             await setDoc(subRef, {
                 studentDocId: studentId,

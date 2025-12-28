@@ -38,7 +38,7 @@ export const adminHomeworkDashboard = {
         selectedClassId: null,
         selectedHomeworkId: null,
         editingHomework: null,
-        // [추가] 렌더링용 데이터 캐시
+        // 렌더링용 데이터 캐시
         cachedHomeworkData: null,
         cachedSubmissions: {},
         cachedStudents: [],
@@ -154,7 +154,7 @@ export const adminHomeworkDashboard = {
         el('mgmtButtons').style.display = 'flex';
         el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터를 불러오는 중...</td></tr>';
 
-        // 1. 학생 목록 미리 로드 (성능 최적화)
+        // 1. 학생 목록 미리 로드
         try {
             const studentsSnap = await getDocs(collection(db, 'students'));
             this.state.cachedStudents = studentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -162,7 +162,7 @@ export const adminHomeworkDashboard = {
             console.error("학생 목록 로드 실패", e);
         }
 
-        // 2. 숙제 기본 정보 리스너
+        // 2. 숙제 기본 정보 리스너 (구형 데이터 포함)
         this.unsubHomework = onSnapshot(doc(db, 'homeworks', homeworkId), (docSnap) => {
             if (!docSnap.exists()) {
                 el('homeworkTableBody').innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">숙제가 삭제되었습니다.</td></tr>';
@@ -176,7 +176,7 @@ export const adminHomeworkDashboard = {
             this.renderHomeworkTable();
         });
 
-        // 3. [변경] 제출 현황 리스너 (서브컬렉션 구독)
+        // 3. 제출 현황 리스너 (신규 서브컬렉션 구독)
         const subColRef = collection(db, 'homeworks', homeworkId, 'submissions');
         this.unsubSubmissions = onSnapshot(subColRef, (snapshot) => {
             const submissions = {};
@@ -190,12 +190,15 @@ export const adminHomeworkDashboard = {
 
     renderHomeworkTable() {
         const hwData = this.state.cachedHomeworkData;
-        const submissions = this.state.cachedSubmissions;
+        const newSubmissions = this.state.cachedSubmissions; // 신규 데이터
         const students = this.state.cachedStudents;
         const currentClassId = this.state.selectedClassId;
 
-        // 데이터가 아직 다 안 왔으면 대기
+        // 데이터 로딩 대기
         if (!hwData || !students.length) return;
+
+        // [핵심] 구형 데이터(필드 저장 방식) 가져오기
+        const oldSubmissions = hwData.submissions || {};
 
         const el = (id) => document.getElementById(this.elements[id]);
         const tbody = el('homeworkTableBody');
@@ -216,9 +219,11 @@ export const adminHomeworkDashboard = {
 
             if (isInClass) {
                 hasStudent = true;
-                const sub = submissions[student.id]; // 서브컬렉션 데이터 매칭
-                const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                 
+                // [핵심] 신규 데이터가 있으면 그걸 쓰고, 없으면 구형 데이터를 씁니다 (Fallback)
+                const sub = newSubmissions[student.id] || oldSubmissions[student.id];
+                
+                const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
                 const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
                 const buttonHtml = homeworkManagerHelper.renderFileButtons(sub, className);
 
@@ -265,8 +270,7 @@ export const adminHomeworkDashboard = {
     async forceCompleteHomework(homeworkId, studentId) {
         if (!confirm("페이지 수가 부족해도 '완료' 상태로 변경하시겠습니까?")) return;
         try {
-            // [변경] 서브컬렉션에 setDoc으로 저장 (updateDoc 대신 setDoc merge 사용)
-            // 이유: 아직 제출 안 한 학생일 수도 있으므로 문서를 새로 만들어야 할 수도 있음
+            // 강제 완료 시에는 무조건 '신규 방식(서브컬렉션)'으로 저장하여 마이그레이션 효과를 냄
             const subRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
             await setDoc(subRef, {
                 studentDocId: studentId,
@@ -385,7 +389,6 @@ export const adminHomeworkDashboard = {
                 showToast("수정되었습니다.", false);
             } else {
                 data.createdAt = serverTimestamp();
-                // data.submissions = {}; // 더 이상 필요 없음 (서브컬렉션 사용)
                 await addDoc(collection(db, 'homeworks'), data);
                 showToast("등록되었습니다.", false);
             }

@@ -2,41 +2,59 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------------------------------------------------------
+    // =========================================
     // 1. 공통 함수
-    // ---------------------------------------------------------
+    // =========================================
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
+    // [핵심 수정] 관리자 권한 체크
+    // : "inorganic26@gmail.com" 이메일이면 무조건 통과!
     function isAdminOrTeacher() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/teachers/$(request.auth.uid));
+      return isAuthenticated() && (
+        request.auth.token.email == "inorganic26@gmail.com" || 
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
     }
 
-    // ---------------------------------------------------------
-    // 2. 기본 컬렉션 (반, 선생님, 학생, 교재 등)
-    // ---------------------------------------------------------
+    // =========================================
+    // 2. 컬렉션별 규칙
+    // =========================================
+    
+    // Classes
     match /classes/{classId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
     }
+
+    // Teachers
     match /teachers/{teacherId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
+      // 선생님이 자기 정보 수정/생성 가능 (최초 등록용)
+      allow create, update: if isAuthenticated() && request.auth.uid == teacherId;
     }
+
+    // Admins
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if isAdminOrTeacher();
+    }
+
+    // Students
     match /students/{studentId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
     }
+
+    // Textbooks / Subjects / Lessons
     match /textbooks/{textbookId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
     }
 
-    // ---------------------------------------------------------
-    // 3. 과목 및 강의 (영상 시청 기록 포함)
-    // ---------------------------------------------------------
     match /subjects/{subjectId} {
       allow read: if true;
       allow write: if isAdminOrTeacher();
@@ -45,52 +63,31 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isAdminOrTeacher();
 
-        // 학생 시청 기록 (Subcollection)
         match /submissions/{studentDocId} {
           allow read, write: if isAdminOrTeacher();
           allow read: if isAuthenticated();
-          // 본인 ID와 문서 ID가 같고, 데이터에도 ID가 포함되어 있으면 저장 허용
-          allow create, update: if isAuthenticated() && 
-                                request.resource.data.studentDocId == studentDocId;
+          allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
         }
       }
     }
 
-    // ---------------------------------------------------------
-    // 4. 숙제 (여기가 핵심입니다!)
-    // ---------------------------------------------------------
+    // Homework
     match /homeworks/{homeworkId} {
       allow read: if true;
-      // 숙제 자체(제목, 마감일 등)는 선생님만 수정 가능
       allow create, update, delete: if isAdminOrTeacher();
       
-      // [수정됨] 숙제 제출물 (하위 컬렉션)
       match /submissions/{studentDocId} {
         allow read: if isAdminOrTeacher() || isAuthenticated();
-        
-        // 학생이 'submissions' 폴더 안에 자기 ID로 된 파일은 만들 수 있게 허용
-        allow create, update: if isAuthenticated() && 
-                                request.resource.data.studentDocId == studentDocId;
+        allow create, update: if isAuthenticated() && request.resource.data.studentDocId == studentDocId;
       }
     }
 
-    // ---------------------------------------------------------
-    // 5. 기타 (영상, 리포트, 테스트)
-    // ---------------------------------------------------------
-    match /classVideos/{videoId} {
-      allow read: if true;
-      allow write: if isAdminOrTeacher();
-    }
-    match /classLectures/{lectureId} {
-      allow read: if true;
-      allow write: if isAdminOrTeacher();
-    }
-    match /reports/{reportId} {
-      allow read: if true;
-      allow write: if isAdminOrTeacher();
-    }
+    // Videos / Lectures / Reports
+    match /classVideos/{videoId} { allow read: if true; allow write: if isAdminOrTeacher(); }
+    match /classLectures/{lectureId} { allow read: if true; allow write: if isAdminOrTeacher(); }
+    match /reports/{reportId} { allow read: if true; allow write: if isAdminOrTeacher(); }
 
-    // 일일/주간 테스트
+    // Tests
     match /daily_tests/{testId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
@@ -101,8 +98,6 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
-    match /{document=**} {
-      allow read, write: if false;
-    }
+    match /{document=**} { allow read, write: if false; }
   }
 }
