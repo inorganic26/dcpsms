@@ -363,6 +363,11 @@ const TeacherApp = {
         else { this.showDashboardMenu(); return; }
 
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'block';
+        
+        // [추가] 화면 이동 시 반 선택 드롭다운 상태 유지 보장
+        if (this.elements.classSelect && this.state.selectedClassId) {
+            this.elements.classSelect.value = this.state.selectedClassId;
+        }
 
         switch (viewName) {
             case 'homework-dashboard': this.homeworkDashboard?.managerInstance?.populateHomeworkSelect(); break;
@@ -395,15 +400,15 @@ const TeacherApp = {
         this.state.uploadedReports = [];
 
         if (!newClassId) {
+            // 반 선택을 취소한 경우에만 대시보드로 복귀
             this.showDashboardMenu();
             return;
         }
 
         this.state.isClassDataLoading = true;
-        if (this.state.currentView === 'student-list-mgmt') this.renderStudentList(); // Show loading
+        if (this.state.currentView === 'student-list-mgmt') this.renderStudentList(); 
         
         try {
-            // 학생 로드 (단일/배열 필드 모두 지원)
             const q1 = query(collection(db, 'students'), where('classId', '==', newClassId));
             const q2 = query(collection(db, 'students'), where('classIds', 'array-contains', newClassId));
             const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
@@ -411,7 +416,6 @@ const TeacherApp = {
             s1.forEach(d => this.state.studentsInClass.set(d.id, d.data().name));
             s2.forEach(d => this.state.studentsInClass.set(d.id, d.data().name));
             
-            // 반 정보 로드
             const classDoc = await getDoc(doc(db, 'classes', newClassId));
             this.state.selectedClassData = classDoc.exists() ? { id: classDoc.id, ...classDoc.data() } : null;
             
@@ -421,11 +425,16 @@ const TeacherApp = {
 
         document.dispatchEvent(new CustomEvent('class-changed'));
         
-        if (this.state.currentView === 'student-list-mgmt') this.renderStudentList();
-        this.showDashboardMenu();
+        // [수정] 무조건 showDashboardMenu()를 호출하지 않고, 현재 화면이 대시보드일 때만 메뉴 갱신
+        // 그 외(질문영상 등)에 있다면 그 화면을 유지합니다.
+        if (this.state.currentView === 'dashboard' || !this.state.currentView) {
+            this.showDashboardMenu();
+        } else if (this.state.currentView === 'student-list-mgmt') {
+            this.renderStudentList();
+        }
+        // 다른 뷰(질문영상, 숙제 등)에서는 'class-changed' 이벤트가 데이터를 갱신하므로 아무것도 안 해도 됩니다.
     },
 
-    // [이전에 생략되었던 함수 복원]
     async fetchClassData(classId) {
         this.state.studentsInClass.clear();
         this.state.selectedClassData = null;
@@ -539,6 +548,10 @@ const TeacherApp = {
                 opt.textContent = d.data().name;
                 select.appendChild(opt);
             });
+            // [추가] 목록을 다시 그릴 때, 이미 선택된 반이 있다면 그 값을 유지
+            if (this.state.selectedClassId) {
+                select.value = this.state.selectedClassId;
+            }
         } catch(e) { select.innerHTML = '<option>로드 실패</option>'; }
         finally { select.disabled = false; }
     },

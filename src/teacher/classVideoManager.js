@@ -39,9 +39,19 @@ export const classVideoManager = {
         });
     },
 
-    initQnaView() { this.managerInstance?.initQnaView(); },
+    // [수정됨] 페이지 진입 시, 이미 선택된 반이 있다면 바로 로드하도록 수정
+    initQnaView() { 
+        this.managerInstance?.initQnaView(); 
+        if (config.app?.state?.selectedClassId) {
+            setTimeout(() => this.managerInstance.loadQnaVideos(), 100);
+        }
+    },
+
     initLectureView() { 
         this.managerInstance?.initLectureView(); 
-        setTimeout(() => this.managerInstance.loadLectureVideos(), 100);
+        // 여기는 기존에도 잘 동작하던 코드
+        if (config.app?.state?.selectedClassId) {
+            setTimeout(() => this.managerInstance.loadLectureVideos(), 100);
+        }
     },
 };
