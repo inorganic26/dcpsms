@@ -10,10 +10,7 @@ export const studentLesson = {
   isYoutubeApiReady: false, 
   app: null,
   
-  // 시청 시간 추적용 타이머와 상태 변수
   watchTimer: null,
-  
-  // 테스트 모드용 클릭 카운터
   debugClickCount: 0,
   debugClickTimer: null,
   
@@ -25,17 +22,21 @@ export const studentLesson = {
 
   bindEvents() {
     const { elements } = this.app;
-    // ID가 없으면 문자열 그대로를 ID로 사용 (안전장치)
     const el = (id) => document.getElementById(elements[id] || id);
 
     el('startQuizBtn')?.addEventListener("click", () => this.startQuiz());
     el('retryQuizBtn')?.addEventListener("click", () => this.startQuiz());
     el('rewatchVideo1Btn')?.addEventListener("click", () => this.rewatchVideo1());
     
-    const addTestBtn = document.getElementById('student-add-daily-test-btn');
-    if(addTestBtn) {
-        addTestBtn.onclick = () => this.addDailyTest();
-    }
+    // 일일테스트 버튼 안전하게 연결
+    setTimeout(() => {
+        const addTestBtn = document.getElementById('student-add-daily-test-btn');
+        if(addTestBtn) {
+            // 중복 연결 방지
+            addTestBtn.onclick = null;
+            addTestBtn.onclick = () => this.addDailyTest();
+        }
+    }, 500);
   },
 
   // 1. 강의 목록 불러오기
@@ -100,7 +101,6 @@ export const studentLesson = {
     });
   },
 
-  // 강의 시작
   async startSelectedLesson(lesson) {
     this.app.state.activeLesson = lesson;
     const { studentDocId, classType, selectedSubject } = this.app.state;
@@ -151,19 +151,16 @@ export const studentLesson = {
                 <h3 class="text-xl font-bold text-slate-800">학습 완료한 강의입니다!</h3>
                 <p class="text-slate-500 text-sm mt-1">어떤 영상을 보시겠습니까?</p>
             </div>
-            
             <div class="space-y-3">
                 <button id="btn-select-video1" class="w-full py-4 rounded-xl border-2 border-indigo-100 hover:border-indigo-500 bg-indigo-50 hover:bg-indigo-600 group transition-all flex items-center justify-center gap-3">
                     <span class="material-icons text-indigo-500 group-hover:text-white">play_circle</span>
                     <span class="font-bold text-indigo-700 group-hover:text-white">개념 영상 다시보기</span>
                 </button>
-
                 <button id="btn-select-video2" class="w-full py-4 rounded-xl border-2 border-purple-100 hover:border-purple-500 bg-purple-50 hover:bg-purple-600 group transition-all flex items-center justify-center gap-3">
                     <span class="material-icons text-purple-500 group-hover:text-white">rocket_launch</span>
                     <span class="font-bold text-purple-700 group-hover:text-white">심화 영상(문제풀이) 보기</span>
                 </button>
             </div>
-
             <button id="btn-close-selection" class="mt-6 text-slate-400 hover:text-slate-600 text-sm underline">닫기</button>
         </div>
     `;
@@ -174,20 +171,15 @@ export const studentLesson = {
         modal.remove();
         this.playVideo1(lesson);
     };
-
     document.getElementById('btn-select-video2').onclick = () => {
         modal.remove();
         this.playVideo2Only(lesson);
     };
-
     document.getElementById('btn-close-selection').onclick = () => modal.remove();
   },
 
-  // 1번 영상 재생 (문구 표시 로직 개선 - ID 안전장치 추가)
   playVideo1(lesson) {
     const { elements } = this.app;
-    
-    // ✨ [수정] ID가 없으면 기본값 사용
     const iframeId = elements.video1Iframe || 'student-video1-iframe';
     const iframe = document.getElementById(iframeId);
 
@@ -203,9 +195,10 @@ export const studentLesson = {
             iframe.style.display = 'none';
         } else {
             iframe.style.display = 'block'; 
-            iframe.src = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
+            // [수정] origin 값을 현재 도메인으로 명확히 지정하여 postMessage 오류 방지
+            const origin = window.location.origin;
+            iframe.src = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${origin}&rel=0`;
             
-            // 1. 기존 UI 정리
             const oldMsg = document.querySelector('.video-complete-msg');
             if(oldMsg) oldMsg.remove();
             const oldProgress = document.querySelector('.video-progress-container');
@@ -213,28 +206,23 @@ export const studentLesson = {
             const oldText = document.getElementById('video-watch-text');
             if(oldText) oldText.remove();
 
-            // 2. [핵심] 삽입 위치 찾기: 퀴즈 버튼이 들어있는 컨테이너 찾기
             const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
             const quizBtn = document.getElementById(quizBtnId);
             const buttonsContainer = quizBtn ? quizBtn.parentNode : null;
 
             if (buttonsContainer && buttonsContainer.parentNode) {
-                // 3. UI 생성
                 const progressContainer = document.createElement('div');
                 progressContainer.className = 'video-progress-container w-full max-w-5xl bg-slate-700 rounded-full h-4 mt-6 mb-2 overflow-hidden mx-auto border border-slate-600';
                 progressContainer.innerHTML = `<div id="video-watch-progress" class="bg-indigo-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>`;
                 
                 const progressText = document.createElement('p');
                 progressText.id = 'video-watch-text';
-                // 글씨를 흰색(text-white)으로 설정하여 검은 배경에서 잘 보이게 함
                 progressText.className = 'text-center text-base text-white font-bold mb-6 cursor-pointer select-none animate-pulse'; 
                 progressText.innerText = "⏳ 시청 시간 기록 준비 중...";
                 progressText.title = "⚡ 테스트 모드: 이 텍스트를 빠르게 5번 클릭하면 즉시 완료됩니다.";
 
-                // 4. 5연타 치트키 로직
                 progressText.onclick = () => {
                     this.debugClickCount = (this.debugClickCount || 0) + 1;
-                    
                     clearTimeout(this.debugClickTimer);
                     this.debugClickTimer = setTimeout(() => this.debugClickCount = 0, 1000);
 
@@ -247,19 +235,13 @@ export const studentLesson = {
                     }
                 };
 
-                // 5. 버튼 박스 *앞에* 삽입 (영상과 버튼 사이)
                 const parent = buttonsContainer.parentNode;
                 parent.insertBefore(progressContainer, buttonsContainer);
                 parent.insertBefore(progressText, buttonsContainer);
-            } else {
-                console.error("버튼 컨테이너를 찾을 수 없어 시청 시간 바를 표시하지 못했습니다. (ID 확인 필요)");
             }
 
-            // 유튜브 모니터링 시작 (ID 명시적 전달)
             this.startVideo1Monitoring(iframeId);
         }
-    } else {
-        console.error(`Iframe을 찾을 수 없습니다. ID: ${iframeId}`);
     }
 
     const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
@@ -387,7 +369,6 @@ export const studentLesson = {
 
     if(successMsg) successMsg.style.display = "block";
     if(failureMsg) failureMsg.style.display = "none";
-    
     if(successText) successText.innerHTML = "학습을 완료한 강의입니다.<br>심화 영상을 자유롭게 시청하세요.";
 
     const oldNav = successMsg.querySelector('.nav-buttons-container');
@@ -415,14 +396,11 @@ export const studentLesson = {
 
   onVideo1Ended() {
     const { elements } = this.app;
-    
-    // 버튼 박스 위치 찾기 (ID 안전장치 추가)
     const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
     const quizBtn = document.getElementById(quizBtnId);
     const buttonsContainer = quizBtn ? quizBtn.parentNode : null;
     
     if (buttonsContainer && !document.querySelector('.video-complete-msg')) {
-        // 기존 진행바 제거
         const oldProgress = document.querySelector('.video-progress-container');
         if(oldProgress) oldProgress.remove();
         const oldText = document.getElementById('video-watch-text');
@@ -437,8 +415,6 @@ export const studentLesson = {
             </div>
             <span class="text-sm text-green-100">이제 퀴즈를 풀 수 있습니다.</span>
         `;
-        
-        // 버튼 박스 앞에 메시지 삽입
         buttonsContainer.parentNode.insertBefore(msg, buttonsContainer);
     }
 
@@ -450,7 +426,6 @@ export const studentLesson = {
     }
   },
 
-  // 3. 퀴즈 로직
   startQuiz() {
     this.app.state.currentQuestionIndex = 0; 
     this.app.state.score = 0;
@@ -593,7 +568,6 @@ export const studentLesson = {
         } else {
             const resultVideoContainer = document.getElementById('student-review-video2-container');
             if(resultVideoContainer) resultVideoContainer.style.display = 'none';
-            
             this.renderNavigationButtons(successMsg);
         }
 
@@ -601,7 +575,6 @@ export const studentLesson = {
         if(successMsg) successMsg.style.display = "none";
         if(failureMsg) failureMsg.style.display = "block";
         if(failureText) failureText.textContent = scoreText;
-        
         const resultVideoContainer = document.getElementById('student-review-video2-container');
         if(resultVideoContainer) resultVideoContainer.style.display = 'none';
     }
@@ -730,7 +703,6 @@ export const studentLesson = {
               const data = docSnap.data();
               const el = document.createElement('div');
               el.className = 'bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center';
-              
               el.innerHTML = `
                   <div>
                       <div class="flex items-center gap-2 mb-1">
@@ -791,7 +763,9 @@ export const studentLesson = {
   convertYoutubeUrlToEmbed(url) {
     const videoId = this.extractVideoId(url);
     if (!videoId) return "";
-    return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${window.location.origin}&rel=0`;
+    // [수정] origin을 명확히 전달
+    const origin = window.location.origin;
+    return `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${origin}&rel=0`;
   },
 
   loadVideoWithMonitoring(iframeId, onStateChangeCallback) {
@@ -838,7 +812,6 @@ export const studentLesson = {
       if(iframe) {
         iframe.style.display = 'block';
         
-        // 버튼 박스 앞의 메시지 제거 (위치 기반으로 찾기)
         const quizBtnId = elements.startQuizBtn || 'startQuizBtn';
         const quizBtn = document.getElementById(quizBtnId);
         const container = quizBtn ? quizBtn.parentNode.parentNode : null; // mainContent

@@ -1,6 +1,6 @@
 // src/student/studentHomework.js
 
-import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
@@ -8,7 +8,9 @@ import { showToast } from "../shared/utils.js";
 export const studentHomework = {
     app: null,
     unsubscribe: null,
+    submissionListeners: {}, 
     isInitialized: false,
+    
     elements: {
         listContainer: 'student-homework-list',
         modal: 'student-homework-modal',
@@ -19,6 +21,7 @@ export const studentHomework = {
     },
     state: {
         homeworks: [],
+        mySubmissions: {}, 
         selectedHomework: null,
         selectedFiles: [], 
     },
@@ -38,10 +41,13 @@ export const studentHomework = {
     listenForHomework(classId) {
         if (this.unsubscribe) this.unsubscribe();
 
-        const container = document.getElementById(this.elements.listContainer);
-        if (!container) return;
+        // 기존 리스너 초기화
+        Object.values(this.submissionListeners).forEach(unsub => unsub());
+        this.submissionListeners = {};
+        this.state.mySubmissions = {};
 
-        container.innerHTML = '<div class="text-center py-10 text-slate-400">숙제 목록을 불러오는 중...</div>';
+        const container = document.getElementById(this.elements.listContainer);
+        if (container) container.innerHTML = '<div class="text-center py-10 text-slate-400">숙제 목록을 불러오는 중...</div>';
 
         const q = query(collection(db, 'homeworks'), where('classId', '==', classId));
 
@@ -53,7 +59,29 @@ export const studentHomework = {
             homeworks.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             
             this.state.homeworks = homeworks;
+            this.attachSubmissionListeners(homeworks);
             this.renderList();
+        });
+    },
+
+    attachSubmissionListeners(homeworks) {
+        const studentId = this.app.state.studentDocId;
+        if (!studentId) return;
+
+        homeworks.forEach(hw => {
+            if (this.submissionListeners[hw.id]) return;
+
+            // [핵심] 하위 컬렉션(submissions)을 감시합니다.
+            const subRef = doc(db, 'homeworks', hw.id, 'submissions', studentId);
+            
+            this.submissionListeners[hw.id] = onSnapshot(subRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    this.state.mySubmissions[hw.id] = docSnap.data();
+                } else {
+                    this.state.mySubmissions[hw.id] = null;
+                }
+                this.renderList();
+            });
         });
     },
 
@@ -68,10 +96,8 @@ export const studentHomework = {
             return;
         }
 
-        const studentId = this.app.state.studentDocId;
-
         this.state.homeworks.forEach(hw => {
-            const sub = hw.submissions?.[studentId];
+            const sub = this.state.mySubmissions[hw.id];
             const isDone = sub && sub.status === 'completed';
             
             const div = document.createElement('div');
@@ -142,13 +168,10 @@ export const studentHomework = {
 
             fileInput.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files);
-                
-                // ✨ [추가] 0바이트 파일 필터링
                 const validFiles = files.filter(f => f.size > 0);
                 if (validFiles.length < files.length) {
                     showToast("내용이 없는(0KB) 파일이 제외되었습니다.", true);
                 }
-
                 this.state.selectedFiles = validFiles;
                 
                 if (this.state.selectedFiles.length > 0) {
@@ -187,7 +210,6 @@ export const studentHomework = {
     async submitHomework(btn) {
         if (this.state.selectedFiles.length === 0) return showToast("파일을 선택해주세요.", true);
         
-        // ✨ [추가] 업로드 중 이탈 방지
         window.onbeforeunload = () => "업로드 중입니다. 정말 나가시겠습니까?";
         
         const originalText = btn.innerHTML;
@@ -199,29 +221,31 @@ export const studentHomework = {
             const studentId = this.app.state.studentDocId;
             const homeworkId = this.state.selectedHomework.id;
             
+            // 1. Storage 업로드
             const uploadPromises = this.state.selectedFiles.map(async (file) => {
-                // 파일명 중복 방지 (타임스탬프 추가)
                 const uniqueName = `${Date.now()}_${file.name}`;
                 const fileRef = ref(storage, `homework_submissions/${homeworkId}/${studentId}/${uniqueName}`);
-                
                 await uploadBytes(fileRef, file);
                 const url = await getDownloadURL(fileRef);
-                return { fileName: file.name, fileUrl: url }; // 원본 이름 저장
+                return { fileName: file.name, fileUrl: url };
             });
 
             const uploadedFiles = await Promise.all(uploadPromises);
 
-            await updateDoc(doc(db, 'homeworks', homeworkId), {
-                [`submissions.${studentId}`]: {
-                    studentId: studentId,
-                    studentName: this.app.state.studentName,
-                    status: 'completed',
-                    submittedAt: serverTimestamp(),
-                    files: uploadedFiles,
-                    fileUrl: uploadedFiles[0].fileUrl, // 하위 호환성
-                    fileName: uploadedFiles[0].fileName
-                }
-            });
+            // 2. Firestore 저장 (Subcollection 사용)
+            // [중요] 경로: homeworks -> {숙제ID} -> submissions -> {학생ID}
+            const submissionRef = doc(db, 'homeworks', homeworkId, 'submissions', studentId);
+
+            // [중요] studentDocId 필드를 반드시 포함해야 규칙을 통과합니다.
+            await setDoc(submissionRef, {
+                studentDocId: studentId, 
+                studentName: this.app.state.studentName,
+                status: 'completed',
+                submittedAt: serverTimestamp(),
+                files: uploadedFiles,
+                fileUrl: uploadedFiles[0].fileUrl,
+                fileName: uploadedFiles[0].fileName
+            }, { merge: true });
 
             showToast("제출되었습니다!", false);
             this.closeModal();
@@ -230,7 +254,6 @@ export const studentHomework = {
             console.error(e);
             showToast("업로드 실패: " + e.message, true);
         } finally {
-            // ✨ [추가] 이탈 방지 해제 및 버튼 복구
             window.onbeforeunload = null;
             btn.disabled = false;
             btn.innerHTML = originalText;
