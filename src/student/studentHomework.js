@@ -45,6 +45,7 @@ export const studentHomework = {
         this.unsubscribe = onSnapshot(q, (snapshot) => {
             const homeworks = [];
             snapshot.forEach(doc => homeworks.push({ id: doc.id, ...doc.data() }));
+            // 최신순 정렬
             homeworks.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             this.state.homeworks = homeworks;
             this.attachSubmissionListeners(homeworks);
@@ -78,19 +79,36 @@ export const studentHomework = {
         this.state.homeworks.forEach(hw => {
             const sub = this.state.mySubmissions[hw.id];
             
-            // [수정] 상태별 UI 설정
+            // 기본값: 미제출
             let statusBadge = `<span class="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded">미제출</span>`;
             let borderClass = 'border-slate-100';
             let bgClass = 'bg-white';
             let icon = '';
 
             if (sub) {
-                if (sub.status === 'completed') {
+                // [핵심 수정] 제출 완료 판단 로직 강화 (구버전 데이터 호환성 100% 보장)
+                
+                // 1. 파일이 있는지 확인 (fileUrl: 옛날 방식, files: 최신 방식)
+                const hasFiles = sub.fileUrl || (sub.files && sub.files.length > 0);
+                
+                // 2. 명확하게 '부분 제출(partial)'이라고 적혀있는지 확인
+                const isExplicitlyPartial = sub.status === 'partial';
+                
+                // 3. 명확하게 '완료(completed)' 혹은 선생님 확인(manualComplete)이 있는지 확인
+                const isExplicitlyCompleted = sub.status === 'completed' || sub.manualComplete === true;
+                
+                // [결론] 완료된 것으로 칠 조건:
+                // 명확히 완료되었거나 OR (파일은 있는데 '부분 제출'이라고 안 써져 있는 경우)
+                const isCompleted = isExplicitlyCompleted || (hasFiles && !isExplicitlyPartial);
+
+                if (isCompleted) {
+                    // 완료 상태 UI
                     statusBadge = `<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">제출 완료</span>`;
                     borderClass = 'border-green-200';
                     bgClass = 'bg-green-50/30';
                     icon = '<span class="material-icons-round text-green-500">check_circle</span>';
-                } else if (sub.status === 'partial') {
+                } else if (isExplicitlyPartial) {
+                    // 부분 제출 UI
                     statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">부분 제출</span>`;
                     borderClass = 'border-orange-200';
                     bgClass = 'bg-orange-50/30';
@@ -199,7 +217,6 @@ export const studentHomework = {
         const required = hw.totalPages ? Number(hw.totalPages) : 0;
         const current = this.state.selectedFiles.length;
         
-        // [핵심] 상태 결정 로직 (부족하면 'partial')
         let status = 'completed';
         if (required > 0 && current < required) {
             status = 'partial';
@@ -222,10 +239,9 @@ export const studentHomework = {
             await setDoc(doc(db, 'homeworks', hw.id, 'submissions', studentId), {
                 studentDocId: studentId,
                 studentName: this.app.state.studentName,
-                status: status, // 결정된 상태 저장
+                status: status, 
                 submittedAt: serverTimestamp(),
                 files: uploads,
-                // 하위 호환용
                 fileUrl: uploads[0].fileUrl,
                 fileName: uploads[0].fileName
             }, { merge: true });

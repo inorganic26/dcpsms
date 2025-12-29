@@ -1,6 +1,6 @@
 // src/shared/analysis/dailyTestManager.js
 
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase.js";
 import { showToast } from "../utils.js";
 
@@ -14,20 +14,34 @@ export const createDailyTestManager = (config) => {
     };
     const ITEMS_PER_PAGE = 5;
 
-    // --- UI 헬퍼 함수 (3단계: 렌더링 함수 쪼개기 적용) ---
+    // --- UI 헬퍼 함수 ---
     const createCell = (studentId, date, record) => {
+        // 1. 미응시 상태 (점수 없음)
         if (!record) {
             return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-daily" 
                         data-sid="${studentId}" data-date="${date}" data-ex="false">
-                        <span class="text-xs text-red-300 font-bold">미응시</span>
+                        <span class="text-xs text-red-300 font-bold">-</span>
                     </td>`;
         }
+        
+        // 2. 응시 완료 상태 (점수 있음)
         const score = Number(record.score);
         let cls = score >= 90 ? "text-blue-700 bg-blue-50 font-bold" : (score < 70 ? "text-red-600 bg-red-50 font-bold" : "font-bold text-slate-700");
-        return `<td class="p-3 border ${cls} cursor-pointer hover:opacity-80 cell-daily" 
+        
+        // [핵심 변경] 점수와 삭제 버튼(x)을 함께 렌더링
+        // group 클래스: 마우스를 올렸을 때만 삭제 버튼이 보이도록 함
+        return `<td class="p-2 border ${cls} cell-daily relative group hover:bg-slate-50 transition-colors" 
                     title="${record.memo || ''}" data-sid="${studentId}" data-date="${date}" data-ex="true" 
                     data-doc="${record.id}" data-scr="${score}" data-memo="${record.memo || ''}">
-                    ${score}
+                    
+                    <div class="flex items-center justify-center gap-1 w-full h-full">
+                        <span class="cursor-pointer hover:underline flex-1 text-center py-1">${score}</span>
+                        
+                        <button class="daily-delete-btn w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 absolute right-1" 
+                                data-doc="${record.id}" title="삭제">
+                            <span class="material-icons-round text-[14px]">close</span>
+                        </button>
+                    </div>
                 </td>`;
     };
 
@@ -48,7 +62,7 @@ export const createDailyTestManager = (config) => {
     // --- 메인 로직 ---
     const loadDailyTests = (classId, subjectId, students) => {
         const container = elements.dailyTestResultTable;
-        state = { ...state, classId, subjectId, students, page: 0 }; // 상태 초기화
+        state = { ...state, classId, subjectId, students, page: 0 }; 
 
         if (state.unsubscribe) { state.unsubscribe(); state.unsubscribe = null; }
 
@@ -82,7 +96,6 @@ export const createDailyTestManager = (config) => {
         const start = page * ITEMS_PER_PAGE;
         const visibleDates = dates.slice(start, start + ITEMS_PER_PAGE);
 
-        // 페이지네이션 업데이트
         if(elements.dailyTestPagination) {
             elements.dailyTestPagination.classList.remove('hidden');
             if(elements.dailyTestPrevBtn) elements.dailyTestPrevBtn.disabled = page === 0;
@@ -90,32 +103,83 @@ export const createDailyTestManager = (config) => {
             if(elements.dailyTestPageInfo) elements.dailyTestPageInfo.textContent = `${page + 1} / ${total}`;
         }
 
-        // 테이블 헤더
         let html = `<table class="w-full text-sm text-center border-collapse whitespace-nowrap"><thead class="bg-slate-100 text-slate-700 sticky top-0 z-10 shadow-sm"><tr><th class="p-3 border sticky left-0 bg-slate-100 z-20 min-w-[80px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">이름</th><th class="p-3 border bg-slate-50 min-w-[60px] text-blue-700">평균</th>`;
         visibleDates.forEach(d => html += `<th class="p-3 border font-bold text-slate-600">${d.split('-').slice(1).join('.')}</th>`);
         html += `</tr></thead><tbody>`;
 
-        // 테이블 바디 (createRow 활용)
         students.forEach(s => html += createRow(s, visibleDates, records));
         
         container.innerHTML = html + `</tbody></table>`;
-        container.querySelectorAll('.cell-daily').forEach(c => c.onclick = () => handleScoreClick(c));
+        
+        // --- 이벤트 연결 ---
+
+        // 1. 셀 클릭 (점수 수정/입력)
+        container.querySelectorAll('.cell-daily').forEach(c => {
+            c.onclick = (e) => {
+                // 삭제 버튼을 눌렀다면 수정 팝업 띄우지 않음
+                if (e.target.closest('.daily-delete-btn')) return;
+                handleScoreClick(c);
+            };
+        });
+
+        // 2. 삭제 버튼 클릭 (삭제 실행)
+        container.querySelectorAll('.daily-delete-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation(); // 부모(수정) 이벤트 전파 중단
+                handleDelete(btn.dataset.doc);
+            };
+        });
     };
 
+    // [신규] 삭제 기능 함수
+    const handleDelete = async (docId) => {
+        if (!docId) return;
+        if (!confirm("정말 이 점수 기록을 삭제하시겠습니까?")) return;
+        
+        try {
+            await deleteDoc(doc(db, "daily_tests", docId));
+            showToast("기록 삭제됨");
+        } catch (e) {
+            console.error(e);
+            showToast("삭제 실패", true);
+        }
+    };
+
+    // [복구] 기존 점수 수정 함수 (-1 로직 제거)
     const handleScoreClick = async (cell) => {
         const { sid, date, ex, doc:did, scr, memo } = cell.dataset;
         const s = state.students.find(x => x.id === sid);
+        
         const val = prompt(`${date} ${s.name} 점수`, ex==='true'?scr:'');
         if(val===null) return;
+        
         const score = Number(val);
         if(isNaN(score)) return alert("숫자만 입력 가능합니다.");
+
         const mem = prompt("메모", ex==='true'?memo:'');
         
         try {
-            if(ex==='true' && did) await updateDoc(doc(db,"daily_tests",did), {score, memo:mem||"", updatedAt:serverTimestamp()});
-            else {
+            if(ex==='true' && did) {
+                // 수정
+                await updateDoc(doc(db,"daily_tests",did), {
+                    score, 
+                    memo: mem || "", 
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                // 신규 등록
                 const subName = elements.dailyTestSubjectSelect?.options[elements.dailyTestSubjectSelect.selectedIndex].text || "과목";
-                await addDoc(collection(db,"daily_tests"), { studentId:sid, studentName:s.name, classId:state.classId, subjectId:state.subjectId, subjectName:subName, date, score, memo:mem||"", createdAt:serverTimestamp() });
+                await addDoc(collection(db,"daily_tests"), { 
+                    studentId: sid, 
+                    studentName: s.name, 
+                    classId: state.classId, 
+                    subjectId: state.subjectId, 
+                    subjectName: subName, 
+                    date, 
+                    score, 
+                    memo: mem || "", 
+                    createdAt: serverTimestamp() 
+                });
             }
             showToast("저장됨");
         } catch(e) { console.error(e); showToast("실패", true); }

@@ -3,63 +3,51 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
-    // 1. 공통 규칙: 로그인된 사용자(관리자/학생)라면 접근 허용
+    // 1. 공통 규칙: 로그인된 사용자 접근 허용
     // =========================================================
     
-    // [중요] 학생 정보 (studentStore.js 오류 해결)
-    match /students/{studentId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // [중요] 선생님 정보 (teacherManager.js 오류 해결)
-    match /teachers/{teacherId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // [중요] 반 정보 (adminHomeworkDashboard.js 오류 해결)
-    match /classes/{classId} {
-      allow read, write: if request.auth != null;
-    }
+    // 학생, 선생님, 반 정보
+    match /students/{studentId} { allow read, write: if request.auth != null; }
+    match /teachers/{teacherId} { allow read, write: if request.auth != null; }
+    match /classes/{classId} { allow read, write: if request.auth != null; }
 
     // =========================================================
-    // 2. 학습 관련 규칙 (기존 규칙 포함)
+    // 2. 영상 관리 (수업/QnA)
+    // =========================================================
+    match /classVideos/{videoId} { allow read, write: if request.auth != null; }
+    match /classLectures/{lectureId} { allow read, write: if request.auth != null; }
+
+    // =========================================================
+    // 3. 학습 및 교재 관련 규칙 (여기가 중요합니다!)
     // =========================================================
 
-    // 과목 및 강의 (학습 현황 포함)
+    // [필수 추가] 교재 정보 접근 허용 (이게 없으면 교재 로드 실패함)
+    match /textbooks/{textbookId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // 과목 및 강의
     match /subjects/{subjectId} {
       allow read, write: if request.auth != null;
-
+      
       match /lessons/{lessonId} {
         allow read, write: if request.auth != null;
-        
-        // 학습 제출 기록 (하위 컬렉션)
-        match /submissions/{submissionId} {
-          allow read, write: if request.auth != null;
-        }
+        match /submissions/{submissionId} { allow read, write: if request.auth != null; }
       }
     }
 
     // 숙제
     match /homeworks/{homeworkId} {
       allow read, write: if request.auth != null;
-      
-      // 숙제 제출 기록
-      match /submissions/{submissionId} {
-        allow read, write: if request.auth != null;
-      }
+      match /submissions/{submissionId} { allow read, write: if request.auth != null; }
     }
 
-    // 테스트 (일일/주간)
-    match /daily_tests/{testId} {
-      allow read, write: if request.auth != null;
-    }
-    
-    match /weekly_tests/{testId} {
-      allow read, write: if request.auth != null;
-    }
+    // 테스트
+    match /daily_tests/{testId} { allow read, write: if request.auth != null; }
+    match /weekly_tests/{testId} { allow read, write: if request.auth != null; }
 
     // =========================================================
-    // 3. 컬렉션 그룹 쿼리 (전체 검색용)
+    // 4. 컬렉션 그룹 쿼리
     // =========================================================
     match /{path=**}/submissions/{submission} {
       allow read: if request.auth != null;
