@@ -124,10 +124,12 @@
     
     <div class="flex-1 flex flex-col items-center justify-center w-full max-w-5xl mx-auto pt-16 px-4 pb-24">
         <div class="w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
-            <iframe id="student-video1-iframe" class="w-full h-full" src="" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            <div id="student-video1-iframe" class="w-full h-full bg-black"></div>
         </div>
         
-        <div class="w-full mt-8 flex flex-col gap-3">
+        <div id="video-msg-container" class="w-full mt-4"></div>
+
+        <div class="w-full mt-4 flex flex-col gap-3">
             <button id="gotoRev1Btn" class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all transform active:scale-95 hidden">
                 보충 영상 보기
             </button>
@@ -167,11 +169,10 @@
             <div id="student-review-video2-container" class="mt-6 p-4 bg-slate-50 rounded-2xl border border-slate-100 hidden">
                 <p class="text-sm font-bold text-slate-600 mb-3 text-left">📖 응용 학습 (Video 2)</p>
                 <div class="aspect-video bg-black rounded-lg overflow-hidden mb-3">
-                    <iframe id="student-review-video2-iframe" class="w-full h-full" src="" frameborder="0" allowfullscreen></iframe>
+                    <div id="student-review-video2-iframe" class="w-full h-full bg-black"></div>
                 </div>
             </div>
-
-            </div>
+        </div>
 
         <div id="student-result-failure-msg" style="display:none;">
             <div class="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -186,10 +187,11 @@
             <button id="student-rewatch-video1-btn" class="w-full py-3 bg-white border-2 border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition">
                 개념 영상 다시보기
             </button>
-            <button id="student-back-to-lessons-from-result-btn" class="w-full py-3 mt-3 text-slate-400 font-bold text-sm hover:text-slate-600">
-                목록으로 나가기
-            </button>
         </div>
+        
+        <button id="student-back-to-lessons-from-result-btn" class="w-full py-3 mt-4 text-slate-400 font-bold text-sm hover:text-slate-600">
+            목록으로 나가기
+        </button>
     </div>
   </div>
 

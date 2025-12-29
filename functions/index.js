@@ -2,7 +2,6 @@
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentDeleted } from "firebase-functions/v2/firestore";
-import * as functions from "firebase-functions";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
@@ -220,15 +219,14 @@ export const verifyAdminPassword = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 7. [신규] 선생님 로그인 처리 (이름/비번 검증 -> 토큰 생성)
+// 7. 선생님 로그인 처리 (이름/비번 검증 -> 토큰 생성)
 // =====================================================
 export const verifyTeacherLogin = onCall({ region }, async (request) => {
   const { name, password } = request.data;
 
   try {
-    // 1. 이름으로 선생님 찾기 (관리자 권한으로 DB 조회)
+    // 1. 이름으로 선생님 찾기
     const snapshot = await db.collection("teachers").where("name", "==", name).get();
-    
     if (snapshot.empty) {
         return { success: false, message: "존재하지 않는 선생님입니다." };
     }
@@ -237,9 +235,8 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
     const teacherData = teacherDoc.data();
     const teacherId = teacherDoc.id;
 
-    // 2. 비밀번호 비교 (전화번호 뒷 4자리 or 설정된 비번)
+    // 2. 비밀번호 비교
     let isMatch = false;
-    // (보안상 실제로는 hash 비교가 좋지만, 현재 로직 유지)
     if (teacherData.password === password) isMatch = true;
     else if (teacherData.phone && teacherData.phone.slice(-4) === password) isMatch = true;
 
@@ -247,19 +244,79 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
         return { success: false, message: "비밀번호가 일치하지 않습니다." };
     }
 
-    // 3. 성공 시 커스텀 토큰 생성 (클라이언트가 이걸로 로그인함)
-    // 중요: 'teacher' 역할을 토큰에 심어서 반환
+    // 3. 커스텀 토큰 생성
     const customToken = await auth.createCustomToken(teacherId, { role: "teacher" });
-    
-    return { 
-        success: true, 
-        token: customToken, 
-        teacherId: teacherId, 
-        teacherData: teacherData 
-    };
+    return { success: true, token: customToken, teacherId, teacherData };
 
   } catch (error) {
     console.error("Teacher Login Error:", error);
     throw new HttpsError("internal", "로그인 처리 중 오류 발생");
   }
+});
+
+// =====================================================
+// 8. [신규] 학생 로그인용 반 목록 가져오기
+// =====================================================
+export const getClassesForStudentLogin = onCall({ region }, async () => {
+    try {
+        const snapshot = await db.collection("classes").orderBy("name").get();
+        const classes = snapshot.docs.map(d => ({ id: d.id, name: d.data().name }));
+        return classes;
+    } catch(e) {
+        throw new HttpsError("internal", "반 목록 로드 실패");
+    }
+});
+
+// =====================================================
+// 9. [신규] 학생 로그인용 특정 반 학생 목록 가져오기
+// =====================================================
+export const getStudentsInClassForLogin = onCall({ region }, async (request) => {
+    const { classId } = request.data;
+    if(!classId) throw new HttpsError("invalid-argument", "반 정보가 필요합니다.");
+
+    try {
+        // classId가 일치하거나 classIds 배열에 포함된 경우 모두 조회
+        const q1 = db.collection("students").where("classId", "==", classId).get();
+        const q2 = db.collection("students").where("classIds", "array-contains", classId).get();
+        
+        const [s1, s2] = await Promise.all([q1, q2]);
+        const studentsMap = new Map();
+
+        s1.forEach(d => studentsMap.set(d.id, { id: d.id, name: d.data().name }));
+        s2.forEach(d => studentsMap.set(d.id, { id: d.id, name: d.data().name }));
+
+        // 이름순 정렬
+        return Array.from(studentsMap.values()).sort((a,b) => a.name.localeCompare(b.name));
+    } catch(e) {
+        throw new HttpsError("internal", "학생 목록 로드 실패");
+    }
+});
+
+// =====================================================
+// 10. [신규] 학생 로그인 검증
+// =====================================================
+export const verifyStudentLogin = onCall({ region }, async (request) => {
+    const { studentId, password } = request.data; // studentId는 DB 문서 ID
+    
+    try {
+        const docSnap = await db.collection("students").doc(studentId).get();
+        if(!docSnap.exists) return { success: false, message: "학생 정보가 없습니다." };
+        
+        const data = docSnap.data();
+        
+        // 비밀번호 검증 (전화번호 뒷 4자리)
+        const phone = data.phone || "";
+        const targetPw = phone.length >= 4 ? phone.slice(-4) : phone;
+        
+        if(password !== targetPw) {
+            return { success: false, message: "비밀번호가 일치하지 않습니다." };
+        }
+        
+        // 성공 시 토큰 발급
+        const token = await auth.createCustomToken(studentId, { role: "student" });
+        return { success: true, token, studentData: data };
+    } catch(e) {
+        console.error(e);
+        throw new HttpsError("internal", "로그인 처리 실패");
+    }
 });
