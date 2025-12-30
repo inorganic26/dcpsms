@@ -13,11 +13,59 @@ export const createWeeklyTestManager = (config) => {
 
     // --- UI 헬퍼 함수 ---
     const createCell = (studentId, label, record) => {
-        if(!record) return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-weekly" data-sid="${studentId}" data-lbl="${label}" data-ex="false"><span class="text-xs text-red-300">미응시</span></td>`;
+        // 1. 미응시
+        if (!record) {
+            return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-weekly" 
+                        data-sid="${studentId}" data-lbl="${label}" data-ex="false">
+                        <span class="text-xs text-red-300">미응시</span>
+                    </td>`;
+        }
         
         const sc = record.score;
-        let cls = sc === null ? "bg-yellow-50 text-yellow-600 font-bold" : (sc >= 90 ? "bg-blue-50 text-blue-700 font-bold" : (sc < 70 ? "bg-red-50 text-red-600 font-bold" : "font-bold text-slate-700"));
-        return `<td class="p-3 border ${cls} cursor-pointer hover:opacity-80 cell-weekly" data-sid="${studentId}" data-lbl="${label}" data-ex="true" data-doc="${record.id}" data-scr="${sc||''}">${sc===null?'예약':sc}</td>`;
+        let content = '';
+
+        // 2. 예약 상태 (점수가 없음)
+        if (sc === null) {
+            // [핵심 수정] 필드명 호환성 체크 (examDate 또는 date, examTime 또는 time)
+            const rDate = record.examDate || record.date || record.reservationDate;
+            const rTime = record.examTime || record.time || record.reservationTime;
+
+            if (rDate && rTime) {
+                // 날짜 포맷팅 (MM-DD)
+                const shortDate = rDate.length > 5 ? rDate.slice(5) : rDate;
+                
+                // 요일 계산
+                let dayLabel = '';
+                try {
+                    const [y, m, d] = rDate.split('-').map(Number);
+                    const dayIndex = new Date(y, m - 1, d).getDay();
+                    dayLabel = ['일', '월', '화', '수', '목', '금', '토'][dayIndex];
+                } catch(e) {}
+
+                content = `<div class="text-xs leading-tight">
+                                <div class="font-medium text-slate-700">${shortDate} <span class="text-slate-500">(${dayLabel})</span></div>
+                                <div class="text-blue-600 font-bold">${rTime}</div>
+                           </div>`;
+            } else {
+                content = '<span class="text-xs text-slate-400">예약됨</span>';
+            }
+        } else {
+            // 3. 응시 완료 (점수 있음)
+            content = `<span class="text-lg">${sc}</span>`;
+        }
+
+        // 스타일링
+        let cls = sc === null 
+            ? "bg-yellow-50 text-yellow-700" // 예약 상태 배경
+            : (sc >= 90 ? "bg-blue-50 text-blue-700 font-bold" 
+            : (sc < 70 ? "bg-red-50 text-red-600 font-bold" 
+            : "font-bold text-slate-700"));
+
+        return `<td class="p-2 border ${cls} cursor-pointer hover:opacity-80 cell-weekly align-middle" 
+                    data-sid="${studentId}" data-lbl="${label}" data-ex="true" 
+                    data-doc="${record.id}" data-scr="${sc||''}">
+                    ${content}
+                </td>`;
     };
 
     const createAvgRow = (weeks, students, records) => {
@@ -95,21 +143,37 @@ export const createWeeklyTestManager = (config) => {
     const handleScoreClick = async (cell) => {
         const { sid, lbl, ex, doc:did, scr } = cell.dataset;
         const s = state.students.find(x=>x.id===sid);
+        
+        // 점수 입력
         const val = prompt(`${lbl} ${s.name} 점수`, ex==='true'?scr:'');
         if(val===null) return;
         const score = Number(val);
         if(isNaN(score)) return alert("숫자만 입력");
 
         try {
-            if(ex==='true' && did) await updateDoc(doc(db,"weekly_tests",did), {score, status:'completed', updatedAt:serverTimestamp()});
-            else {
+            if(ex==='true' && did) {
+                // 기존 기록 업데이트 (점수 입력 시 완료 처리)
+                await updateDoc(doc(db,"weekly_tests",did), {score, status:'completed', updatedAt:serverTimestamp()});
+            } else {
+                // 신규 기록 (관리자/선생님이 직접 추가하는 경우)
                 const t = getWeeklyTestTargetDate(new Date());
                 const l = getWeekLabel(t);
                 if(lbl!==l && !confirm(`선택 주차가 이번주와 다릅니다. 진행?`)) return;
                 const dStr = formatDateString(t);
                 const nid = `${sid}_${dStr}`;
                 const who = role==='admin'?'관리자':'선생님';
-                await setDoc(doc(db,"weekly_tests",nid), {uid:sid, userName:s.name, targetDate:dStr, weekLabel:lbl, examDate:formatDateString(new Date()), examTime:who, score, status:'completed', updatedAt:new Date()}, {merge:true});
+                
+                await setDoc(doc(db,"weekly_tests",nid), {
+                    uid: sid, 
+                    userName: s.name, 
+                    targetDate: dStr, 
+                    weekLabel: lbl, 
+                    examDate: formatDateString(new Date()), // 오늘 날짜
+                    examTime: who, 
+                    score, 
+                    status:'completed', 
+                    updatedAt: serverTimestamp()
+                }, {merge:true});
             }
             showToast("저장됨");
         } catch(e){ console.error(e); showToast("실패",true); }
@@ -138,7 +202,17 @@ export const createWeeklyTestManager = (config) => {
         const did = `${sid}_${tStr}`;
         const who = role==='admin'?'관리자추가':'선생님추가';
         try {
-            await setDoc(doc(db,"weekly_tests",did), {uid:sid, userName:s.name, targetDate:tStr, weekLabel:lbl, examDate:dVal, examTime:who, score:Number(scVal), status:'completed', updatedAt:serverTimestamp()}, {merge:true});
+            await setDoc(doc(db,"weekly_tests",did), {
+                uid:sid, 
+                userName:s.name, 
+                targetDate:tStr, 
+                weekLabel:lbl, 
+                examDate:dVal, 
+                examTime:who, 
+                score:Number(scVal), 
+                status:'completed', 
+                updatedAt:serverTimestamp()
+            }, {merge:true});
             showToast("추가됨");
             elements.weeklyModal.style.display='none';
         } catch(e){ console.error(e); showToast("실패",true); }

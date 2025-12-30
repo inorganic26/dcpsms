@@ -1,13 +1,4 @@
 {
-  "functions": {
-    "source": "functions"
-  },
-  "firestore": {
-    "rules": "firestore.rules"
-  },
-  "storage": {
-    "rules": "storage.rules"
-  },
   "hosting": [
     {
       "target": "portal",
@@ -70,6 +61,34 @@
           "source": "**",
           "destination": "/src/student/index.html"
         }
+      ]
+    },
+    {
+      "target": "parent",
+      "public": ".",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**",
+        "index.html"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/src/parent/index.html"
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
       ]
     }
   ]

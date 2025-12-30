@@ -2,55 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // =========================================================
-    // 1. 공통 규칙: 로그인된 사용자 접근 허용
-    // =========================================================
+    // =========================================================================
+    // 1. [공개] 반 목록 (Classes)
+    // -------------------------------------------------------------------------
+    // 학부모님이 로그인하기 전에도 '반 선택 드롭다운' 목록은 보여야 합니다.
+    // 그래서 반 목록만큼은 누구나 읽을 수 있게(true) 열어둡니다.
+    // =========================================================================
+    match /classes/{classId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // =========================================================================
+    // 2. [비공개] 나머지 모든 데이터 (학생, 성적, 숙제, 영상 등)
+    // -------------------------------------------------------------------------
+    // 반 목록을 제외한 모든 데이터는 오직 '로그인한 사람(학생/학부모/선생님)'만
+    // 접근할 수 있도록 철저하게 잠급니다. (보안 강화)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
     
-    // 학생, 선생님, 반 정보
-    match /students/{studentId} { allow read, write: if request.auth != null; }
-    match /teachers/{teacherId} { allow read, write: if request.auth != null; }
-    match /classes/{classId} { allow read, write: if request.auth != null; }
-
-    // =========================================================
-    // 2. 영상 관리 (수업/QnA)
-    // =========================================================
-    match /classVideos/{videoId} { allow read, write: if request.auth != null; }
-    match /classLectures/{lectureId} { allow read, write: if request.auth != null; }
-
-    // =========================================================
-    // 3. 학습 및 교재 관련 규칙 (여기가 중요합니다!)
-    // =========================================================
-
-    // [필수 추가] 교재 정보 접근 허용 (이게 없으면 교재 로드 실패함)
-    match /textbooks/{textbookId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // 과목 및 강의
-    match /subjects/{subjectId} {
-      allow read, write: if request.auth != null;
-      
-      match /lessons/{lessonId} {
-        allow read, write: if request.auth != null;
-        match /submissions/{submissionId} { allow read, write: if request.auth != null; }
-      }
-    }
-
-    // 숙제
-    match /homeworks/{homeworkId} {
-      allow read, write: if request.auth != null;
-      match /submissions/{submissionId} { allow read, write: if request.auth != null; }
-    }
-
-    // 테스트
-    match /daily_tests/{testId} { allow read, write: if request.auth != null; }
-    match /weekly_tests/{testId} { allow read, write: if request.auth != null; }
-
-    // =========================================================
-    // 4. 컬렉션 그룹 쿼리
-    // =========================================================
-    match /{path=**}/submissions/{submission} {
-      allow read: if request.auth != null;
-    }
   }
 }

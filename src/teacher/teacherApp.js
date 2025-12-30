@@ -10,12 +10,14 @@ import { setSubjects } from "../store/subjectStore.js";
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js'; 
-import { classVideoManager } from './classVideoManager.js';
+// [수정] 공용 매니저 임포트 (local import 제거)
+import { createClassVideoManager } from '../shared/classVideoManager.js'; 
 import { analysisDashboard } from './analysisDashboard.js';
 import { subjectTextbookManager } from './subjectTextbookManager.js';
 
 const TeacherApp = {
     isInitialized: false,
+    classVideoManager: null, // 인스턴스 저장용
     elements: {},
     state: {
         teacherId: null,
@@ -25,17 +27,15 @@ const TeacherApp = {
         selectedClassData: null,
         studentsInClass: new Map(),
         subjects: [],
-        
         currentView: 'dashboard',
         isSubjectsLoading: true,
         isClassDataLoading: false,
+        editingLectureId: null // 영상 수정용 ID 저장
     },
 
     init() {
         if (this.isInitialized) return;
         this.cacheElements();
-
-        // 자동 로그인 방지
         signOut(auth).then(() => console.log("Logged out for security."));
 
         this.elements.loginBtn?.addEventListener('click', () => {
@@ -51,7 +51,6 @@ const TeacherApp = {
     },
 
     cacheElements() {
-        // App은 '화면 컨테이너'와 '메뉴 버튼'만 관리합니다.
         this.elements = {
             loginContainer: document.getElementById('teacher-login-container'),
             dashboardContainer: document.getElementById('teacher-dashboard-container'),
@@ -63,7 +62,6 @@ const TeacherApp = {
             mainContent: document.getElementById('teacher-main-content'),
             navButtonsContainer: document.getElementById('teacher-navigation-buttons'),
             
-            // 화면(View) 목록
             views: {
                 'homework-dashboard': document.getElementById('view-homework-dashboard'),
                 'qna-video-mgmt': document.getElementById('view-qna-video-mgmt'),
@@ -77,15 +75,29 @@ const TeacherApp = {
                 'learning-status-mgmt': document.getElementById('view-learning-status-mgmt'),
             },
             
-            // 일부 공통 요소 (학생 명단 컨테이너 등)
             studentListContainer: document.getElementById('teacher-student-list-container'),
             gotoClassVideoMgmtBtn: document.querySelector('[data-view="class-video-mgmt"]'),
             
-            // Class Info (class-mgmt 화면용)
             currentClassInfo: document.getElementById('current-class-info'),
             currentClassType: document.getElementById('current-class-type'),
             currentClassSubjectsList: document.getElementById('current-class-subjects-list'),
         };
+
+        // [추가] 공용 매니저를 위한 요소 맵핑
+        this.elements.qnaClassSelect = "teacher-class-select"; // 선생님은 메인 반 선택 사용
+        this.elements.qnaVideoDateInput = "qna-video-date";
+        this.elements.saveQnaVideoBtn = "save-qna-video-btn";
+        this.elements.qnaVideoTitleInput = "qna-video-title";
+        this.elements.qnaVideoUrlInput = "qna-video-url";
+        this.elements.qnaVideosList = "qna-videos-list-teacher";
+
+        this.elements.lectureClassSelect = "teacher-class-select"; // 선생님은 메인 반 선택 사용
+        this.elements.lectureVideoDateInput = "class-video-date";
+        this.elements.saveLectureVideoBtn = "save-class-video-btn";
+        this.elements.addLectureVideoFieldBtn = "add-class-video-field-btn";
+        this.elements.lectureVideoListContainer = "class-video-list-container";
+        this.elements.lectureVideoTitleInput = "class-video-title";
+        this.elements.lectureVideoUrlInput = "class-video-url";
     },
 
     async handleLogin(name, password) {
@@ -137,19 +149,24 @@ const TeacherApp = {
         if (this.isInitialized) return;
         this.isInitialized = true;
         
-        // 매니저 연결 (각 매니저가 스스로 초기화)
         this.homeworkDashboard = homeworkDashboard;
         this.lessonManager = lessonManager;
         this.classEditor = classEditor;
-        this.classVideoManager = classVideoManager;
         this.analysisDashboard = analysisDashboard;
         this.subjectTextbookManager = subjectTextbookManager;
+
+        // [수정] 공용 비디오 매니저 생성
+        this.classVideoManager = createClassVideoManager({
+            app: this,
+            elements: this.elements,
+            options: { disableClassSelectPopulation: true } // 선생님은 반 선택 자동
+        });
 
         try {
             this.homeworkDashboard.init(this);
             this.lessonManager.init(this);
             this.classEditor.init(this);
-            this.classVideoManager.init(this);
+            // this.classVideoManager.init(this); // 제거 (필요할 때 호출)
             this.analysisDashboard.init(this);
             this.subjectTextbookManager.init(this);
         } catch (e) { console.error("매니저 초기화 오류:", e); }
@@ -158,7 +175,6 @@ const TeacherApp = {
         this.populateClassSelect();
         this.listenForSubjects(); 
         
-        // 초기 화면 설정
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'none';
     },
 
@@ -174,15 +190,6 @@ const TeacherApp = {
             if (e.target.classList.contains('back-to-teacher-menu')) this.showDashboardMenu();
         });
 
-        // 리포트 관련 (App 레벨에서 처리하는 간단한 로직은 유지하거나 매니저로 위임 가능)
-        // 여기서는 간단히 유지
-        const uploadBtn = document.getElementById('teacher-upload-reports-btn');
-        if(uploadBtn) {
-            // ... (리포트 업로드 로직은 간단해서 TeacherApp에 남겨두거나 별도 매니저로 분리 가능)
-            // 여기서는 기존 로직 유지 (코드 생략 없이 하려면 import reportManager 필요)
-            // *주의: reportManager import가 필요합니다. 상단 확인.
-        }
-
         document.addEventListener('subjectsUpdated', () => {
             this.state.isSubjectsLoading = false;
             if (this.state.currentView === 'lesson-mgmt') this.lessonManager.populateSubjectSelect();
@@ -193,7 +200,6 @@ const TeacherApp = {
             if (this.state.currentView === 'daily-test-mgmt') this.analysisDashboard.initDailyTestView();
             if (this.state.currentView === 'weekly-test-mgmt') this.analysisDashboard.initWeeklyTestView();
             if (this.state.currentView === 'learning-status-mgmt') this.analysisDashboard.initLearningStatusView();
-            // 리포트 뷰 갱신 등...
         });
     },
 
@@ -221,18 +227,18 @@ const TeacherApp = {
         if (this.elements.mainContent) this.elements.mainContent.style.display = 'block';
         if (this.elements.classSelect && this.state.selectedClassId) this.elements.classSelect.value = this.state.selectedClassId;
 
-        // 뷰별 초기화
         switch (viewName) {
             case 'homework-dashboard': this.homeworkDashboard.populateHomeworkSelect(); break;
-            case 'qna-video-mgmt': this.classVideoManager.initQnaView(); break;
             case 'lesson-mgmt': this.lessonManager.populateSubjectSelect(); break;
             case 'student-list-mgmt': this.renderStudentList(); break;
             case 'class-mgmt': this.displayCurrentClassInfo(); break;
-            case 'class-video-mgmt': this.classVideoManager.initLectureView(); break;
             case 'daily-test-mgmt': this.analysisDashboard.initDailyTestView(); break;
             case 'weekly-test-mgmt': this.analysisDashboard.initWeeklyTestView(); break;
             case 'learning-status-mgmt': this.analysisDashboard.initLearningStatusView(); break;
-            // Report Mgmt 등 추가 가능
+            
+            // [수정] 공용 매니저 함수 호출
+            case 'qna-video-mgmt': this.classVideoManager.initQnaView(); break;
+            case 'class-video-mgmt': this.classVideoManager.initLectureView(); break;
         }
     },
 
@@ -322,9 +328,7 @@ const TeacherApp = {
         } catch(e) { select.innerHTML = '<option>로드 실패</option>'; }
     },
     
-    // fetchClassData 헬퍼 (다른 모듈에서 호출용)
     async fetchClassData(classId) {
-        // 단순히 handleClassSelection 로직의 일부를 수행하거나, DB를 다시 읽어 상태 갱신
         try {
             const docSnap = await getDoc(doc(db, 'classes', classId));
             if(docSnap.exists()) this.state.selectedClassData = { id: docSnap.id, ...docSnap.data() };
