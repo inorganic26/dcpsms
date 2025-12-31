@@ -102,12 +102,28 @@
         <main class="p-4 bg-slate-50 min-h-[calc(100vh-130px)]">
             
             <div id="tab-daily" class="tab-content space-y-4">
+                <div class="flex justify-between items-center mb-2 px-1">
+                    <button id="daily-prev-btn" class="text-sm text-slate-400 hover:text-blue-600 font-medium disabled:opacity-30 flex items-center">
+                        <span class="material-icons-round text-base mr-1">chevron_left</span> 이전
+                    </button>
+                    <button id="daily-next-btn" class="text-sm text-slate-400 hover:text-blue-600 font-medium disabled:opacity-30 flex items-center">
+                        다음 <span class="material-icons-round text-base ml-1">chevron_right</span>
+                    </button>
+                </div>
                 <div id="daily-test-list" class="space-y-3">
                     <div class="loader-small mx-auto mt-10"></div>
                 </div>
             </div>
 
             <div id="tab-weekly" class="tab-content hidden space-y-4">
+                <div class="flex justify-between items-center mb-2 px-1">
+                    <button id="weekly-prev-btn" class="text-sm text-slate-400 hover:text-blue-600 font-medium disabled:opacity-30 flex items-center">
+                        <span class="material-icons-round text-base mr-1">chevron_left</span> 이전
+                    </button>
+                    <button id="weekly-next-btn" class="text-sm text-slate-400 hover:text-blue-600 font-medium disabled:opacity-30 flex items-center">
+                        다음 <span class="material-icons-round text-base ml-1">chevron_right</span>
+                    </button>
+                </div>
                 <div id="weekly-test-list" class="space-y-3">
                     <div class="loader-small mx-auto mt-10"></div>
                 </div>
