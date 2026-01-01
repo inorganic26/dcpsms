@@ -71,7 +71,7 @@ export const parentHomework = {
                 else active.push(hw);
             });
 
-            // 5. 제출 확인 (3중 체크)
+            // 5. 제출 확인
             this.state.homeworks = await this.checkSubmissionStatus(active);
             this.state.pastHomeworks = await this.checkSubmissionStatus(past);
 
@@ -83,12 +83,18 @@ export const parentHomework = {
         }
     },
 
-    // [핵심] 옛날 데이터 호환성 검색
+    // [핵심 수정] 0단계 로직 추가
     async checkSubmissionStatus(homeworkList) {
         if (!this.student.id) return homeworkList;
+        const studentName = this.student.name; 
 
         const results = await Promise.all(homeworkList.map(async (hw) => {
             try {
+                // 0. [초기 호환] 숙제 문서 자체에 submissions 필드 사용
+                if (hw.submissions && hw.submissions[this.student.id]) {
+                     return { ...hw, isSubmitted: true, submissionData: hw.submissions[this.student.id] };
+                }
+
                 // 1. 문서 ID (최신)
                 const subRef = doc(this.db, "homeworks", hw.id, "submissions", this.student.id);
                 const subSnap = await getDoc(subRef);
@@ -96,8 +102,9 @@ export const parentHomework = {
                     return { ...hw, isSubmitted: true, submissionData: subSnap.data() };
                 } 
                 
-                // 2. studentId 필드 (구형)
                 const subColRef = collection(this.db, "homeworks", hw.id, "submissions");
+
+                // 2. studentId 필드 (구형)
                 const q1 = query(subColRef, where("studentId", "==", this.student.id));
                 const snap1 = await getDocs(q1);
                 if (!snap1.empty) {
@@ -109,6 +116,15 @@ export const parentHomework = {
                 const snap2 = await getDocs(q2);
                 if (!snap2.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap2.docs[0].data() };
+                }
+
+                // 4. studentName 필드 (ID 없는 데이터 대응)
+                if (studentName) {
+                    const q3 = query(subColRef, where("studentName", "==", studentName));
+                    const snap3 = await getDocs(q3);
+                    if (!snap3.empty) {
+                        return { ...hw, isSubmitted: true, submissionData: snap3.docs[0].data() };
+                    }
                 }
 
                 return { ...hw, isSubmitted: false };
