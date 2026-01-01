@@ -52,14 +52,14 @@ export const studentHomework = {
         try {
             let allHomeworks = [];
 
-            // 1. 메인 반 (모든 날짜 가져옴)
+            // 1. 메인 반
             if (classId) {
                 const q = query(collection(db, "homeworks"), where("classId", "==", classId));
                 const snapshot = await getDocs(q);
                 snapshot.forEach(doc => allHomeworks.push({ id: doc.id, ...doc.data() }));
             }
 
-            // 2. 추가 반 (모든 날짜 가져옴)
+            // 2. 추가 반
             if (classIds.length > 0) {
                 const q2 = query(collection(db, "homeworks"), where("classId", "in", classIds));
                 const snapshot2 = await getDocs(q2);
@@ -70,7 +70,7 @@ export const studentHomework = {
                 });
             }
 
-            // 3. 정렬 (날짜 없으면 맨 뒤로, 최신순)
+            // 3. 정렬
             allHomeworks.sort((a, b) => {
                 const dateA = a.dueDate || a.endDate || "0000-00-00";
                 const dateB = b.dueDate || b.endDate || "0000-00-00";
@@ -81,7 +81,7 @@ export const studentHomework = {
             let active = [];
             let past = [];
 
-            // 4. 분류 (필터링 없이 모두 표시)
+            // 4. 분류
             allHomeworks.forEach(hw => {
                 const dateStr = hw.dueDate || hw.endDate;
                 if (!dateStr) {
@@ -108,7 +108,6 @@ export const studentHomework = {
         }
     },
 
-    // [핵심 수정] 0단계(숙제 문서 내 필드 확인) 추가
     async checkSubmissionStatus(homeworkList) {
         const studentId = this.app.state.studentDocId;
         const studentName = this.app.state.studentData?.name; 
@@ -117,13 +116,12 @@ export const studentHomework = {
 
         const results = await Promise.all(homeworkList.map(async (hw) => {
             try {
-                // 0. [초기 호환] 숙제 문서 자체에 submissions 필드가 있는 경우 (가장 옛날 방식)
-                // 관리자 앱은 이 방식으로 옛날 데이터를 보고 있음
+                // 0. [초기 호환] 숙제 문서 자체 필드
                 if (hw.submissions && hw.submissions[studentId]) {
                      return { ...hw, isSubmitted: true, submissionData: hw.submissions[studentId] };
                 }
 
-                // 1. [정석] 문서 ID가 학생 ID인 경우
+                // 1. [정석] 문서 ID
                 const subRef = doc(db, "homeworks", hw.id, "submissions", studentId);
                 const subSnap = await getDoc(subRef);
                 if (subSnap.exists()) {
@@ -132,21 +130,21 @@ export const studentHomework = {
                 
                 const subColRef = collection(db, "homeworks", hw.id, "submissions");
 
-                // 2. [호환 1] studentId 필드로 저장된 경우 (문서 ID가 랜덤일 때)
+                // 2. [호환 1] studentId 필드
                 const q1 = query(subColRef, where("studentId", "==", studentId));
                 const snap1 = await getDocs(q1);
                 if (!snap1.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap1.docs[0].data() };
                 }
 
-                // 3. [호환 2] studentDocId 필드로 저장된 경우 (더 옛날 데이터)
+                // 3. [호환 2] studentDocId 필드
                 const q2 = query(subColRef, where("studentDocId", "==", studentId));
                 const snap2 = await getDocs(q2);
                 if (!snap2.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap2.docs[0].data() };
                 }
 
-                // 4. [호환 3] studentName 필드로 저장된 경우
+                // 4. [호환 3] studentName 필드
                 if (studentName) {
                     const q3 = query(subColRef, where("studentName", "==", studentName));
                     const snap3 = await getDocs(q3);
@@ -182,7 +180,6 @@ export const studentHomework = {
 
         let html = '';
 
-        // 해야 할 숙제
         if (this.state.homeworks.length > 0) {
             html += `<h3 class="font-bold text-indigo-800 mb-3 px-1 flex items-center gap-2 mt-2"><span class="material-icons-round text-base">assignment</span> 해야 할 숙제</h3>`;
             html += this.state.homeworks.map(hw => this.createHomeworkCard(hw, true)).join('');
@@ -190,7 +187,6 @@ export const studentHomework = {
             html += `<div class="text-center py-8 text-slate-400 bg-white rounded-2xl border border-slate-100 mb-6">현재 진행 중인 숙제가 없습니다 👍</div>`;
         }
 
-        // 지난 숙제
         if (this.state.pastHomeworks.length > 0) {
             html += `<h3 class="font-bold text-slate-500 mb-3 px-1 flex items-center gap-2 mt-8 pt-6 border-t border-slate-200"><span class="material-icons-round text-base">history</span> 지난 숙제 기록</h3>`;
             html += this.state.pastHomeworks.map(hw => this.createHomeworkCard(hw, false)).join('');
@@ -252,11 +248,15 @@ export const studentHomework = {
         const modal = document.getElementById(this.elements.modal);
         if(modal) modal.style.display = 'flex';
 
+        // [수정] 제출 필요 페이지 수 표시 추가
+        const totalPagesText = hw.totalPages ? `${hw.totalPages}장` : '제한 없음';
+
         document.getElementById(this.elements.modalTitle).textContent = hw.title;
         document.getElementById(this.elements.modalContent).innerHTML = `
-             <div class="text-sm text-slate-600 mb-4">
-                <p>마감: ${hw.dueDate || hw.endDate || '없음'}</p>
-                <p>범위: ${hw.pages || '-'}</p>
+             <div class="text-sm text-slate-600 mb-4 grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-lg">
+                <p><span class="font-bold">마감:</span> ${hw.dueDate || hw.endDate || '없음'}</p>
+                <p><span class="font-bold">범위:</span> ${hw.pages || '-'}</p>
+                <p class="col-span-2 text-indigo-600"><span class="font-bold">📄 제출 필요:</span> ${totalPagesText}</p>
             </div>
         `;
         this.renderUploadSection(hw);
@@ -265,13 +265,13 @@ export const studentHomework = {
     renderUploadSection(homework) {
         const section = document.getElementById(this.elements.modalUploadSection);
         section.innerHTML = `
-            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center relative hover:bg-slate-50 transition">
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center relative hover:bg-slate-50 transition group">
                 <input type="file" id="homework-file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" multiple accept="image/*,.pdf">
-                <span class="material-icons-round text-3xl text-slate-300">cloud_upload</span>
+                <span class="material-icons-round text-3xl text-slate-300 group-hover:text-indigo-400 transition">cloud_upload</span>
                 <p class="text-xs text-slate-400 mt-1">파일 선택 (이미지, PDF)</p>
             </div>
             <div id="file-preview" class="mt-2 space-y-1 max-h-32 overflow-y-auto"></div>
-            <button id="submit-btn" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold disabled:opacity-50" disabled>제출하기</button>
+            <button id="submit-btn" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold disabled:opacity-50 disabled:bg-slate-300 transition" disabled>제출하기</button>
         `;
 
         const fileInput = document.getElementById('homework-file-input');
@@ -279,11 +279,31 @@ export const studentHomework = {
         const previewEl = document.getElementById('file-preview');
 
         fileInput.addEventListener('change', (e) => {
-            this.state.selectedFiles = Array.from(e.target.files);
+            const files = Array.from(e.target.files);
+            
+            // [수정] 최대 페이지 수 제한 로직
+            const maxPages = homework.totalPages ? parseInt(homework.totalPages) : 0;
+
+            if (maxPages > 0 && files.length > maxPages) {
+                alert(`⚠️ 파일이 너무 많습니다!\n\n이 숙제는 최대 ${maxPages}장까지만 제출할 수 있습니다.\n현재 선택된 파일: ${files.length}개`);
+                e.target.value = ''; // 선택 초기화
+                this.state.selectedFiles = [];
+                submitBtn.disabled = true;
+                previewEl.innerHTML = '';
+                return;
+            }
+
+            this.state.selectedFiles = files;
             if (this.state.selectedFiles.length > 0) {
                 submitBtn.disabled = false;
                 previewEl.innerHTML = this.state.selectedFiles.map(f => 
-                    `<div class="text-xs bg-slate-100 p-2 rounded flex items-center gap-2"><span class="material-icons-round text-xs">description</span> ${f.name}</div>`
+                    `<div class="text-xs bg-slate-100 p-2 rounded flex items-center justify-between">
+                        <div class="flex items-center gap-2 overflow-hidden">
+                            <span class="material-icons-round text-xs text-indigo-400">description</span>
+                            <span class="truncate">${f.name}</span>
+                        </div>
+                        <span class="text-xs text-slate-400">${(f.size/1024/1024).toFixed(1)}MB</span>
+                    </div>`
                 ).join('');
             } else {
                 submitBtn.disabled = true;
@@ -319,7 +339,7 @@ export const studentHomework = {
             const current = this.state.selectedFiles.length;
             const status = (required > 0 && current < required) ? 'partial' : 'completed';
 
-            // [중요] 모든 호환 필드 저장
+            // 모든 호환 필드 저장
             await setDoc(doc(db, 'homeworks', hw.id, 'submissions', studentId), {
                 studentDocId: studentId,
                 studentId: studentId,
