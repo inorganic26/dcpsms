@@ -1,9 +1,10 @@
 // src/student/studentLesson.js
 
-import { collection, getDocs, query, orderBy, doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, setDoc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
+import { showToast } from "../shared/utils.js"; 
 
-// YouTube API 로드
+// YouTube API 로드 (오류 방지를 위해 상단 선언 필수)
 let isYouTubeApiReady = false;
 if (!window.YT) {
     const tag = document.createElement('script');
@@ -20,6 +21,7 @@ export const studentLesson = {
     player: null,     
     player2: null,    
     watchTimer: null,
+    saveTimer: null, // DB 저장용 타이머
     
     trickClickCount: 0,
     lastClickTime: 0,
@@ -68,7 +70,6 @@ export const studentLesson = {
             this.app.showScreen(this.elements.videoScreen);
         });
         document.getElementById(this.elements.startQuizBtn)?.addEventListener('click', () => this.startQuiz());
-        
         document.getElementById(this.elements.backFromResBtn)?.addEventListener('click', () => this.app.exitVideoScreen());
     },
 
@@ -115,7 +116,7 @@ export const studentLesson = {
         });
     },
 
-    playLesson(lesson) {
+    async playLesson(lesson) {
         this.state.currentLesson = lesson;
         this.state.watchedSeconds = 0;
         this.state.videoDuration = 0;
@@ -123,18 +124,63 @@ export const studentLesson = {
         this.state.trickClickCount = 0;
 
         if (this.watchTimer) clearInterval(this.watchTimer);
-        
+        if (this.saveTimer) clearInterval(this.saveTimer);
+
+        // UI 초기화
         const titleEl = document.getElementById(this.elements.videoTitle);
         const quizBtn = document.getElementById(this.elements.startQuizBtn);
         const revBtn = document.getElementById(this.elements.gotoRevBtn);
 
         if(titleEl) titleEl.textContent = lesson.title;
-        
-        if(quizBtn) {
-            quizBtn.style.display = 'none';
-            quizBtn.classList.add('hidden');
-        }
+        if(quizBtn) quizBtn.classList.add('hidden');
         if(revBtn) revBtn.style.display = 'none';
+
+        // 1. DB에서 기존 기록 조회
+        try {
+            const studentId = this.app.state.studentDocId;
+            const subjectId = this.app.state.selectedSubject.id;
+            const docRef = doc(db, "subjects", subjectId, "lessons", lesson.id, "submissions", studentId);
+            const docSnap = await getDoc(docRef);
+
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                
+                // 자기주도반 & 퀴즈 통과 시 분기 처리
+                if (data.status === 'completed') {
+                    const classType = this.app.state.classType || 'live-lecture';
+                    
+                    if (classType === 'self-directed') {
+                        if (confirm("이미 퀴즈를 통과했습니다.\n[확인] -> 2번 영상(다음 진도) 보기\n[취소] -> 1번 영상(복습) 다시 보기")) {
+                            
+                            this.prepareQuiz(lesson); 
+                            
+                            // [수정] 2000점 오류 해결: 총 문제 수(5)를 기준으로 맞은 개수 환산
+                            const questionCount = Math.min(5, this.state.allQuestions.length) || 5;
+                            this.state.selectedQuestions = this.state.allQuestions.slice(0, questionCount);
+                            
+                            // DB에는 100(점)이 저장되어 있음 -> 이를 맞은 개수(5)로 변환
+                            const savedPercentage = data.score !== undefined ? Number(data.score) : 100;
+                            this.state.score = Math.round((savedPercentage / 100) * questionCount); 
+                            
+                            this.finishQuiz(true); // forceShowResult = true
+                            return; 
+                        }
+                    } else {
+                        if(!confirm("이미 학습을 완료했습니다. 다시 학습하시겠습니까?")) {
+                            return;
+                        }
+                    }
+                }
+
+                // 시청 시간 복구
+                if (data.watchedSeconds) {
+                    this.state.watchedSeconds = data.watchedSeconds;
+                    console.log(`기존 시청 시간 복구: ${this.state.watchedSeconds}초`);
+                }
+            }
+        } catch(e) {
+            console.error("기록 불러오기 실패:", e);
+        }
 
         this.app.showScreen(this.elements.videoScreen);
         this.prepareQuiz(lesson);
@@ -163,6 +209,10 @@ export const studentLesson = {
             }
         });
         container.appendChild(msg);
+        
+        if(this.state.watchedSeconds > 0 && this.state.videoDuration > 0) {
+             this.updateProgress();
+        }
     },
 
     updateStatusMessageText(text, isComplete = false) {
@@ -184,8 +234,6 @@ export const studentLesson = {
             setTimeout(() => this.loadVideo(url), 500);
             return;
         }
-
-        // [핵심] Origin 설정
         const origin = window.location.origin;
 
         if (this.player) { try { this.player.destroy(); } catch(e){} this.player = null; }
@@ -200,12 +248,17 @@ export const studentLesson = {
                 'playsinline': 1, 
                 'rel': 0, 
                 'enablejsapi': 1, 
-                'origin': origin // CORS 오류 해결
+                'origin': origin 
             },
             events: {
                 'onReady': (event) => {
                     this.state.videoDuration = event.target.getDuration();
                     event.target.playVideo();
+                    
+                    if (this.state.watchedSeconds > 0) {
+                        this.updateProgress();
+                    }
+                    
                     this.startWatchTimer();
                 },
                 'onStateChange': (event) => this.onPlayerStateChange(event)
@@ -215,23 +268,56 @@ export const studentLesson = {
 
     stopVideo() {
         if (this.watchTimer) clearInterval(this.watchTimer);
+        if (this.saveTimer) clearInterval(this.saveTimer);
         if (this.player && typeof this.player.stopVideo === 'function') try { this.player.stopVideo(); } catch(e) {}
         if (this.player2 && typeof this.player2.stopVideo === 'function') try { this.player2.stopVideo(); } catch(e) {}
     },
 
     startWatchTimer() {
         if (this.watchTimer) clearInterval(this.watchTimer);
+        
         this.watchTimer = setInterval(() => {
             if (this.player && this.player.getPlayerState && this.player.getPlayerState() === YT.PlayerState.PLAYING) {
                 this.state.watchedSeconds++;
                 this.updateProgress();
             }
         }, 1000);
+
+        if (this.saveTimer) clearInterval(this.saveTimer);
+        this.saveTimer = setInterval(() => {
+            this.saveWatchProgressToDB();
+        }, 10000); // 10초마다 저장
+    },
+
+    async saveWatchProgressToDB() {
+        if (this.state.isVideoCompleted) return; 
+
+        try {
+            const studentId = this.app.state.studentDocId;
+            const subjectId = this.app.state.selectedSubject.id;
+            const lessonId = this.state.currentLesson.id;
+            
+            const docRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
+            
+            await setDoc(docRef, {
+                watchedSeconds: this.state.watchedSeconds,
+                lastWatchUpdate: serverTimestamp(),
+                studentId: studentId, 
+                studentName: this.app.state.studentName
+            }, { merge: true });
+            
+        } catch (e) {
+            console.warn("시청 시간 저장 실패(네트워크 등):", e);
+        }
     },
 
     onPlayerStateChange(event) {
         if (event.data === YT.PlayerState.ENDED) {
             this.checkCompletion();
+            this.saveWatchProgressToDB(); 
+        }
+        if (event.data === YT.PlayerState.PAUSED) {
+            this.saveWatchProgressToDB(); 
         }
     },
 
@@ -261,6 +347,8 @@ export const studentLesson = {
     completeVideo() {
         this.state.isVideoCompleted = true;
         if(this.watchTimer) clearInterval(this.watchTimer);
+        this.saveWatchProgressToDB(); 
+        
         this.updateStatusMessageText("✅ 영상 학습 완료! 아래 퀴즈를 풀어보세요.", true);
         const quizBtn = document.getElementById(this.elements.startQuizBtn);
         if(quizBtn) {
@@ -346,17 +434,16 @@ export const studentLesson = {
         }
     },
 
-    async finishQuiz() {
-        const total = this.state.selectedQuestions.length;
+    async finishQuiz(forceShowResult = false) {
+        const total = this.state.selectedQuestions.length || 5; 
         const score = this.state.score;
         const percentage = Math.round((score / total) * 100);
-        const isPass = score >= (total >= 5 ? 4 : Math.ceil(total * 0.8));
+        const isPass = forceShowResult ? true : (score >= (total >= 5 ? 4 : Math.ceil(total * 0.8)));
 
         this.app.showScreen(this.elements.resultScreen);
         const successDiv = document.getElementById(this.elements.successMsg);
         const failDiv = document.getElementById(this.elements.failureMsg);
         const revContainer = document.getElementById(this.elements.reviewVideoContainer);
-        const revIframe = document.getElementById(this.elements.reviewVideoIframe);
         const exitBtn = document.getElementById(this.elements.backFromResBtn);
 
         revContainer.classList.add('hidden');
@@ -367,16 +454,15 @@ export const studentLesson = {
             failDiv.style.display = 'none';
             document.getElementById(this.elements.scoreTextSuccess).textContent = `${score} / ${total} 문제 정답 (${percentage}점)`;
             
-            const classType = this.app.state.classType || 'self-directed';
+            const classType = this.app.state.classType || 'live-lecture'; 
             const lesson = this.state.currentLesson;
             const origin = window.location.origin;
 
-            // 2번 영상 로직 (자기주도반)
             if (classType === 'self-directed' && (lesson.video2Url || (lesson.video2List && lesson.video2List.length > 0))) {
                 revContainer.classList.remove('hidden');
                 revContainer.style.display = 'block';
                 
-                const v2Url = lesson.video2Url || lesson.video2List[0].url;
+                const v2Url = lesson.video2Url || (lesson.video2List ? lesson.video2List[0].url : '');
                 const vid = this.extractVideoId(v2Url);
                 
                 if (window.YT && vid) {
@@ -389,7 +475,7 @@ export const studentLesson = {
                         playerVars: { 
                             'playsinline': 1, 
                             'rel': 0,
-                            'origin': origin // 여기도 Origin 추가!
+                            'origin': origin 
                         },
                     });
                 }
@@ -398,7 +484,10 @@ export const studentLesson = {
             } else {
                 if(exitBtn) exitBtn.textContent = "목록으로 나가기";
             }
-            await this.saveResult('completed', percentage);
+            
+            if (!forceShowResult) {
+                await this.saveResult('completed', percentage);
+            }
         } else {
             successDiv.style.display = 'none';
             failDiv.style.display = 'block';
@@ -417,6 +506,7 @@ export const studentLesson = {
                 studentName: this.app.state.studentName,
                 status: status,
                 score: score,
+                watchedSeconds: this.state.watchedSeconds, 
                 lastAttemptAt: serverTimestamp()
             }, { merge: true });
         } catch(e) { console.error(e); }
