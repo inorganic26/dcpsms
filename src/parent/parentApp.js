@@ -8,7 +8,7 @@ import {
     getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut 
 } from "firebase/auth";
 
-// ✅ 분리된 기능별 모듈 불러오기 (이 덕분에 코드가 짧아졌습니다)
+// ✅ 기능별 모듈 불러오기
 import { parentDailyTest } from "./parentDailyTest.js";
 import { parentWeeklyTest } from "./parentWeeklyTest.js";
 import { parentHomework } from "./parentHomework.js";
@@ -31,7 +31,7 @@ const db = getFirestore(app);
 const auth = getAuth(app); 
 
 let currentStudent = null;
-let currentClassData = null; // 반 상세 정보 (과목, 타입 등)
+let currentClassData = null; 
 
 // -----------------------------------------------------------------------------
 // 2. 초기화 및 이벤트 리스너
@@ -49,26 +49,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // 로그인/로그아웃 버튼 이벤트
-    document.getElementById('parent-login-btn').addEventListener('click', handleLogin);
-    document.getElementById('parent-logout-btn').addEventListener('click', handleLogout);
+    const loginBtn = document.getElementById('parent-login-btn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', handleLogin);
+    }
+
+    const logoutBtn = document.getElementById('parent-logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', handleLogout);
+    }
 });
 
 // 반 목록 드롭다운 채우기
 async function loadClasses() {
     const select = document.getElementById('parent-login-class'); 
+    if (!select) return;
+
     try {
         const querySnapshot = await getDocs(collection(db, "classes"));
         select.innerHTML = '<option value="">반을 선택해주세요</option>';
         
+        const classes = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            if (data.className) {
-                const option = document.createElement('option');
-                option.value = data.className; 
-                option.textContent = data.className;
-                select.appendChild(option);
+            // DB 필드명 호환성 체크 (name 또는 className)
+            const clsName = data.name || data.className;
+            if (clsName) {
+                classes.push({ id: doc.id, name: clsName });
             }
         });
+        
+        // 가나다순 정렬
+        classes.sort((a, b) => a.name.localeCompare(b.name));
+
+        classes.forEach(cls => {
+            const option = document.createElement('option');
+            option.value = cls.id; 
+            option.textContent = cls.name;
+            select.appendChild(option);
+        });
+
     } catch (error) {
         console.warn("반 목록 로딩 실패:", error);
         select.innerHTML = '<option value="">반 정보를 불러오지 못했습니다</option>';
@@ -79,50 +99,52 @@ async function loadClasses() {
 // 3. 로그인 로직
 // -----------------------------------------------------------------------------
 async function handleLogin() {
-    const classSelect = document.getElementById('parent-login-class');
-    const nameInput = document.getElementById('parent-login-name');
-    const phoneInput = document.getElementById('parent-login-phone');
+    const classIdEl = document.getElementById('parent-login-class');
+    const studentNameEl = document.getElementById('parent-login-name');
+    const phoneSuffixEl = document.getElementById('parent-login-phone');
 
-    const className = classSelect.value;
-    const studentName = nameInput.value.trim();
-    const phone = phoneInput.value.trim();
+    const classId = classIdEl ? classIdEl.value : ''; 
+    const studentName = studentNameEl ? studentNameEl.value.trim() : ''; 
+    const phoneSuffix = phoneSuffixEl ? phoneSuffixEl.value.trim() : ''; 
 
-    if (!className || !studentName || !phone) {
+    if (!classId || !studentName || !phoneSuffix) {
         alert("모든 정보를 입력해주세요.");
+        return;
+    }
+    
+    if (phoneSuffix.length !== 4) {
+        alert("비밀번호는 전화번호 뒷 4자리여야 합니다.");
         return;
     }
 
     const loginBtn = document.getElementById('parent-login-btn');
-    loginBtn.textContent = "로그인 중...";
-    loginBtn.disabled = true;
-
-    // 임시 계정 생성 규칙 (전화번호 기반)
-    const email = `p${phone}@dcprime.com`;
-    const password = "123456";
+    if (loginBtn) {
+        loginBtn.textContent = "확인 중...";
+        loginBtn.disabled = true;
+    }
 
     try {
-        // Firebase 인증 (없으면 생성)
-        try {
-            await signInWithEmailAndPassword(auth, email, password);
-        } catch (error) {
-            if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found') {
-                await createUserWithEmailAndPassword(auth, email, password);
-            } else {
-                throw error;
-            }
-        }
-
-        // 1. 학생 데이터 찾기
+        // 1. 학생 찾기 (DB 조회)
         const studentsRef = collection(db, "students");
-        // 주의: 이 쿼리는 Firestore 콘솔에서 '복합 색인(Index)' 생성이 필요할 수 있습니다.
-        const q = query(
+        
+        // 반 ID로 먼저 검색
+        let q = query(
             studentsRef, 
-            where("className", "==", className),
+            where("classId", "==", classId),
             where("name", "==", studentName)
         );
-
-        const querySnapshot = await getDocs(q);
+        let querySnapshot = await getDocs(q);
         
+        // 결과가 없으면 classIds 배열로 2차 검색 (학생이 여러 반인 경우 대비)
+        if (querySnapshot.empty) {
+            const q2 = query(
+                studentsRef, 
+                where("classIds", "array-contains", classId),
+                where("name", "==", studentName)
+            );
+            querySnapshot = await getDocs(q2);
+        }
+
         if (querySnapshot.empty) {
             throw new Error("STUDENT_NOT_FOUND");
         }
@@ -130,24 +152,48 @@ async function handleLogin() {
         const studentDoc = querySnapshot.docs[0];
         const studentData = studentDoc.data();
 
-        // 전화번호 뒷자리 검증
-        if (studentData.phone && studentData.phone.slice(-4) !== phone) {
-            throw new Error("PHONE_MISMATCH");
+        // 2. 전화번호 검증 (DB 데이터와 입력값 대조)
+        const registeredPhone = studentData.phone || studentData.parentPhone || "";
+        const cleanPhone = registeredPhone.replace(/-/g, "").trim();
+        
+        if (!cleanPhone || cleanPhone.slice(-4) !== phoneSuffix) {
+             throw new Error("PHONE_MISMATCH");
         }
 
+        // 3. 로그인 및 계정 생성
+        const email = `parent_${studentDoc.id}@dcpsms.com`;
+        
+        // 비밀번호 정책: "dcps" + 전화번호뒷4자리 (총 8자리)
+        const safePassword = "dcps" + phoneSuffix; 
+
+        try {
+            // A. 로그인 시도
+            await signInWithEmailAndPassword(auth, email, safePassword);
+            console.log("기존 계정으로 로그인 성공");
+
+        } catch (loginError) {
+            // B. 실패 시: 계정이 없거나(user-not-found), 비번이 틀림(invalid-credential)
+            if (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential') {
+                try {
+                    // C. 계정 자동 생성 시도
+                    await createUserWithEmailAndPassword(auth, email, safePassword);
+                    console.log("새 계정 생성 후 로그인 성공");
+                } catch (createError) {
+                    if (createError.code === 'auth/email-already-in-use') {
+                        throw new Error("비밀번호(전화번호 뒷자리)가 일치하지 않거나 시스템 오류입니다.");
+                    } else {
+                        throw createError; 
+                    }
+                }
+            } else {
+                throw loginError;
+            }
+        }
+
+        // 4. 로그인 성공 후 데이터 세팅
         currentStudent = { id: studentDoc.id, ...studentData };
         
-        // 2. 반 상세 정보(classData) 가져오기
-        // (진도 모듈 등에서 반의 과목 정보나 수업 방식을 알기 위해 필요)
-        let classId = currentStudent.classId;
-        
-        // 학생 정보에 classId가 없다면 반 이름으로 다시 검색
-        if (!classId) {
-             const classQ = query(collection(db, "classes"), where("className", "==", className));
-             const classSnap = await getDocs(classQ);
-             if(!classSnap.empty) classId = classSnap.docs[0].id;
-        }
-
+        // 반 상세 정보 가져오기
         if (classId) {
             const classDoc = await getDoc(doc(db, "classes", classId));
             if(classDoc.exists()) {
@@ -155,33 +201,58 @@ async function handleLogin() {
             }
         }
 
-        // 3. 각 모듈 초기화 (DB, 학생정보, 반정보 전달)
-        // 여기서 초기화해두면 이후 탭 전환 시 바로 사용 가능
-        parentDailyTest.init(db, currentStudent, currentClassData);
-        parentWeeklyTest.init(db, currentStudent); 
-        parentHomework.init(db, currentStudent);
-        parentProgress.init(db, currentStudent, currentClassData);
+        // 5. 모듈 초기화 (DB, 학생정보 전달)
+        // [중요] parentHomework.init에는 db와 currentStudent를 전달합니다.
+        if (parentDailyTest) parentDailyTest.init(db, currentStudent, currentClassData);
+        if (parentWeeklyTest) parentWeeklyTest.init(db, currentStudent); 
+        if (parentHomework) parentHomework.init(db, currentStudent); 
+        if (parentProgress) parentProgress.init(db, currentStudent, currentClassData);
 
-        // UI 업데이트
-        document.getElementById('parent-student-name').textContent = currentStudent.name;
-        document.getElementById('parent-class-name').textContent = currentStudent.className;
+        // 6. UI 업데이트
+        const nameEl = document.getElementById('parent-student-name');
+        if (nameEl) nameEl.textContent = currentStudent.name;
         
-        document.getElementById('parent-login-container').classList.add('hidden');
-        document.getElementById('parent-dashboard').classList.remove('hidden');
+        // 반 이름 표시
+        const classEl = document.getElementById('parent-class-name');
+        if (classEl) {
+            let className = '';
+            if (currentClassData) {
+                className = currentClassData.name;
+            } else if (classIdEl && classIdEl.options[classIdEl.selectedIndex]) {
+                className = classIdEl.options[classIdEl.selectedIndex].text;
+            }
+            classEl.textContent = className;
+        }
+        
+        // 화면 전환
+        const loginContainer = document.getElementById('parent-login-container');
+        const dashboard = document.getElementById('parent-dashboard');
+        
+        if (loginContainer) loginContainer.classList.add('hidden');
+        if (dashboard) dashboard.classList.remove('hidden');
 
-        // 기본 탭 로드
+        // 첫 탭 열기
         switchTab('daily');
 
     } catch (error) {
         console.error("로그인 프로세스 에러:", error);
-        await signOut(auth);
         
-        if (error.message === "STUDENT_NOT_FOUND") alert("학생 정보를 찾을 수 없습니다.\n반과 이름을 다시 확인해주세요.");
-        else if (error.message === "PHONE_MISMATCH") alert("전화번호가 등록된 정보와 일치하지 않습니다.");
-        else alert("로그인 중 오류가 발생했습니다: " + error.message);
+        if (error.message === "STUDENT_NOT_FOUND") {
+            alert("학생 정보를 찾을 수 없습니다.\n반과 이름을 다시 확인해주세요.");
+        } else if (error.message === "PHONE_MISMATCH") {
+            alert("전화번호 뒷 4자리가 일치하지 않습니다.");
+        } else if (error.code === "auth/invalid-credential" || error.code === "auth/wrong-password") {
+            alert("로그인 정보가 올바르지 않습니다.");
+        } else {
+            alert("로그인 실패: " + (error.message || error.code));
+        }
+        
+        await signOut(auth);
     } finally {
-        loginBtn.textContent = "로그인";
-        loginBtn.disabled = false;
+        if (loginBtn) {
+            loginBtn.textContent = "로그인";
+            loginBtn.disabled = false;
+        }
     }
 }
 
@@ -218,22 +289,26 @@ function switchTab(tabName) {
 
     if (!currentStudent) return;
 
-    // ✅ 각 모듈의 렌더링 함수 실행
-    // (이전에는 여기에 긴 코드가 있었지만, 이제는 한 줄씩만 호출하면 됩니다)
+    // 모듈 렌더링 실행
     switch (tabName) {
         case 'daily': 
-            parentDailyTest.page = 0; // 탭 열 때마다 1페이지로 초기화
-            parentDailyTest.render(); 
+            if(parentDailyTest) {
+                parentDailyTest.page = 0; 
+                parentDailyTest.render();
+            }
             break;
         case 'weekly': 
-            parentWeeklyTest.page = 0;
-            parentWeeklyTest.render(); 
+            if(parentWeeklyTest) {
+                parentWeeklyTest.page = 0;
+                parentWeeklyTest.render(); 
+            }
             break;
         case 'homework': 
-            parentHomework.render(); 
+            // [중요] fetchHomeworks() 호출 (parentHomework.js의 최신 메서드)
+            if(parentHomework) parentHomework.fetchHomeworks(); 
             break;
         case 'progress': 
-            parentProgress.render(); 
+            if(parentProgress) parentProgress.render(); 
             break;
     }
 }

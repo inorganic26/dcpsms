@@ -2,26 +2,70 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // =========================================================================
-    // 1. [공개] 반 목록 (Classes)
-    // -------------------------------------------------------------------------
-    // 학부모님이 로그인하기 전, 드롭다운 메뉴에 표시할 반 목록을 가져오기 위해
-    // 'read' 권한을 'true'(누구나 가능)로 설정합니다.
-    // =========================================================================
-    match /classes/{classId} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // ==========================================
+    // 1. 관리자/선생님 판별 (슈퍼 권한)
+    // ==========================================
+    function isTeacher() {
+      return request.auth != null && (
+        request.auth.token.email == "inorganic26@gmail.com" || 
+        exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) ||
+        request.auth.token.role == "teacher" ||
+        request.auth.token.role == "admin"
+      );
     }
 
-    // =========================================================================
-    // 2. [비공개] 나머지 모든 데이터 (학생, 성적, 숙제 등)
-    // -------------------------------------------------------------------------
-    // 반 목록을 제외한 다른 모든 데이터는 로그인한 사용자만 접근할 수 있습니다.
-    // (보안을 위해 match 순서상 위에 있는 구체적인 규칙이 먼저 적용됩니다.)
-    // =========================================================================
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+    // ==========================================
+    // 2. 학생 데이터 (읽기: 전체공개, 쓰기: 선생님만)
+    // ==========================================
+    match /students/{studentId} {
+      allow read: if true; 
+      allow write: if isTeacher(); 
+    }
+
+    // ==========================================
+    // 3. 퀴즈/숙제/테스트 (학생 본인 참여 허용)
+    // ==========================================
+    
+    // [강의 퀴즈] 본인만 제출 가능
+    match /subjects/{subjectId}/lessons/{lessonId}/submissions/{studentId} {
+      allow read: if request.auth != null;
+      allow write: if isTeacher() || (request.auth != null && request.auth.uid == studentId);
+    }
+
+    // [숙제] 본인만 제출 가능
+    match /homeworks/{homeworkId}/submissions/{studentId} {
+      allow read: if request.auth != null;
+      allow write: if isTeacher() || (request.auth != null && request.auth.uid == studentId);
+    }
+
+    // [일일 테스트] 학생 본인 점수 입력/삭제 허용 (수정됨)
+    match /daily_tests/{testId} {
+      allow read: if request.auth != null;
+      // 생성(create): 내 ID로 만들 때 허용
+      allow create: if isTeacher() || (request.auth != null && request.resource.data.studentId == request.auth.uid);
+      // 수정(update): 내 ID인 데이터만 허용
+      allow update: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.uid);
+      // 삭제(delete): 내 ID인 데이터만 허용
+      allow delete: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.uid);
     }
     
+    // [주간 테스트] 학생 본인 예약/점수 허용 (수정됨)
+    match /weekly_tests/{testId} {
+      allow read: if request.auth != null;
+      // 내 ID(uid)로 된 기록만 쓰기 허용
+      allow write: if isTeacher() || (request.auth != null && request.resource.data.uid == request.auth.uid);
+    }
+
+    // ==========================================
+    // 4. 나머지 기본 규칙
+    // ==========================================
+    match /classes/{document=**} { allow read: if true; allow write: if isTeacher(); }
+    match /teachers/{document=**} { allow read: if true; allow write: if isTeacher(); }
+    
+    // 그 외 모든 곳
+    match /{document=**} {
+      allow read: if request.auth != null;
+      allow write: if isTeacher();
+    }
   }
 }

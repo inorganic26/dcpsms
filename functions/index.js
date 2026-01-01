@@ -27,6 +27,7 @@ export const createStudentAccount = onCall({ region }, async (request) => {
     throw new HttpsError("invalid-argument", "전화번호 형식이 올바르지 않습니다.");
   }
 
+  // 초기 비밀번호 규칙: 전화번호 뒷4자리 + 솔트
   const passwordInit = phone.slice(-4); 
   const salt = "dcpsms_secure_key";
   const shadowPassword = `${passwordInit}${salt}`;
@@ -106,7 +107,6 @@ export const setCustomUserRoleByUid = onCall({ region }, async (req) => {
   }
 });
 
-
 // =====================================================
 // 3. [자동 청소] 숙제 삭제 시 관련 파일 자동 삭제
 // =====================================================
@@ -164,7 +164,7 @@ export const createTeacherAccount = onCall({ region }, async (request) => {
   }
 
   const passwordInit = phone.slice(-4);
-  const salt = "dcpsms_secure_key";
+  const salt = "dcpsms_secure_key"; // [중요] 이 키가 teacherAuth.js와 일치해야 로그인 가능
   const shadowPassword = `${passwordInit}${salt}`;
 
   try {
@@ -197,7 +197,7 @@ export const createTeacherAccount = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 6. 관리자 비밀번호 검증 및 권한 부여 함수
+// 6. [수정됨] 관리자 비밀번호 검증 (.env 사용)
 // =====================================================
 export const verifyAdminPassword = onCall({ region }, async (request) => {
   if (!request.auth) {
@@ -205,7 +205,9 @@ export const verifyAdminPassword = onCall({ region }, async (request) => {
   }
 
   const { password } = request.data;
-  if (password !== "qkraudtls0626^^") {
+  
+  // [보안] 환경 변수에서 비밀번호를 가져와 비교합니다.
+  if (password !== process.env.ADMIN_PASSWORD) {
     throw new HttpsError("permission-denied", "비밀번호가 일치하지 않습니다.");
   }
 
@@ -219,13 +221,14 @@ export const verifyAdminPassword = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 7. 선생님 로그인 처리 (이름/비번 검증 -> 토큰 생성)
+// 7. 선생님 로그인 처리 (구버전 - 클라이언트 Auth로 대체 권장)
 // =====================================================
+// 주의: 클라이언트에서 teacherAuth.js를 통해 로그인하면 이 함수는 더 이상 쓰이지 않지만,
+// 혹시 모를 호환성을 위해 남겨둡니다. (보안상 삭제하는 것이 가장 좋습니다)
 export const verifyTeacherLogin = onCall({ region }, async (request) => {
   const { name, password } = request.data;
 
   try {
-    // 1. 이름으로 선생님 찾기
     const snapshot = await db.collection("teachers").where("name", "==", name).get();
     if (snapshot.empty) {
         return { success: false, message: "존재하지 않는 선생님입니다." };
@@ -235,7 +238,8 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
     const teacherData = teacherDoc.data();
     const teacherId = teacherDoc.id;
 
-    // 2. 비밀번호 비교
+    // 이 부분은 DB의 평문 비밀번호를 비교하는 취약점이 있습니다.
+    // 클라이언트 사이드 로그인을 사용하시길 바랍니다.
     let isMatch = false;
     if (teacherData.password === password) isMatch = true;
     else if (teacherData.phone && teacherData.phone.slice(-4) === password) isMatch = true;
@@ -244,7 +248,6 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
         return { success: false, message: "비밀번호가 일치하지 않습니다." };
     }
 
-    // 3. 커스텀 토큰 생성
     const customToken = await auth.createCustomToken(teacherId, { role: "teacher" });
     return { success: true, token: customToken, teacherId, teacherData };
 
@@ -255,7 +258,7 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 8. [신규] 학생 로그인용 반 목록 가져오기
+// 8. 학생 로그인용 반 목록 (그대로 유지)
 // =====================================================
 export const getClassesForStudentLogin = onCall({ region }, async () => {
     try {
@@ -268,14 +271,13 @@ export const getClassesForStudentLogin = onCall({ region }, async () => {
 });
 
 // =====================================================
-// 9. [신규] 학생 로그인용 특정 반 학생 목록 가져오기
+// 9. 학생 로그인용 학생 목록 (그대로 유지)
 // =====================================================
 export const getStudentsInClassForLogin = onCall({ region }, async (request) => {
     const { classId } = request.data;
     if(!classId) throw new HttpsError("invalid-argument", "반 정보가 필요합니다.");
 
     try {
-        // classId가 일치하거나 classIds 배열에 포함된 경우 모두 조회
         const q1 = db.collection("students").where("classId", "==", classId).get();
         const q2 = db.collection("students").where("classIds", "array-contains", classId).get();
         
@@ -285,7 +287,6 @@ export const getStudentsInClassForLogin = onCall({ region }, async (request) => 
         s1.forEach(d => studentsMap.set(d.id, { id: d.id, name: d.data().name }));
         s2.forEach(d => studentsMap.set(d.id, { id: d.id, name: d.data().name }));
 
-        // 이름순 정렬
         return Array.from(studentsMap.values()).sort((a,b) => a.name.localeCompare(b.name));
     } catch(e) {
         throw new HttpsError("internal", "학생 목록 로드 실패");
@@ -293,18 +294,16 @@ export const getStudentsInClassForLogin = onCall({ region }, async (request) => 
 });
 
 // =====================================================
-// 10. [신규] 학생 로그인 검증
+// 10. 학생 로그인 검증 (구버전 - 클라이언트 Auth 권장)
 // =====================================================
 export const verifyStudentLogin = onCall({ region }, async (request) => {
-    const { studentId, password } = request.data; // studentId는 DB 문서 ID
+    const { studentId, password } = request.data;
     
     try {
         const docSnap = await db.collection("students").doc(studentId).get();
         if(!docSnap.exists) return { success: false, message: "학생 정보가 없습니다." };
         
         const data = docSnap.data();
-        
-        // 비밀번호 검증 (전화번호 뒷 4자리)
         const phone = data.phone || "";
         const targetPw = phone.length >= 4 ? phone.slice(-4) : phone;
         
@@ -312,7 +311,6 @@ export const verifyStudentLogin = onCall({ region }, async (request) => {
             return { success: false, message: "비밀번호가 일치하지 않습니다." };
         }
         
-        // 성공 시 토큰 발급
         const token = await auth.createCustomToken(studentId, { role: "student" });
         return { success: true, token, studentData: data };
     } catch(e) {

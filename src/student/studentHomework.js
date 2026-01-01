@@ -1,16 +1,24 @@
 // src/student/studentHomework.js
 
-import { collection, query, where, onSnapshot, doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db } from "../shared/firebase.js";
+import { db, storage } from "../shared/firebase.js";
+import { 
+    collection, query, where, getDocs, doc, getDoc, setDoc, orderBy, serverTimestamp 
+} from "firebase/firestore";
+import { 
+    ref, uploadBytes, getDownloadURL 
+} from "firebase/storage";
 import { showToast } from "../shared/utils.js";
 
 export const studentHomework = {
     app: null,
-    unsubscribe: null,
-    submissionListeners: {},
-    isInitialized: false,
-    
+    state: {
+        homeworks: [],      
+        pastHomeworks: [],  
+        loading: false,
+        selectedHomework: null,
+        selectedFiles: []
+    },
+
     elements: {
         listContainer: 'student-homework-list',
         modal: 'student-homework-modal',
@@ -19,185 +27,249 @@ export const studentHomework = {
         modalUploadSection: 'student-homework-upload-section',
         closeBtn: 'student-close-homework-modal-btn'
     },
-    state: {
-        homeworks: [],
-        mySubmissions: {},
-        selectedHomework: null,
-        selectedFiles: [], 
-    },
 
     init(app) {
-        if (this.isInitialized) return;
         this.app = app;
-        this.isInitialized = true;
-        document.getElementById(this.elements.closeBtn)?.addEventListener('click', () => this.closeModal());
-        if (this.app.state.studentData?.classId) {
-            this.listenForHomework(this.app.state.studentData.classId);
+        const closeBtn = document.getElementById(this.elements.closeBtn);
+        if(closeBtn) {
+            const newBtn = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newBtn, closeBtn);
+            newBtn.addEventListener('click', () => this.closeModal());
         }
     },
 
-    listenForHomework(classId) {
-        if (this.unsubscribe) this.unsubscribe();
-        Object.values(this.submissionListeners).forEach(unsub => unsub());
-        this.submissionListeners = {};
-        
-        const q = query(collection(db, 'homeworks'), where('classId', '==', classId));
-        this.unsubscribe = onSnapshot(q, (snapshot) => {
-            const homeworks = [];
-            snapshot.forEach(doc => homeworks.push({ id: doc.id, ...doc.data() }));
-            // 최신순 정렬
-            homeworks.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-            this.state.homeworks = homeworks;
-            this.attachSubmissionListeners(homeworks);
+    async fetchHomeworks() {
+        if (!this.app || !this.app.state.studentData) return;
+
+        const studentId = this.app.state.studentDocId;
+        const classId = this.app.state.studentData.classId;
+        const classIds = this.app.state.studentData.classIds || [];
+
+        if (!classId && classIds.length === 0) return;
+
+        this.renderLoading();
+
+        try {
+            let allHomeworks = [];
+
+            // 1. 메인 반 (모든 날짜 가져옴)
+            if (classId) {
+                const q = query(collection(db, "homeworks"), where("classId", "==", classId));
+                const snapshot = await getDocs(q);
+                snapshot.forEach(doc => allHomeworks.push({ id: doc.id, ...doc.data() }));
+            }
+
+            // 2. 추가 반 (모든 날짜 가져옴)
+            if (classIds.length > 0) {
+                const q2 = query(collection(db, "homeworks"), where("classId", "in", classIds));
+                const snapshot2 = await getDocs(q2);
+                snapshot2.forEach(doc => {
+                    if (!allHomeworks.find(h => h.id === doc.id)) {
+                        allHomeworks.push({ id: doc.id, ...doc.data() });
+                    }
+                });
+            }
+
+            // 3. 정렬 (날짜 없으면 맨 뒤로, 최신순)
+            allHomeworks.sort((a, b) => {
+                const dateA = a.dueDate || a.endDate || "0000-00-00";
+                const dateB = b.dueDate || b.endDate || "0000-00-00";
+                return new Date(dateB) - new Date(dateA);
+            });
+
+            const now = new Date();
+            let active = [];
+            let past = [];
+
+            // 4. 분류 (필터링 없이 모두 표시)
+            allHomeworks.forEach(hw => {
+                const dateStr = hw.dueDate || hw.endDate;
+                if (!dateStr) {
+                    active.push(hw);
+                    return;
+                }
+                const endDateTime = new Date(dateStr + "T23:59:59");
+                if (endDateTime < now) {
+                    past.push(hw);
+                } else {
+                    active.push(hw);
+                }
+            });
+
+            // 5. 제출 확인 (강화된 로직 적용)
+            this.state.homeworks = await this.checkSubmissionStatus(active);
+            this.state.pastHomeworks = await this.checkSubmissionStatus(past);
+
             this.renderList();
-        });
+
+        } catch (error) {
+            console.error("숙제 로딩 에러:", error);
+            this.renderError();
+        }
     },
 
-    attachSubmissionListeners(homeworks) {
+    // [핵심] 23일 이전 숙제 호환성 해결을 위한 3단계 확인
+    async checkSubmissionStatus(homeworkList) {
         const studentId = this.app.state.studentDocId;
-        if (!studentId) return;
-        homeworks.forEach(hw => {
-            if (this.submissionListeners[hw.id]) return;
-            const subRef = doc(db, 'homeworks', hw.id, 'submissions', studentId);
-            this.submissionListeners[hw.id] = onSnapshot(subRef, (docSnap) => {
-                this.state.mySubmissions[hw.id] = docSnap.exists() ? docSnap.data() : null;
-                this.renderList();
-            });
-        });
+        if (!studentId) return homeworkList;
+
+        const results = await Promise.all(homeworkList.map(async (hw) => {
+            try {
+                // 1. [정석] 문서 ID가 학생 ID인 경우
+                const subRef = doc(db, "homeworks", hw.id, "submissions", studentId);
+                const subSnap = await getDoc(subRef);
+                if (subSnap.exists()) {
+                    return { ...hw, isSubmitted: true, submissionData: subSnap.data() };
+                } 
+                
+                // 2. [호환 1] studentId 필드로 저장된 경우 (문서 ID가 랜덤일 때)
+                const subColRef = collection(db, "homeworks", hw.id, "submissions");
+                const q1 = query(subColRef, where("studentId", "==", studentId));
+                const snap1 = await getDocs(q1);
+                if (!snap1.empty) {
+                    return { ...hw, isSubmitted: true, submissionData: snap1.docs[0].data() };
+                }
+
+                // 3. [호환 2] studentDocId 필드로 저장된 경우 (더 옛날 데이터)
+                const q2 = query(subColRef, where("studentDocId", "==", studentId));
+                const snap2 = await getDocs(q2);
+                if (!snap2.empty) {
+                    return { ...hw, isSubmitted: true, submissionData: snap2.docs[0].data() };
+                }
+
+                return { ...hw, isSubmitted: false };
+
+            } catch (e) {
+                console.error(e);
+                return { ...hw, isSubmitted: false };
+            }
+        }));
+
+        return results;
+    },
+
+    renderLoading() {
+        const el = document.getElementById(this.elements.listContainer);
+        if(el) el.innerHTML = '<div class="p-8 text-center text-slate-400">숙제 정보를 가져오는 중...</div>';
+    },
+
+    renderError() {
+        const el = document.getElementById(this.elements.listContainer);
+        if(el) el.innerHTML = '<div class="p-8 text-center text-red-500">데이터를 불러오지 못했습니다.</div>';
     },
 
     renderList() {
         const container = document.getElementById(this.elements.listContainer);
         if (!container) return;
-        container.innerHTML = '';
 
-        if (this.state.homeworks.length === 0) {
-            container.innerHTML = '<div class="text-center py-10 text-slate-400">등록된 숙제가 없습니다.</div>';
-            return;
+        let html = '';
+
+        // 해야 할 숙제
+        if (this.state.homeworks.length > 0) {
+            html += `<h3 class="font-bold text-indigo-800 mb-3 px-1 flex items-center gap-2 mt-2"><span class="material-icons-round text-base">assignment</span> 해야 할 숙제</h3>`;
+            html += this.state.homeworks.map(hw => this.createHomeworkCard(hw, true)).join('');
+        } else {
+            html += `<div class="text-center py-8 text-slate-400 bg-white rounded-2xl border border-slate-100 mb-6">현재 진행 중인 숙제가 없습니다 👍</div>`;
         }
 
-        this.state.homeworks.forEach(hw => {
-            const sub = this.state.mySubmissions[hw.id];
-            
-            // 기본값: 미제출
-            let statusBadge = `<span class="bg-red-100 text-red-600 text-xs font-bold px-2 py-1 rounded">미제출</span>`;
-            let borderClass = 'border-slate-100';
-            let bgClass = 'bg-white';
-            let icon = '';
+        // 지난 숙제
+        if (this.state.pastHomeworks.length > 0) {
+            html += `<h3 class="font-bold text-slate-500 mb-3 px-1 flex items-center gap-2 mt-8 pt-6 border-t border-slate-200"><span class="material-icons-round text-base">history</span> 지난 숙제 기록</h3>`;
+            html += this.state.pastHomeworks.map(hw => this.createHomeworkCard(hw, false)).join('');
+        } else {
+             html += `<div class="text-center py-8 text-slate-400 mt-8 pt-6 border-t border-slate-200">지난 숙제 기록이 없습니다.</div>`;
+        }
 
-            if (sub) {
-                // [핵심 수정] 제출 완료 판단 로직 강화 (구버전 데이터 호환성 100% 보장)
-                
-                // 1. 파일이 있는지 확인 (fileUrl: 옛날 방식, files: 최신 방식)
-                const hasFiles = sub.fileUrl || (sub.files && sub.files.length > 0);
-                
-                // 2. 명확하게 '부분 제출(partial)'이라고 적혀있는지 확인
-                const isExplicitlyPartial = sub.status === 'partial';
-                
-                // 3. 명확하게 '완료(completed)' 혹은 선생님 확인(manualComplete)이 있는지 확인
-                const isExplicitlyCompleted = sub.status === 'completed' || sub.manualComplete === true;
-                
-                // [결론] 완료된 것으로 칠 조건:
-                // 명확히 완료되었거나 OR (파일은 있는데 '부분 제출'이라고 안 써져 있는 경우)
-                const isCompleted = isExplicitlyCompleted || (hasFiles && !isExplicitlyPartial);
+        container.innerHTML = html;
+        this.bindSubmitButtons(container);
+    },
 
-                if (isCompleted) {
-                    // 완료 상태 UI
-                    statusBadge = `<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded">제출 완료</span>`;
-                    borderClass = 'border-green-200';
-                    bgClass = 'bg-green-50/30';
-                    icon = '<span class="material-icons-round text-green-500">check_circle</span>';
-                } else if (isExplicitlyPartial) {
-                    // 부분 제출 UI
-                    statusBadge = `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">부분 제출</span>`;
-                    borderClass = 'border-orange-200';
-                    bgClass = 'bg-orange-50/30';
-                    icon = '<span class="material-icons-round text-orange-400">timelapse</span>';
-                }
-            }
-            
-            const div = document.createElement('div');
-            div.className = `p-5 rounded-2xl border mb-3 shadow-sm transition-all ${bgClass} ${borderClass}`;
-            div.innerHTML = `
-                <div class="flex justify-between items-start mb-2">
-                    <div>
-                        ${statusBadge}
-                        <h3 class="font-bold text-slate-800 text-lg mt-1">${hw.title}</h3>
-                    </div>
-                    ${icon}
-                </div>
-                <div class="text-sm text-slate-500 space-y-1 mb-4">
-                    <p>📅 마감: ${hw.dueDate || '없음'}</p>
-                    <p>📖 범위: ${hw.pages || '-'}</p>
-                </div>
-                <button class="w-full py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 ${sub ? 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'}">
-                    ${sub ? (sub.status==='partial' ? '추가 제출하기' : '다시 제출하기') : '숙제 제출하기'}
-                </button>
-            `;
-            div.querySelector('button').onclick = () => this.openSubmitModal(hw);
-            container.appendChild(div);
+    bindSubmitButtons(container) {
+        container.querySelectorAll('.homework-submit-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.openSubmitModal(e.currentTarget.dataset.id));
         });
     },
 
-    openSubmitModal(homework) {
-        this.state.selectedHomework = homework;
-        this.state.selectedFiles = []; 
-        const modal = document.getElementById(this.elements.modal);
-        if(modal) modal.style.display = 'flex';
-        
-        document.getElementById(this.elements.modalTitle).textContent = homework.title;
-        
-        const totalPages = homework.totalPages ? Number(homework.totalPages) : 0;
-        document.getElementById(this.elements.modalContent).innerHTML = `
-            <div class="bg-slate-50 p-4 rounded-xl mb-4 text-sm text-slate-600">
-                <p><strong>마감일:</strong> ${homework.dueDate || '없음'}</p>
-                <p><strong>범위:</strong> ${homework.pages || '-'}</p>
-                ${totalPages > 0 ? `<p class="mt-2 pt-2 border-t border-slate-200"><strong class="text-indigo-600">📸 필요: 총 ${totalPages}장</strong></p>` : ''}
+    createHomeworkCard(hw, isActive) {
+        let statusBadge = `<span class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs font-bold">미제출</span>`;
+        let btnText = "제출하기";
+        let btnClass = "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200";
+        let opacityClass = (!isActive) ? "opacity-75 grayscale-[0.2]" : "";
+
+        if (hw.isSubmitted) {
+            const status = hw.submissionData.status;
+            if(status === 'partial') {
+                statusBadge = `<span class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs font-bold">부분 제출</span>`;
+                btnText = "추가 제출";
+            } else {
+                statusBadge = `<span class="bg-green-100 text-green-600 px-2 py-1 rounded text-xs font-bold">제출 완료</span>`;
+                btnText = "다시 제출";
+                btnClass = "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50";
+            }
+        }
+
+        return `
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-3 ${opacityClass}">
+                <div class="flex justify-between items-start mb-2">
+                    <h3 class="font-bold text-lg text-slate-800">${hw.title}</h3>
+                    ${statusBadge}
+                </div>
+                <p class="text-sm text-slate-500 mb-4">${hw.description || '내용 없음'}</p>
+                <div class="flex justify-between items-center border-t pt-3 border-slate-50">
+                    <span class="text-xs text-slate-400">마감: ${hw.dueDate || hw.endDate || '없음'}</span>
+                    <button class="homework-submit-btn px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition active:scale-95 flex items-center gap-1 ${btnClass}" data-id="${hw.id}">
+                        ${btnText}
+                    </button>
+                </div>
             </div>
         `;
+    },
 
-        this.renderUploadSection(homework);
+    openSubmitModal(homeworkId) {
+        const hw = [...this.state.homeworks, ...this.state.pastHomeworks].find(h => h.id === homeworkId);
+        if(!hw) return;
+        this.state.selectedHomework = hw;
+        this.state.selectedFiles = [];
+
+        const modal = document.getElementById(this.elements.modal);
+        if(modal) modal.style.display = 'flex';
+
+        document.getElementById(this.elements.modalTitle).textContent = hw.title;
+        document.getElementById(this.elements.modalContent).innerHTML = `
+             <div class="text-sm text-slate-600 mb-4">
+                <p>마감: ${hw.dueDate || hw.endDate || '없음'}</p>
+                <p>범위: ${hw.pages || '-'}</p>
+            </div>
+        `;
+        this.renderUploadSection(hw);
     },
 
     renderUploadSection(homework) {
         const section = document.getElementById(this.elements.modalUploadSection);
         section.innerHTML = `
-            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center relative hover:border-indigo-400 hover:bg-indigo-50 transition">
+            <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center relative hover:bg-slate-50 transition">
                 <input type="file" id="homework-file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" multiple accept="image/*,.pdf">
-                <span class="material-icons-round text-4xl text-slate-300 mb-2">cloud_upload</span>
-                <p class="text-slate-500 text-sm">파일 선택 (다중 가능)</p>
+                <span class="material-icons-round text-3xl text-slate-300">cloud_upload</span>
+                <p class="text-xs text-slate-400 mt-1">파일 선택 (이미지, PDF)</p>
             </div>
-            <div id="file-status" class="mt-2 text-right text-sm font-bold"></div>
-            <div id="file-preview" class="mt-2 space-y-2 max-h-40 overflow-y-auto"></div>
+            <div id="file-preview" class="mt-2 space-y-1 max-h-32 overflow-y-auto"></div>
             <button id="submit-btn" class="w-full mt-4 bg-indigo-600 text-white py-3 rounded-xl font-bold disabled:opacity-50" disabled>제출하기</button>
         `;
 
         const fileInput = document.getElementById('homework-file-input');
         const submitBtn = document.getElementById('submit-btn');
-        const statusEl = document.getElementById('file-status');
         const previewEl = document.getElementById('file-preview');
 
         fileInput.addEventListener('change', (e) => {
-            this.state.selectedFiles = Array.from(e.target.files).filter(f => f.size > 0);
-            const count = this.state.selectedFiles.length;
-            const required = homework.totalPages ? Number(homework.totalPages) : 0;
-
-            if (count > 0) {
-                let msg = `<span class="text-slate-500">${count}장 선택됨</span>`;
-                if (required > 0) {
-                    if (count >= required) msg = `<span class="text-green-600">충족 (${count}/${required})</span>`;
-                    else msg = `<span class="text-orange-500">부족 (${count}/${required}) - 부분 제출</span>`;
-                }
-                statusEl.innerHTML = msg;
+            this.state.selectedFiles = Array.from(e.target.files);
+            if (this.state.selectedFiles.length > 0) {
                 submitBtn.disabled = false;
-                
                 previewEl.innerHTML = this.state.selectedFiles.map(f => 
-                    `<div class="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded text-sm"><span class="material-icons-round text-xs">description</span> ${f.name}</div>`
+                    `<div class="text-xs bg-slate-100 p-2 rounded flex items-center gap-2"><span class="material-icons-round text-xs">description</span> ${f.name}</div>`
                 ).join('');
             } else {
-                statusEl.innerHTML = '';
-                previewEl.innerHTML = '';
                 submitBtn.disabled = true;
+                previewEl.innerHTML = '';
             }
         });
 
@@ -212,22 +284,11 @@ export const studentHomework = {
 
     async submitHomework(btn) {
         if (!this.state.selectedFiles.length) return;
-        
         const hw = this.state.selectedHomework;
-        const required = hw.totalPages ? Number(hw.totalPages) : 0;
-        const current = this.state.selectedFiles.length;
-        
-        let status = 'completed';
-        if (required > 0 && current < required) {
-            status = 'partial';
-            if(!confirm(`⚠️ 총 ${required}장이 필요한데 ${current}장만 선택되었습니다.\n'부분 제출' 상태로 제출하시겠습니까?`)) return;
-        }
-
         btn.disabled = true;
         btn.textContent = "업로드 중...";
 
         try {
-            const storage = getStorage();
             const studentId = this.app.state.studentDocId;
             const uploads = await Promise.all(this.state.selectedFiles.map(async (file) => {
                 const refPath = `homework_submissions/${hw.id}/${studentId}/${Date.now()}_${file.name}`;
@@ -236,18 +297,25 @@ export const studentHomework = {
                 return { fileName: file.name, fileUrl: await getDownloadURL(fileRef) };
             }));
 
+            const required = hw.totalPages ? Number(hw.totalPages) : 0;
+            const current = this.state.selectedFiles.length;
+            const status = (required > 0 && current < required) ? 'partial' : 'completed';
+
+            // [중요] 모든 호환 필드 저장
             await setDoc(doc(db, 'homeworks', hw.id, 'submissions', studentId), {
                 studentDocId: studentId,
+                studentId: studentId,
                 studentName: this.app.state.studentName,
                 status: status, 
                 submittedAt: serverTimestamp(),
                 files: uploads,
-                fileUrl: uploads[0].fileUrl,
-                fileName: uploads[0].fileName
+                fileUrl: uploads[0].fileUrl
             }, { merge: true });
 
-            showToast(status === 'partial' ? "부분 제출되었습니다." : "제출 완료!");
+            showToast("제출되었습니다!");
             this.closeModal();
+            this.fetchHomeworks(); 
+
         } catch (e) {
             console.error(e);
             showToast("제출 실패", true);

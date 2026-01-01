@@ -4,7 +4,7 @@ import { studentState } from "./studentState.js";
 import { studentDashboard } from "./studentDashboard.js";
 import { studentAuth } from "./studentAuth.js";
 import { studentLesson } from "./studentLesson.js";
-import { studentHomework } from "./studentHomework.js";
+import { studentHomework } from "./studentHomework.js"; 
 import { classVideoManager } from "../student/classVideoManager.js"; 
 import { reportManager } from "../shared/reportManager.js";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
@@ -35,7 +35,7 @@ export const StudentApp = {
     },
 
     init() {
-        console.log("[StudentApp] 초기화");
+        console.log("[StudentApp] 초기화 시작");
         studentAuth.init(this);
         studentLesson.init(this);
         studentHomework.init(this);
@@ -61,9 +61,7 @@ export const StudentApp = {
     },
 
     exitVideoScreen() {
-        // [중요 수정] 영상 정지 호출
         studentLesson.stopVideo();
-        
         if (this.state.selectedSubject) {
             this.showLessonSelectionScreen(this.state.selectedSubject.id);
         } else {
@@ -139,8 +137,12 @@ export const StudentApp = {
 
     showHomeworkScreen() {
         this.showScreen(this.elements.homeworkScreen);
-        if (this.state.studentData?.classId) {
-            studentHomework.listenForHomework(this.state.studentData.classId);
+        if (this.state.studentData) {
+            try {
+                studentHomework.fetchHomeworks();
+            } catch(e) {
+                console.error("숙제 불러오기 실패:", e);
+            }
         }
     },
 
