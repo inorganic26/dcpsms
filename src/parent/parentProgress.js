@@ -1,26 +1,32 @@
 // src/parent/parentProgress.js
-import { collection, query, where, getDocs, orderBy, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, doc, getDoc, onSnapshot } from "firebase/firestore";
 
 export const parentProgress = {
     db: null,
     student: null,
-    classId: null,      // [추가] 선택된 반 ID
+    classId: null,      
     classType: null,
-    classSubjects: {},  // [추가] 선택된 반의 과목 목록
+    classSubjects: {},  
+    unsubscribeLive: null,
 
     init(db, student, classData) {
         this.db = db;
         this.student = student;
         this.classData = classData;
         
-        // [핵심] 로그인한 반 정보 기준으로 설정
         this.classId = classData?.id;
         this.classType = classData?.classType || 'self-directed';
-        this.classSubjects = classData?.subjects || {}; // 해당 반에 설정된 과목들
+        this.classSubjects = classData?.subjects || {}; 
 
         const liveView = document.getElementById('progress-live');
         const selfView = document.getElementById('progress-self');
         const datePicker = document.getElementById('progress-date-picker');
+
+        // 기존 리스너 해제
+        if(this.unsubscribeLive) {
+            this.unsubscribeLive();
+            this.unsubscribeLive = null;
+        }
 
         if(this.classType === 'live-lecture') {
             if(liveView) liveView.classList.remove('hidden');
@@ -45,8 +51,8 @@ export const parentProgress = {
         }
     },
 
-    // 현강반 로직
-    async loadLiveProgress() {
+    // 현강반 로직 (실시간)
+    loadLiveProgress() {
         const datePicker = document.getElementById('progress-date-picker');
         if(!datePicker) return;
 
@@ -54,15 +60,17 @@ export const parentProgress = {
         const listEl = document.getElementById('progress-live-list');
         listEl.innerHTML = '<div class="loader-small mx-auto"></div>';
 
-        try {
-            // [수정] this.student.classId 대신 this.classId(선택된 반) 사용
-            const q = query(
-                collection(this.db, 'classLectures'),
-                where('classId', '==', this.classId), 
-                where('lectureDate', '==', date)
-            );
-            const snap = await getDocs(q);
+        if(this.unsubscribeLive) {
+            this.unsubscribeLive();
+        }
 
+        const q = query(
+            collection(this.db, 'classLectures'),
+            where('classId', '==', this.classId), 
+            where('lectureDate', '==', date)
+        );
+
+        this.unsubscribeLive = onSnapshot(q, (snap) => {
             if(snap.empty) {
                 listEl.innerHTML = '<div class="text-center py-6 text-slate-400">해당 날짜의 수업 기록이 없습니다.</div>';
                 return;
@@ -82,19 +90,16 @@ export const parentProgress = {
                     <span class="font-bold text-slate-700">${v.title}</span>
                 </div>
             `).join('');
-
-        } catch(e) { console.error(e); }
+        });
     },
 
-    // 자기주도반 로직
+    // 자기주도반 로직 (기존 유지)
     async loadSelfProgress() {
         const listEl = document.getElementById('progress-self-list');
         listEl.innerHTML = '<div class="loader-small mx-auto"></div>';
 
         try {
             let allLessons = [];
-            
-            // [수정] 전체 과목이 아니라, "현재 반에 설정된 과목"만 조회
             const subjectIds = Object.keys(this.classSubjects);
 
             if (subjectIds.length === 0) {
@@ -102,13 +107,10 @@ export const parentProgress = {
                 return;
             }
 
-            // 해당 반의 과목들만 순회하며 내 진도 체크
             for(const subjectId of subjectIds) {
-                // 과목 내 레슨 목록 조회
                 const lessonsSnap = await getDocs(collection(this.db, 'subjects', subjectId, 'lessons'));
                 
                 for(const lDoc of lessonsSnap.docs) {
-                    // 각 레슨에 대한 내 기록(submission) 확인
                     const subRef = doc(this.db, 'subjects', subjectId, 'lessons', lDoc.id, 'submissions', this.student.id);
                     const subSnap = await getDoc(subRef);
                     
@@ -125,7 +127,6 @@ export const parentProgress = {
                 }
             }
 
-            // 최신순 정렬
             allLessons.sort((a,b) => b.date - a.date);
 
             if(!allLessons.length) {

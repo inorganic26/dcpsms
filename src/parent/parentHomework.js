@@ -1,10 +1,11 @@
 // src/parent/parentHomework.js
 
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from "firebase/firestore";
 
 export const parentHomework = {
     db: null,
     student: null,
+    unsubscribe: null,
     
     state: {
         homeworks: [],
@@ -20,7 +21,7 @@ export const parentHomework = {
         this.student = student;
     },
 
-    async fetchHomeworks() {
+    fetchHomeworks() {
         if (!this.student) return;
 
         const classId = this.student.classId;
@@ -30,17 +31,23 @@ export const parentHomework = {
 
         this.renderLoading();
 
-        try {
+        if (this.unsubscribe) {
+            this.unsubscribe();
+            this.unsubscribe = null;
+        }
+
+        // [수정] 여러 쿼리를 합쳐야 하므로, 각각 리스너를 달거나 메인 반만 실시간으로 처리
+        // 여기서는 가장 중요한 '메인 반' 숙제를 실시간으로 처리하고, 추가 반은 기존 방식 유지
+        // (Firestore 제한상 OR 쿼리 실시간은 복잡하므로)
+        
+        // 1. 메인 반 (실시간)
+        const q = query(collection(this.db, "homeworks"), where("classId", "==", classId));
+        
+        this.unsubscribe = onSnapshot(q, async (snapshot) => {
             let allHomeworks = [];
+            snapshot.forEach(doc => allHomeworks.push({ id: doc.id, ...doc.data() }));
 
-            // 1. 메인 반
-            if (classId) {
-                const q = query(collection(this.db, "homeworks"), where("classId", "==", classId));
-                const snapshot = await getDocs(q);
-                snapshot.forEach(doc => allHomeworks.push({ id: doc.id, ...doc.data() }));
-            }
-
-            // 2. 추가 반
+            // 2. 추가 반 (1회성 로드 - 실시간 아님, 복잡도 줄임)
             if (classIds.length > 0) {
                 const q2 = query(collection(this.db, "homeworks"), where("classId", "in", classIds));
                 const snapshot2 = await getDocs(q2);
@@ -51,7 +58,7 @@ export const parentHomework = {
                 });
             }
 
-            // 3. 정렬
+            // 3. 정렬 및 가공
             allHomeworks.sort((a, b) => {
                 const dateA = a.dueDate || a.endDate || "0000-00-00";
                 const dateB = b.dueDate || b.endDate || "0000-00-00";
@@ -62,7 +69,6 @@ export const parentHomework = {
             let active = [];
             let past = [];
 
-            // 4. 분류
             allHomeworks.forEach(hw => {
                 const dateStr = hw.dueDate || hw.endDate;
                 if (!dateStr) { active.push(hw); return; }
@@ -71,16 +77,12 @@ export const parentHomework = {
                 else active.push(hw);
             });
 
-            // 5. 제출 확인
+            // 제출 상태 확인 (비동기)
             this.state.homeworks = await this.checkSubmissionStatus(active);
             this.state.pastHomeworks = await this.checkSubmissionStatus(past);
 
             this.renderList();
-
-        } catch (error) {
-            console.error("부모님 앱 숙제 로딩 실패:", error);
-            this.renderError();
-        }
+        });
     },
 
     async checkSubmissionStatus(homeworkList) {
@@ -89,12 +91,12 @@ export const parentHomework = {
 
         const results = await Promise.all(homeworkList.map(async (hw) => {
             try {
-                // 0. [초기 호환] 숙제 문서 자체 필드
+                // 0. [호환] 문서 자체 필드
                 if (hw.submissions && hw.submissions[this.student.id]) {
                      return { ...hw, isSubmitted: true, submissionData: hw.submissions[this.student.id] };
                 }
 
-                // 1. 문서 ID (최신)
+                // 1. 문서 ID
                 const subRef = doc(this.db, "homeworks", hw.id, "submissions", this.student.id);
                 const subSnap = await getDoc(subRef);
                 if (subSnap.exists()) {
@@ -103,21 +105,21 @@ export const parentHomework = {
                 
                 const subColRef = collection(this.db, "homeworks", hw.id, "submissions");
 
-                // 2. studentId 필드 (구형)
+                // 2. studentId 필드
                 const q1 = query(subColRef, where("studentId", "==", this.student.id));
                 const snap1 = await getDocs(q1);
                 if (!snap1.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap1.docs[0].data() };
                 }
 
-                // 3. studentDocId 필드 (더 옛날)
+                // 3. studentDocId 필드
                 const q2 = query(subColRef, where("studentDocId", "==", this.student.id));
                 const snap2 = await getDocs(q2);
                 if (!snap2.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap2.docs[0].data() };
                 }
 
-                // 4. studentName 필드 (ID 없는 데이터 대응)
+                // 4. studentName 필드
                 if (studentName) {
                     const q3 = query(subColRef, where("studentName", "==", studentName));
                     const snap3 = await getDocs(q3);
@@ -168,7 +170,6 @@ export const parentHomework = {
 
         listEl.innerHTML = html;
 
-        // [이벤트 연결] 개별 다운로드
         listEl.querySelectorAll('.file-download-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -176,7 +177,6 @@ export const parentHomework = {
             });
         });
 
-        // [이벤트 연결] 전체 다운로드
         listEl.querySelectorAll('.download-all-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -201,11 +201,9 @@ export const parentHomework = {
                 statusBadge = `<span class="bg-green-50 text-green-600 px-2 py-1 rounded text-xs font-bold border border-green-100">제출 완료</span>`;
             }
 
-            // 파일 목록
             const files = hw.submissionData.files || (hw.submissionData.fileUrl ? [{fileName: '첨부파일', fileUrl: hw.submissionData.fileUrl}] : []);
             
             if (files.length > 0) {
-                // [추가] 파일이 2개 이상일 때만 '모두 저장' 버튼 표시
                 const downloadAllBtn = files.length > 1 
                     ? `<button class="download-all-btn text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-1 rounded hover:bg-indigo-100 transition font-bold ml-auto flex items-center gap-1" data-id="${hw.id}">
                         <span class="material-icons-round text-[14px]">folder_zip</span> 모두 저장
@@ -254,7 +252,6 @@ export const parentHomework = {
         `;
     },
 
-    // [신규] 전체 다운로드 핸들러
     handleDownloadAll(hwId) {
         const hw = [...this.state.homeworks, ...this.state.pastHomeworks].find(h => h.id === hwId);
         if (!hw || !hw.submissionData) return;
@@ -268,7 +265,6 @@ export const parentHomework = {
 
         if (!confirm(`총 ${files.length}개의 파일을 모두 다운로드하시겠습니까?\n(팝업 차단이 설정되어 있다면 해제해주세요)`)) return;
 
-        // 1초 간격으로 순차 다운로드 실행
         files.forEach((f, index) => {
             setTimeout(() => {
                 this.downloadFile(f.fileUrl, f.fileName);
@@ -292,7 +288,7 @@ export const parentHomework = {
             
         } catch (error) {
             console.error('Download failed:', error);
-            // 실패 시 조용히 넘어가거나, 필요 시 알림
+            alert('다운로드에 실패했습니다. (권한 또는 만료)');
         }
     },
     
