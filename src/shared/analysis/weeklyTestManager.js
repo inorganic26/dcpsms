@@ -1,6 +1,6 @@
 // src/shared/analysis/weeklyTestManager.js
 
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
 import { showToast } from "../utils.js";
 import { getWeeklyTestTargetDate, getWeekLabel, formatDateString } from "../dateUtils.js";
@@ -11,11 +11,74 @@ export const createWeeklyTestManager = (config) => {
     let state = { records: [], weeks: [], page: 0, unsubscribe: null, classId: null, students: [] };
     const ITEMS_PER_PAGE = 5;
 
+    // [헬퍼] 요일에 따른 시간 옵션 업데이트
+    const updateTimeOptions = (dateStr) => {
+        const timeSelect = document.getElementById('weekly-modal-generated-time');
+        if (!timeSelect || !dateStr) return;
+
+        // 요일 계산
+        const date = new Date(dateStr);
+        const day = date.getDay(); // 0:일, 1:월, ..., 5:금, 6:토
+
+        let options = [];
+        
+        // 금요일 (5)
+        if (day === 5) {
+            options = ['16:00', '17:00', '18:00', '19:00', '20:00'];
+        } 
+        // 토요일(6) 또는 일요일(0)
+        else if (day === 6 || day === 0) {
+            options = ['12:00', '13:00', '14:00', '15:00'];
+        } 
+        // 그 외 요일
+        else {
+            options = []; // 비워두거나 필요 시 추가
+        }
+
+        // 옵션 렌더링
+        timeSelect.innerHTML = '<option value="">시간 선택</option>';
+        if (options.length === 0) {
+            timeSelect.innerHTML += '<option value="" disabled>예약 불가 요일</option>';
+        } else {
+            options.forEach(t => {
+                timeSelect.innerHTML += `<option value="${t}">${t}</option>`;
+            });
+        }
+    };
+
+    // [헬퍼] 시간 입력 필드(Select) 동적 생성
+    const ensureTimeSelect = () => {
+        if (!elements.weeklyModalDate) return null;
+        let timeSelect = document.getElementById('weekly-modal-generated-time');
+        
+        if (!timeSelect) {
+            const container = document.createElement('div');
+            container.className = "flex gap-2 w-full";
+            
+            const dateInput = elements.weeklyModalDate;
+            const parent = dateInput.parentNode;
+            
+            // Select 생성
+            timeSelect = document.createElement('select');
+            timeSelect.id = 'weekly-modal-generated-time';
+            timeSelect.className = "w-1/3 p-3 border rounded-xl text-sm focus:outline-none focus:border-indigo-500 bg-white cursor-pointer";
+            
+            parent.insertBefore(timeSelect, dateInput.nextSibling);
+            
+            dateInput.classList.remove('w-full');
+            dateInput.classList.add('flex-1');
+
+            // [이벤트] 날짜 변경 시 시간 옵션 업데이트
+            dateInput.addEventListener('change', (e) => updateTimeOptions(e.target.value));
+        }
+        return timeSelect;
+    };
+
     // --- UI 헬퍼 함수 ---
     const createCell = (studentId, label, record) => {
-        // 1. 미응시
+        // 1. 데이터 없음
         if (!record) {
-            return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-weekly" 
+            return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-weekly transition-colors" 
                         data-sid="${studentId}" data-lbl="${label}" data-ex="false">
                         <span class="text-xs text-red-300">미응시</span>
                     </td>`;
@@ -23,18 +86,14 @@ export const createWeeklyTestManager = (config) => {
         
         const sc = record.score;
         let content = '';
-
-        // 2. 예약 상태 (점수가 없음)
-        if (sc === null) {
-            // [핵심 수정] 필드명 호환성 체크 (examDate 또는 date, examTime 또는 time)
+        
+        // 2. 예약 상태
+        if (sc === null || sc === undefined || sc === '') {
             const rDate = record.examDate || record.date || record.reservationDate;
             const rTime = record.examTime || record.time || record.reservationTime;
 
-            if (rDate && rTime) {
-                // 날짜 포맷팅 (MM-DD)
+            if (rDate) {
                 const shortDate = rDate.length > 5 ? rDate.slice(5) : rDate;
-                
-                // 요일 계산
                 let dayLabel = '';
                 try {
                     const [y, m, d] = rDate.split('-').map(Number);
@@ -44,27 +103,37 @@ export const createWeeklyTestManager = (config) => {
 
                 content = `<div class="text-xs leading-tight">
                                 <div class="font-medium text-slate-700">${shortDate} <span class="text-slate-500">(${dayLabel})</span></div>
-                                <div class="text-blue-600 font-bold">${rTime}</div>
+                                <div class="text-blue-600 font-bold text-[10px] mt-0.5">${rTime || '예약'}</div>
                            </div>`;
             } else {
                 content = '<span class="text-xs text-slate-400">예약됨</span>';
             }
         } else {
-            // 3. 응시 완료 (점수 있음)
+            // 3. 응시 완료
             content = `<span class="text-lg">${sc}</span>`;
         }
 
         // 스타일링
-        let cls = sc === null 
-            ? "bg-yellow-50 text-yellow-700" // 예약 상태 배경
-            : (sc >= 90 ? "bg-blue-50 text-blue-700 font-bold" 
-            : (sc < 70 ? "bg-red-50 text-red-600 font-bold" 
-            : "font-bold text-slate-700"));
+        let cls = (sc === null || sc === undefined || sc === '')
+            ? "bg-yellow-50 text-yellow-700 hover:bg-yellow-100" 
+            : (sc >= 90 ? "bg-blue-50 text-blue-700 font-bold hover:bg-blue-100" 
+            : (sc < 70 ? "bg-red-50 text-red-600 font-bold hover:bg-red-100" 
+            : "font-bold text-slate-700 hover:bg-slate-100"));
 
-        return `<td class="p-2 border ${cls} cursor-pointer hover:opacity-80 cell-weekly align-middle" 
+        const deleteBtnHtml = `
+            <button class="weekly-delete-btn w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 absolute right-1 top-1/2 -translate-y-1/2 z-20" 
+                    data-doc="${record.id}" title="기록 삭제">
+                <span class="material-icons-round text-[14px]">close</span>
+            </button>`;
+
+        return `<td class="p-2 border ${cls} relative group cell-weekly align-middle transition-colors cursor-pointer" 
                     data-sid="${studentId}" data-lbl="${label}" data-ex="true" 
-                    data-doc="${record.id}" data-scr="${sc||''}">
-                    ${content}
+                    data-doc="${record.id}" data-scr="${(sc !== null && sc !== undefined) ? sc : ''}"
+                    data-date="${record.examDate || ''}" data-time="${record.examTime || ''}">
+                    <div class="flex items-center justify-center gap-1 w-full h-full relative min-h-[40px]">
+                        ${content}
+                        ${deleteBtnHtml}
+                    </div>
                 </td>`;
     };
 
@@ -73,7 +142,7 @@ export const createWeeklyTestManager = (config) => {
         weeks.forEach(lbl => {
             const scores = students.map(s => {
                 const r = records.find(rec => rec.uid === s.id && (rec.weekLabel === lbl || rec.targetDate === lbl));
-                return r && r.score !== null ? Number(r.score) : null;
+                return (r && r.score !== null && r.score !== undefined && r.score !== '') ? Number(r.score) : null;
             }).filter(v => v !== null);
             html += `<td class="p-3 border text-indigo-800">${scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : '-'}</td>`;
         });
@@ -137,70 +206,123 @@ export const createWeeklyTestManager = (config) => {
         } else { html += `<tr><td colspan="${viewWeeks.length+1}" class="p-4 text-slate-400">학생 없음</td></tr>`; }
         
         container.innerHTML = html + `</tbody></table>`;
-        container.querySelectorAll('.cell-weekly').forEach(c => c.onclick = () => handleScoreClick(c));
-    };
-
-    const handleScoreClick = async (cell) => {
-        const { sid, lbl, ex, doc:did, scr } = cell.dataset;
-        const s = state.students.find(x=>x.id===sid);
         
-        // 점수 입력
-        const val = prompt(`${lbl} ${s.name} 점수`, ex==='true'?scr:'');
-        if(val===null) return;
-        const score = Number(val);
-        if(isNaN(score)) return alert("숫자만 입력");
+        // 이벤트 연결
+        container.querySelectorAll('.cell-weekly').forEach(c => {
+            c.onclick = (e) => {
+                if (e.target.closest('.weekly-delete-btn')) return;
+                openEditModal(c);
+            };
+        });
 
-        try {
-            if(ex==='true' && did) {
-                // 기존 기록 업데이트 (점수 입력 시 완료 처리)
-                await updateDoc(doc(db,"weekly_tests",did), {score, status:'completed', updatedAt:serverTimestamp()});
-            } else {
-                // 신규 기록 (관리자/선생님이 직접 추가하는 경우)
-                const t = getWeeklyTestTargetDate(new Date());
-                const l = getWeekLabel(t);
-                if(lbl!==l && !confirm(`선택 주차가 이번주와 다릅니다. 진행?`)) return;
-                const dStr = formatDateString(t);
-                const nid = `${sid}_${dStr}`;
-                const who = role==='admin'?'관리자':'선생님';
-                
-                await setDoc(doc(db,"weekly_tests",nid), {
-                    uid: sid, 
-                    userName: s.name, 
-                    targetDate: dStr, 
-                    weekLabel: lbl, 
-                    examDate: formatDateString(new Date()), // 오늘 날짜
-                    examTime: who, 
-                    score, 
-                    status:'completed', 
-                    updatedAt: serverTimestamp()
-                }, {merge:true});
-            }
-            showToast("저장됨");
-        } catch(e){ console.error(e); showToast("실패",true); }
+        container.querySelectorAll('.weekly-delete-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation(); 
+                handleDelete(btn.dataset.doc);
+            };
+        });
     };
 
-    // 모달 관련
-    const openAddWeeklyModal = () => {
-        if(!state.classId) { showToast("반 선택 필요",true); return; }
-        elements.weeklyModalStudent.innerHTML = state.students.length ? '' : '<option disabled>학생 없음</option>';
-        state.students.forEach(s => elements.weeklyModalStudent.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
-        elements.weeklyModalDate.value = formatDateString(new Date());
-        elements.weeklyModalScore.value = '';
+    const handleDelete = async (docId) => {
+        if (!docId) return;
+        if (!confirm("정말 이 기록을 삭제하시겠습니까?")) return;
+        try {
+            await deleteDoc(doc(db, "weekly_tests", docId));
+            showToast("삭제되었습니다.");
+        } catch (e) { console.error(e); showToast("삭제 실패", true); }
+    };
+
+    // [셀 클릭] 수정 모달 열기
+    const openEditModal = (cell) => {
+        const { sid, lbl, ex, doc:did, scr, date, time } = cell.dataset;
+        
+        const timeSelect = ensureTimeSelect();
+        
+        // 학생 선택
+        elements.weeklyModalStudent.innerHTML = '';
+        state.students.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.name;
+            if(s.id === sid) opt.selected = true;
+            elements.weeklyModalStudent.appendChild(opt);
+        });
+
+        // 날짜 설정 및 시간 옵션 초기화
+        const initialDate = (date && date !== 'undefined') ? date : formatDateString(new Date());
+        elements.weeklyModalDate.value = initialDate;
+        
+        // 날짜에 맞춰 시간 옵션 생성
+        updateTimeOptions(initialDate);
+
+        // 시간 선택 (옵션에 있는 값이면 선택, 없으면 추가하거나 선택 안함)
+        if (time && time !== 'undefined' && timeSelect) {
+            // 기존 옵션에 없는데 저장된 값이면(예: 관리자가 수동 입력했던 값) 임시로 추가
+            if (![...timeSelect.options].some(o => o.value === time)) {
+                const opt = document.createElement('option');
+                opt.value = time;
+                opt.textContent = time;
+                timeSelect.appendChild(opt);
+            }
+            timeSelect.value = time;
+        } else if (timeSelect) {
+            timeSelect.value = '';
+        }
+
+        // 점수 설정
+        elements.weeklyModalScore.value = (scr && scr !== 'null') ? scr : '';
+
         elements.weeklyModal.style.display = 'flex';
     };
 
+    // [추가 버튼] 모달 열기
+    const openAddWeeklyModal = () => {
+        if(!state.classId) { showToast("반 선택 필요",true); return; }
+        
+        const timeSelect = ensureTimeSelect();
+        
+        elements.weeklyModalStudent.innerHTML = state.students.length ? '' : '<option disabled>학생 없음</option>';
+        state.students.forEach(s => elements.weeklyModalStudent.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+        
+        const today = formatDateString(new Date());
+        elements.weeklyModalDate.value = today;
+        updateTimeOptions(today); // 오늘 날짜 기준 시간 목록 갱신
+
+        if(timeSelect) timeSelect.value = '';
+        elements.weeklyModalScore.value = '';
+        
+        elements.weeklyModal.style.display = 'flex';
+    };
+
+    // [저장]
     const saveWeeklyFromModal = async () => {
         const sid = elements.weeklyModalStudent.value;
         const dVal = elements.weeklyModalDate.value;
         const scVal = elements.weeklyModalScore.value;
-        if(!sid || !dVal || scVal==='') return alert("입력 확인");
         
+        const timeSelect = document.getElementById('weekly-modal-generated-time');
+        const tVal = timeSelect ? timeSelect.value : '';
+
+        if(!sid || !dVal) return alert("학생과 날짜는 필수입니다.");
+        
+        let score = null;
+        let status = 'assigned';
+
+        if (scVal.trim() !== '') {
+            score = Number(scVal);
+            status = 'completed';
+        }
+
         const s = state.students.find(x=>x.id===sid);
+        
         const t = getWeeklyTestTargetDate(dVal);
         const tStr = formatDateString(t);
         const lbl = getWeekLabel(t);
         const did = `${sid}_${tStr}`;
-        const who = role==='admin'?'관리자추가':'선생님추가';
+        
+        // 시간 선택 안 하면 역할 표시, 선택하면 시간 표시
+        const timeDisplay = tVal || (role==='admin'?'관리자':'선생님');
+
         try {
             await setDoc(doc(db,"weekly_tests",did), {
                 uid:sid, 
@@ -208,12 +330,13 @@ export const createWeeklyTestManager = (config) => {
                 targetDate:tStr, 
                 weekLabel:lbl, 
                 examDate:dVal, 
-                examTime:who, 
-                score:Number(scVal), 
-                status:'completed', 
+                examTime:timeDisplay, 
+                score: score,
+                status: status, 
                 updatedAt:serverTimestamp()
             }, {merge:true});
-            showToast("추가됨");
+            
+            showToast(score !== null ? "저장됨" : "예약됨");
             elements.weeklyModal.style.display='none';
         } catch(e){ console.error(e); showToast("실패",true); }
     };

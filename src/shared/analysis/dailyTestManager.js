@@ -28,16 +28,15 @@ export const createDailyTestManager = (config) => {
         const score = Number(record.score);
         let cls = score >= 90 ? "text-blue-700 bg-blue-50 font-bold" : (score < 70 ? "text-red-600 bg-red-50 font-bold" : "font-bold text-slate-700");
         
-        // [핵심 변경] 점수와 삭제 버튼(x)을 함께 렌더링
-        // group 클래스: 마우스를 올렸을 때만 삭제 버튼이 보이도록 함
+        // 점수와 삭제 버튼(x)을 함께 렌더링
         return `<td class="p-2 border ${cls} cell-daily relative group hover:bg-slate-50 transition-colors" 
                     title="${record.memo || ''}" data-sid="${studentId}" data-date="${date}" data-ex="true" 
                     data-doc="${record.id}" data-scr="${score}" data-memo="${record.memo || ''}">
                     
-                    <div class="flex items-center justify-center gap-1 w-full h-full">
+                    <div class="flex items-center justify-center gap-1 w-full h-full relative">
                         <span class="cursor-pointer hover:underline flex-1 text-center py-1">${score}</span>
                         
-                        <button class="daily-delete-btn w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 absolute right-1" 
+                        <button class="daily-delete-btn w-6 h-6 flex items-center justify-center rounded-full text-slate-400 hover:bg-red-100 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100 absolute right-1 top-1/2 -translate-y-1/2" 
                                 data-doc="${record.id}" title="삭제">
                             <span class="material-icons-round text-[14px]">close</span>
                         </button>
@@ -131,7 +130,7 @@ export const createDailyTestManager = (config) => {
         });
     };
 
-    // [신규] 삭제 기능 함수
+    // [삭제] 기능
     const handleDelete = async (docId) => {
         if (!docId) return;
         if (!confirm("정말 이 점수 기록을 삭제하시겠습니까?")) return;
@@ -145,7 +144,7 @@ export const createDailyTestManager = (config) => {
         }
     };
 
-    // [복구] 기존 점수 수정 함수 (-1 로직 제거)
+    // [수정] 점수 수정 함수
     const handleScoreClick = async (cell) => {
         const { sid, date, ex, doc:did, scr, memo } = cell.dataset;
         const s = state.students.find(x => x.id === sid);
