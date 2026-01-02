@@ -4,8 +4,11 @@ import { createHomeworkDashboardManager } from "../shared/homeworkDashboardManag
 
 export const homeworkDashboard = {
     manager: null,
+    app: null, // [추가] app 인스턴스를 저장할 변수
 
     init(app) {
+        this.app = app; // ✨ [핵심 수정] 전달받은 TeacherApp 인스턴스를 저장해야 함!
+
         // HTML 요소 매핑 (선생님 화면 ID)
         const elements = {
             // 메인 UI
@@ -13,7 +16,6 @@ export const homeworkDashboard = {
             
             // 컨텐츠 영역
             contentDiv: document.getElementById('teacher-homework-content'),
-            // 선생님은 placeholder가 보통 없으므로 생략 가능하거나 필요시 추가
             contentTitle: document.getElementById('teacher-selected-homework-title'),
             tableBody: document.getElementById('teacher-homework-table-body'),
             btnsDiv: document.getElementById('teacher-homework-management-buttons'),
@@ -47,6 +49,9 @@ export const homeworkDashboard = {
 
     // 선생님 앱은 반이 바뀌면 외부에서 이 함수를 호출해줌
     populateHomeworkSelect() {
+        // this.app이 저장되어 있어야 state에 접근 가능
+        if (!this.app || !this.app.state) return;
+
         const classId = this.app.state.selectedClassId;
         if (classId) {
             this.manager.loadHomeworkList(classId);
