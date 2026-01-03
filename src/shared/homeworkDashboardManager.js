@@ -32,23 +32,18 @@ export const createHomeworkDashboardManager = (config) => {
         elements.subjectSelect?.addEventListener('change', (e) => handleSubjectChange(e.target.value));
     };
 
-    // --- 학생 목록 가져오기 (관리자/선생님 분기 처리) ---
+    // --- 학생 목록 가져오기 ---
     const getStudentList = async (classId) => {
-        // [선생님] 이미 앱 상태에 학생 목록이 있음
         if (mode === 'teacher' && app.state.studentsInClass) {
             return Array.from(app.state.studentsInClass.entries())
                 .map(([id, name]) => ({ id, name }))
                 .sort((a, b) => a.name.localeCompare(b.name));
         }
         
-        // [관리자] DB에서 해당 반 학생을 조회해야 함
         if (mode === 'admin') {
             try {
-                // classIds 배열에 classId가 포함된 학생 or classId 필드가 일치하는 학생
-                // (복잡한 쿼리 대신 단순화를 위해 전체 로드 후 필터링하거나, 최적화된 쿼리 사용)
-                // 여기서는 기존 로직 호환성을 위해 쿼리 사용
                 const students = [];
-                const q = query(collection(db, 'students')); // 전체 로드 후 필터 (데이터 양에 따라 최적화 필요)
+                const q = query(collection(db, 'students'));
                 const snap = await getDocs(q);
                 
                 snap.forEach(doc => {
@@ -107,17 +102,29 @@ export const createHomeworkDashboardManager = (config) => {
         if (!homeworkId) return;
         state.selectedHomeworkId = homeworkId;
 
-        // 학생 목록 준비
         state.cachedStudents = await getStudentList(state.selectedClassId);
 
-        // UI 표시
-        if (elements.contentDiv) elements.contentDiv.style.display = 'block'; // or flex
+        if (elements.contentDiv) elements.contentDiv.style.display = 'block';
         if (elements.contentDiv) elements.contentDiv.classList.remove('hidden');
         if (elements.placeholder) elements.placeholder.style.display = 'none';
-        if (elements.btnsDiv) elements.btnsDiv.style.display = 'flex';
+        
+        // 버튼 영역 표시 및 [다운로드 버튼] 동적 추가
+        if (elements.btnsDiv) {
+            elements.btnsDiv.style.display = 'flex';
+            
+            // 중복 추가 방지
+            if (!elements.btnsDiv.querySelector('#custom-download-all-btn')) {
+                const downloadAllBtn = document.createElement('button');
+                downloadAllBtn.id = 'custom-download-all-btn';
+                downloadAllBtn.className = "flex-1 bg-indigo-50 text-indigo-600 text-xs py-2 rounded font-bold hover:bg-indigo-100 transition ml-2";
+                downloadAllBtn.innerHTML = '<span class="material-icons text-sm align-middle mr-1">folder_zip</span> 전체 내려받기';
+                downloadAllBtn.onclick = downloadAllSubmissions;
+                elements.btnsDiv.appendChild(downloadAllBtn);
+            }
+        }
+
         if (elements.tableBody) elements.tableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터를 불러오는 중...</td></tr>';
 
-        // 1. 숙제 정보 감시
         state.unsubHomework = onSnapshot(doc(db, 'homeworks', homeworkId), (snap) => {
             if (!snap.exists()) {
                 if(elements.tableBody) elements.tableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">삭제됨</td></tr>';
@@ -130,7 +137,6 @@ export const createHomeworkDashboardManager = (config) => {
             renderTable();
         });
 
-        // 2. 제출 현황 감시
         const subCol = collection(db, 'homeworks', homeworkId, 'submissions');
         state.unsubSubmissions = onSnapshot(subCol, (snap) => {
             state.cachedSubmissions = {};
@@ -152,17 +158,15 @@ export const createHomeworkDashboardManager = (config) => {
             return;
         }
 
-        const oldSubs = hwData.submissions || {}; // 하위 호환
+        const oldSubs = hwData.submissions || {}; 
         
         students.forEach(student => {
             const sub = subs[student.id] || oldSubs[student.id];
             
-            // 상태 및 버튼 생성 (helper 사용)
             const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
-            const downloadBtn = homeworkManagerHelper.renderFileButtons(sub, '반'); // 반 이름은 생략 가능
+            const downloadBtn = homeworkManagerHelper.renderFileButtons(sub, '반'); 
             const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
 
-            // 강제 완료 버튼
             let actionBtn = (sub && !sub.manualComplete) ? `
                 <button class="force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
                         data-id="${student.id}" title="강제 완료 처리">✅ 확인</button>` : '';
@@ -176,13 +180,11 @@ export const createHomeworkDashboardManager = (config) => {
                 </tr>`;
         });
 
-        // 이벤트 연결
         tbody.querySelectorAll('.force-complete-btn').forEach(btn => {
             btn.addEventListener('click', () => forceComplete(btn.dataset.id));
         });
     };
 
-    // --- 강제 완료 처리 ---
     const forceComplete = async (studentId) => {
         if (!confirm("페이지 수가 부족해도 '완료' 상태로 변경하시겠습니까?")) return;
         try {
@@ -193,12 +195,11 @@ export const createHomeworkDashboardManager = (config) => {
         } catch (e) { console.error(e); showToast("처리 실패", true); }
     };
 
-    // --- 모달 열기 ---
+    // --- 모달 관리 ---
     const openModal = async (type) => {
         const isEdit = type === 'edit';
         if (elements.modalTitle) elements.modalTitle.textContent = isEdit ? '숙제 수정' : '새 숙제 등록';
         
-        // 과목 로드
         const subSelect = elements.subjectSelect;
         if (subSelect) {
             subSelect.innerHTML = '<option>로딩 중...</option>';
@@ -219,11 +220,10 @@ export const createHomeworkDashboardManager = (config) => {
             
             if (hw.subjectId && subSelect) {
                 subSelect.value = hw.subjectId;
-                await handleSubjectChange(hw.subjectId); // 교재 로드
+                await handleSubjectChange(hw.subjectId);
                 if(elements.textbookSelect) elements.textbookSelect.value = hw.textbookId || '';
             }
         } else {
-            // 초기화
             elements.titleInput.value = '';
             elements.pagesInput.value = '';
             elements.totalPagesInput.value = '';
@@ -244,7 +244,6 @@ export const createHomeworkDashboardManager = (config) => {
         state.editingHomework = null;
     };
 
-    // --- 과목 선택 시 교재 로드 ---
     const handleSubjectChange = async (subjectId) => {
         const tbSelect = elements.textbookSelect;
         if (!tbSelect) return;
@@ -266,7 +265,6 @@ export const createHomeworkDashboardManager = (config) => {
         }
     };
 
-    // --- 저장 ---
     const saveHomework = async () => {
         if (!state.selectedClassId) { showToast("반 정보가 없습니다."); return; }
         
@@ -293,22 +291,171 @@ export const createHomeworkDashboardManager = (config) => {
                 showToast("등록되었습니다.");
             }
             closeModal();
-            loadHomeworkList(state.selectedClassId); // 목록 갱신
+            loadHomeworkList(state.selectedClassId);
         } catch (e) { console.error(e); showToast("저장 실패", true); }
     };
 
-    // --- 삭제 ---
     const deleteHomework = async () => {
         if (!state.selectedHomeworkId || !confirm("정말 삭제하시겠습니까?")) return;
         try {
             await deleteDoc(doc(db, 'homeworks', state.selectedHomeworkId));
             showToast("삭제되었습니다.");
-            // UI 초기화
             loadHomeworkList(state.selectedClassId);
         } catch (e) { showToast("삭제 실패", true); }
     };
 
-    // 초기화 실행
+    // ============================================================
+    // ⭐ [완벽 수정] 폴더 구조 생성 및 전체 다운로드
+    // ============================================================
+    const downloadAllSubmissions = async () => {
+        if (!('showDirectoryPicker' in window)) {
+            alert("이 기능은 크롬(Chrome), 엣지(Edge) 브라우저의 PC버전에서만 지원됩니다.");
+            return;
+        }
+
+        const { cachedStudents: students, cachedSubmissions: subs, cachedHomeworkData: hwData } = state;
+        if (!students || students.length === 0) {
+            showToast("학생 목록이 없습니다.", true);
+            return;
+        }
+        if (!hwData) return;
+
+        const btn = document.getElementById('custom-download-all-btn');
+        const originalBtnText = btn ? btn.innerHTML : '전체 내려받기';
+
+        // ✨ [핵심] 옛날 제출 데이터(hwData.submissions)도 함께 확인하기 위해 준비
+        const oldSubs = hwData.submissions || {};
+
+        try {
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 저장 경로 선택 중...';
+            }
+
+            const dirHandle = await window.showDirectoryPicker();
+            
+            if (btn) btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 다운로드 시작...';
+            showToast("다운로드를 시작합니다...", false);
+
+            const folderDate = hwData.dueDate ? hwData.dueDate : new Date().toISOString().split('T')[0];
+            const safeTitle = hwData.title.replace(/[\\/:*?"<>|]/g, "_");
+            const targetFolderName = `${folderDate}_${safeTitle}`; 
+
+            const dateDirHandle = await dirHandle.getDirectoryHandle(targetFolderName, { create: true });
+
+            let totalFilesFound = 0;
+            let downloadSuccessCount = 0;
+            let downloadFailCount = 0;
+            const totalStudents = students.length;
+
+            console.log("=== [전체 다운로드 디버그 시작] ===");
+
+            for (let i = 0; i < students.length; i++) {
+                try {
+                    const student = students[i];
+                    
+                    // ✨ [수정] 신버전(subs) 또는 구버전(oldSubs) 어디든 데이터가 있으면 가져옴
+                    const sub = subs[student.id] || oldSubs[student.id];
+
+                    if (!sub) continue;
+
+                    let filesToDownload = [];
+                    if (sub.files && Array.isArray(sub.files) && sub.files.length > 0) {
+                        filesToDownload = sub.files;
+                    } else if (sub.fileUrl) {
+                        filesToDownload = [ sub.fileUrl ];
+                    }
+
+                    if (filesToDownload.length === 0) continue;
+
+                    if (btn) {
+                        btn.innerHTML = `<span class="material-icons text-sm animate-spin mr-1">download</span> 진행 중 (${i + 1}/${totalStudents})<br><span class="text-[10px]">${student.name}</span>`;
+                    }
+                    
+                    const safeStudentName = student.name.replace(/[\\/:*?"<>|]/g, "_");
+                    const studentDirHandle = await dateDirHandle.getDirectoryHandle(safeStudentName, { create: true });
+
+                    for (let j = 0; j < filesToDownload.length; j++) {
+                        totalFilesFound++;
+                        let fileUrl = filesToDownload[j];
+
+                        if (typeof fileUrl !== 'string') {
+                            if (fileUrl.url) fileUrl = fileUrl.url;
+                            else if (fileUrl.downloadUrl) fileUrl = fileUrl.downloadUrl;
+                            else if (fileUrl.fileUrl) fileUrl = fileUrl.fileUrl;
+                        }
+
+                        if (typeof fileUrl !== 'string' || !fileUrl.startsWith('http')) {
+                            console.warn(`[SKIP] 유효하지 않은 URL: ${safeStudentName}`, fileUrl);
+                            continue;
+                        }
+
+                        // 캐시 무시 + 보안 우회 시도
+                        const cacheBuster = (fileUrl.includes('?') ? '&' : '?') + `t=${new Date().getTime()}`;
+                        const safeUrl = fileUrl + cacheBuster;
+
+                        try {
+                            await new Promise(r => setTimeout(r, 200));
+
+                            const response = await fetch(safeUrl);
+                            if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+                            
+                            const blob = await response.blob();
+
+                            let ext = "jpg";
+                            const lowerUrl = fileUrl.toLowerCase();
+                            if (lowerUrl.includes('.png')) ext = "png";
+                            else if (lowerUrl.includes('.jpeg')) ext = "jpeg";
+                            else if (lowerUrl.includes('.pdf')) ext = "pdf";
+
+                            const fileName = `${safeStudentName}_${j + 1}.${ext}`;
+
+                            const fileHandle = await studentDirHandle.getFileHandle(fileName, { create: true });
+                            const writable = await fileHandle.createWritable();
+                            await writable.write(blob);
+                            await writable.close();
+                            
+                            downloadSuccessCount++;
+
+                        } catch (err) {
+                            downloadFailCount++;
+                            console.error(`❌ [다운로드 실패] ${safeStudentName} 파일${j+1}:`, err);
+                        }
+                    }
+
+                } catch (studentErr) {
+                    console.error(`⚠️ 학생 처리 중 오류 건너뜀 (${students[i].name}):`, studentErr);
+                }
+            }
+
+            console.log(`=== [결과] 발견: ${totalFilesFound}, 성공: ${downloadSuccessCount}, 실패: ${downloadFailCount} ===`);
+
+            if (downloadSuccessCount > 0) {
+                 if (downloadFailCount > 0) {
+                    alert(`⚠️ 부분 성공!\n\n성공: ${downloadSuccessCount}개\n실패: ${downloadFailCount}개\n\n[실패 원인] 대부분 'CORS' 설정 문제입니다.`);
+                } else {
+                    alert(`✅ 다운로드 완료!\n총 ${downloadSuccessCount}개의 파일을 저장했습니다.`);
+                }
+            } else if (totalFilesFound > 0) {
+                alert(`❌ 다운로드 실패 (0/${totalFilesFound})\n\n보안 설정(CORS)이 되어있지 않아 다운로드가 차단되었습니다.`);
+            } else {
+                alert("다운로드할 제출 파일이 없습니다.");
+            }
+
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.error("다운로드 에러:", err);
+                alert("오류가 발생했습니다.");
+            }
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = originalBtnText;
+            }
+        }
+    };
+    // ============================================================
+
     initListeners();
 
     return {
