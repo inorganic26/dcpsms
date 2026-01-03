@@ -2,31 +2,27 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // 1. 로그인 여부 확인 함수
-    function isAuthenticated() {
-      return request.auth != null;
+    // [1] 선생님인지 확인하는 함수 (관리자 권한)
+    function isTeacher() {
+      return request.auth != null && request.auth.token.email == "inorganic26@gmail.com";
     }
 
-    // 2. [수정됨] 숙제 파일 제출 경로 허용
-    // 학생 앱은 'homework_submissions' 폴더를 사용하므로 이 규칙이 반드시 필요합니다.
-    match /homework_submissions/{allPaths=**} {
-      allow read, write: if isAuthenticated();
+    // [2] 숙제 제출 파일 규칙
+    // 경로는 반드시: homework_submissions / {숙제ID} / {학생ID} / {파일명} 이어야 함
+    match /homework_submissions/{homeworkId}/{studentId}/{fileName} {
+      
+      // 읽기(Read): 선생님이거나, 파일 주인(학생) 본인이면 가능
+      allow read: if isTeacher() || request.auth.uid == studentId;
+      
+      // 쓰기(Write - 업로드/수정/삭제): 선생님이거나, 파일 주인(학생) 본인이면 가능
+      // (이 규칙 때문에 학생 A는 학생 B의 폴더에 파일을 절대 못 올림)
+      allow write: if isTeacher() || request.auth.uid == studentId;
     }
 
-    // (참고) 혹시 모를 구버전 호환용
-    match /homeworks/{allPaths=**} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // 3. [성적표 리포트] 관리자가 올리는 곳
-    match /reports/{classId}/{date}/{fileName} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    // 4. [기타] 그 외 모든 파일 (기본 차단)
+    // [3] 그 외 모든 파일 (교재 PDF, 공지 이미지 등)
+    // 나머지 모든 폴더는 선생님만 관리 가능 (학생은 업로드 불가)
     match /{allPaths=**} {
-      allow read: if isAuthenticated();
-      allow write: if false; 
+      allow read, write: if isTeacher();
     }
   }
 }
