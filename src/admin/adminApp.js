@@ -1,14 +1,11 @@
 // src/admin/adminApp.js
 
 import app, { db, auth } from "../shared/firebase.js";
-
-// Stores
 import { getClasses, CLASS_EVENTS } from "../store/classStore.js";
 import { getSubjects, SUBJECT_EVENTS } from "../store/subjectStore.js";
 import { getStudents, STUDENT_EVENTS } from "../store/studentStore.js";
 import { getTeachers, TEACHER_EVENTS } from "../store/teacherStore.js";
 
-// Managers
 import { studentManager } from "./studentManager.js";
 import { classManager } from "./classManager.js";
 import { subjectManager } from "./subjectManager.js"; 
@@ -16,10 +13,7 @@ import { teacherManager } from "./teacherManager.js";
 import { textbookManager } from "./textbookManager.js"; 
 import { lessonManager } from "./lessonManager.js";
 import { studentAssignmentManager } from "./studentAssignmentManager.js";
-
-// [수정] 공용 비디오 매니저 사용 (adminClassVideoManager 제거)
 import { createClassVideoManager } from "../shared/classVideoManager.js";
-
 import { adminHomeworkDashboard } from "./adminHomeworkDashboard.js";
 import { adminReportManager } from "./adminReportManager.js"; 
 import { adminAnalysisManager } from "./adminAnalysisManager.js"; 
@@ -28,7 +22,7 @@ import { adminState } from "./adminState.js";
 
 export const AdminApp = {
     isInitialized: false,
-    adminClassVideoManager: null, // 매니저 인스턴스 저장용
+    adminClassVideoManager: null, 
 
     uiIds: {
         dashboardView: "admin-dashboard-view",
@@ -72,6 +66,17 @@ export const AdminApp = {
         adminAuth.init(this);
         this.addEventListeners();
         this.setupStoreBridges();
+
+        // ⭐ [핵심 수정] 메인 콘텐츠 영역에 스크롤 기능 강제 주입
+        // (HTML 구조를 몰라도 JS로 강제 적용하여 스크롤 문제를 해결함)
+        const mainContent = document.getElementById('admin-main-content') || document.querySelector('main');
+        if (mainContent) {
+            mainContent.classList.add('overflow-y-auto', 'h-full', 'pb-20');
+            // 부모 컨테이너도 높이 제한 확인
+            if(mainContent.parentElement) {
+                mainContent.parentElement.classList.add('h-screen', 'overflow-hidden', 'flex', 'flex-col');
+            }
+        }
     },
 
     cacheElements() {
@@ -80,7 +85,6 @@ export const AdminApp = {
             const el = document.getElementById(id);
             if (el) this.elements[key] = el;
         }
-        // 공용 매니저를 위한 추가 요소 맵핑
         this.elements.qnaClassSelect = "admin-qna-class-select";
         this.elements.qnaVideoDateInput = "admin-qna-video-date";
         this.elements.saveQnaVideoBtn = "admin-save-qna-video-btn";
@@ -93,8 +97,8 @@ export const AdminApp = {
         this.elements.saveLectureVideoBtn = "admin-save-class-video-btn";
         this.elements.addLectureVideoFieldBtn = "admin-add-class-video-field-btn";
         this.elements.lectureVideoListContainer = "admin-class-video-list-container";
-        this.elements.lectureVideoTitleInput = "admin-class-video-title"; // Legacy support if needed
-        this.elements.lectureVideoUrlInput = "admin-class-video-url";     // Legacy support if needed
+        this.elements.lectureVideoTitleInput = "admin-class-video-title";
+        this.elements.lectureVideoUrlInput = "admin-class-video-url";
     },
 
     setupStoreBridges() {
@@ -143,11 +147,10 @@ export const AdminApp = {
             lessonManager.init(this);
             studentAssignmentManager.init(this);
             
-            // [수정] 공용 매니저 생성 및 초기화
             this.adminClassVideoManager = createClassVideoManager({ 
                 app: this, 
                 elements: this.elements,
-                options: { disableClassSelectPopulation: false } // 관리자는 반 선택 필요
+                options: { disableClassSelectPopulation: false } 
             });
 
             adminHomeworkDashboard.init(this);
@@ -175,7 +178,6 @@ export const AdminApp = {
 
             switch (viewName) {
                 case "homeworkMgmt": adminHomeworkDashboard.initView?.(); break;
-                // [수정] 공용 매니저 호출
                 case "qnaVideoMgmt": this.adminClassVideoManager.initQnaView(); break;
                 case "classVideoMgmt": this.adminClassVideoManager.initLectureView(); break;
                 

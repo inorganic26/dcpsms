@@ -2,32 +2,24 @@
 
 import { collection, query, getDocs, orderBy } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
-import { createHomeworkDashboardManager } from "../shared/homeworkDashboardManager.js"; // 공통 매니저 임포트
+import { createHomeworkDashboardManager } from "../shared/homeworkDashboardManager.js"; 
 
 export const adminHomeworkDashboard = {
     manager: null,
     elements: {},
 
     init(app) {
-        // HTML 요소 매핑 (관리자 화면 ID)
         this.elements = {
-            // 메인 UI
             classSelect: document.getElementById('admin-homework-class-select'),
             homeworkSelect: document.getElementById('admin-homework-select'),
-            
-            // 컨텐츠 영역
             contentDiv: document.getElementById('admin-homework-content'),
             placeholder: document.getElementById('admin-homework-placeholder'),
             contentTitle: document.getElementById('admin-selected-homework-title'),
             tableBody: document.getElementById('admin-homework-table-body'),
             btnsDiv: document.getElementById('admin-homework-management-buttons'),
-            
-            // 버튼
             assignBtn: document.getElementById('admin-assign-homework-btn'),
             editBtn: document.getElementById('admin-edit-homework-btn'),
             deleteBtn: document.getElementById('admin-delete-homework-btn'),
-            
-            // 모달
             modal: document.getElementById('admin-assign-homework-modal'),
             modalTitle: document.getElementById('admin-homework-modal-title'),
             titleInput: document.getElementById('admin-homework-title'),
@@ -41,19 +33,28 @@ export const adminHomeworkDashboard = {
             cancelBtn: document.getElementById('admin-cancel-homework-btn'),
         };
 
-        // 공통 매니저 생성
+        // ⭐ [핵심 수정] 표(Table) 가로 스크롤 기능 강제 적용
+        // 모바일에서 학생 이름이 잘리지 않고 옆으로 밀 수 있게 만듦
+        if (this.elements.tableBody) {
+            const table = this.elements.tableBody.closest('table');
+            if (table && !table.parentElement.classList.contains('overflow-x-auto')) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'overflow-x-auto w-full border rounded-lg'; // 가로 스크롤 컨테이너
+                table.parentNode.insertBefore(wrapper, table);
+                wrapper.appendChild(table);
+            }
+        }
+
         this.manager = createHomeworkDashboardManager({
             app: app,
             elements: this.elements,
-            mode: 'admin' // 관리자 모드
+            mode: 'admin' 
         });
 
         this.populateClassSelect();
         
-        // 반 변경 이벤트만 여기서 처리 (나머지는 매니저가 함)
         this.elements.classSelect?.addEventListener('change', (e) => {
             const classId = e.target.value;
-            // 반이 선택되면 매니저에게 목록 로드 요청
             if (classId) {
                 document.getElementById('admin-homework-main-content').style.display = 'block';
                 this.manager.loadHomeworkList(classId);

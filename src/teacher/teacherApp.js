@@ -10,14 +10,13 @@ import { setSubjects } from "../store/subjectStore.js";
 import { homeworkDashboard } from './homeworkDashboard.js';
 import { lessonManager } from './lessonManager.js';
 import { classEditor } from './classEditor.js'; 
-// [수정] 공용 매니저 임포트 (local import 제거)
 import { createClassVideoManager } from '../shared/classVideoManager.js'; 
 import { analysisDashboard } from './analysisDashboard.js';
 import { subjectTextbookManager } from './subjectTextbookManager.js';
 
 const TeacherApp = {
     isInitialized: false,
-    classVideoManager: null, // 인스턴스 저장용
+    classVideoManager: null, 
     elements: {},
     state: {
         teacherId: null,
@@ -30,7 +29,7 @@ const TeacherApp = {
         currentView: 'dashboard',
         isSubjectsLoading: true,
         isClassDataLoading: false,
-        editingLectureId: null // 영상 수정용 ID 저장
+        editingLectureId: null 
     },
 
     init() {
@@ -48,6 +47,15 @@ const TeacherApp = {
 
         this.elements.loginContainer.style.display = 'flex';
         this.elements.dashboardContainer.style.display = 'none';
+
+        // ⭐ [핵심 수정] 메인 콘텐츠 스크롤 강제 적용
+        const mainContent = document.getElementById('teacher-main-content');
+        if (mainContent) {
+            mainContent.classList.add('overflow-y-auto', 'h-full', 'pb-20');
+            if(mainContent.parentElement) {
+                mainContent.parentElement.classList.add('h-screen', 'overflow-hidden', 'flex', 'flex-col');
+            }
+        }
     },
 
     cacheElements() {
@@ -83,15 +91,14 @@ const TeacherApp = {
             currentClassSubjectsList: document.getElementById('current-class-subjects-list'),
         };
 
-        // [추가] 공용 매니저를 위한 요소 맵핑
-        this.elements.qnaClassSelect = "teacher-class-select"; // 선생님은 메인 반 선택 사용
+        this.elements.qnaClassSelect = "teacher-class-select"; 
         this.elements.qnaVideoDateInput = "qna-video-date";
         this.elements.saveQnaVideoBtn = "save-qna-video-btn";
         this.elements.qnaVideoTitleInput = "qna-video-title";
         this.elements.qnaVideoUrlInput = "qna-video-url";
         this.elements.qnaVideosList = "qna-videos-list-teacher";
 
-        this.elements.lectureClassSelect = "teacher-class-select"; // 선생님은 메인 반 선택 사용
+        this.elements.lectureClassSelect = "teacher-class-select"; 
         this.elements.lectureVideoDateInput = "class-video-date";
         this.elements.saveLectureVideoBtn = "save-class-video-btn";
         this.elements.addLectureVideoFieldBtn = "add-class-video-field-btn";
@@ -155,18 +162,16 @@ const TeacherApp = {
         this.analysisDashboard = analysisDashboard;
         this.subjectTextbookManager = subjectTextbookManager;
 
-        // [수정] 공용 비디오 매니저 생성
         this.classVideoManager = createClassVideoManager({
             app: this,
             elements: this.elements,
-            options: { disableClassSelectPopulation: true } // 선생님은 반 선택 자동
+            options: { disableClassSelectPopulation: true } 
         });
 
         try {
             this.homeworkDashboard.init(this);
             this.lessonManager.init(this);
             this.classEditor.init(this);
-            // this.classVideoManager.init(this); // 제거 (필요할 때 호출)
             this.analysisDashboard.init(this);
             this.subjectTextbookManager.init(this);
         } catch (e) { console.error("매니저 초기화 오류:", e); }
@@ -236,7 +241,6 @@ const TeacherApp = {
             case 'weekly-test-mgmt': this.analysisDashboard.initWeeklyTestView(); break;
             case 'learning-status-mgmt': this.analysisDashboard.initLearningStatusView(); break;
             
-            // [수정] 공용 매니저 함수 호출
             case 'qna-video-mgmt': this.classVideoManager.initQnaView(); break;
             case 'class-video-mgmt': this.classVideoManager.initLectureView(); break;
         }

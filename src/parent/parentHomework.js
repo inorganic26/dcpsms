@@ -19,7 +19,6 @@ export const parentHomework = {
     init(db, student) {
         this.db = db;
         this.student = student;
-        // 모달 닫기 이벤트 (ESC 키)
         document.addEventListener('keydown', (e) => {
             if(e.key === 'Escape') this.closeDetailModal();
         });
@@ -145,7 +144,6 @@ export const parentHomework = {
 
         let html = '';
 
-        // [UI 변경] 파일 리스트를 뺀 '심플한 카드'만 생성
         if (this.state.homeworks.length > 0) {
             html += `<div class="mb-2 px-1 text-sm font-bold text-slate-700 flex items-center gap-2"><span class="material-icons-round text-base text-blue-500">assignment</span> 진행 중인 과제</div>`;
             html += this.state.homeworks.map(hw => this.createSummaryCard(hw)).join('');
@@ -162,7 +160,6 @@ export const parentHomework = {
 
         listEl.innerHTML = html;
 
-        // [이벤트] 카드 클릭 시 팝업 열기
         listEl.querySelectorAll('.homework-card').forEach(card => {
             card.addEventListener('click', () => {
                 const hwId = card.dataset.id;
@@ -172,7 +169,6 @@ export const parentHomework = {
         });
     },
 
-    // ⭐ [신규 UI] 목록에는 '요약 정보'만 보여줌 (파일 목록 X)
     createSummaryCard(hw, isPast = false) {
         let statusBadge = `<span class="bg-red-50 text-red-500 px-2 py-1 rounded text-xs font-bold border border-red-100">미제출</span>`;
         let opacityClass = isPast ? "opacity-70 grayscale-[0.3]" : "";
@@ -185,7 +181,6 @@ export const parentHomework = {
             } else {
                 statusBadge = `<span class="bg-green-50 text-green-600 px-2 py-1 rounded text-xs font-bold border border-green-100">제출 완료</span>`;
             }
-            // 제출한 날짜 표시 (옵션)
             const date = hw.submissionData.submittedAt ? new Date(hw.submissionData.submittedAt.toDate()).toLocaleDateString() : '';
             if(date) submittedDateInfo = `<span class="text-[10px] text-green-600 mt-1">(${date} 제출)</span>`;
         }
@@ -215,16 +210,13 @@ export const parentHomework = {
         `;
     },
 
-    // ⭐ [신규 UI] 팝업(모달) 생성 및 표시
     openDetailModal(hw) {
-        // 기존 모달 있으면 제거
         this.closeDetailModal();
 
         const files = hw.isSubmitted && hw.submissionData 
             ? (hw.submissionData.files || (hw.submissionData.fileUrl ? [{fileName: '첨부파일', fileUrl: hw.submissionData.fileUrl}] : []))
             : [];
 
-        // 파일 목록 HTML 생성
         let fileAreaHtml = '';
         if (files.length > 0) {
             fileAreaHtml = `
@@ -243,8 +235,8 @@ export const parentHomework = {
                                 <div class="bg-indigo-50 p-2 rounded-full text-indigo-500 group-hover:bg-indigo-100">
                                     <span class="material-icons-round text-lg">description</span>
                                 </div>
-                                <span class="text-sm text-slate-700 font-medium truncate flex-1">${f.fileName || '파일 다운로드'}</span>
-                                <span class="material-icons-round text-slate-300 group-hover:text-indigo-500">download</span>
+                                <span class="text-sm text-slate-700 font-medium truncate flex-1">${f.fileName || '파일 열기'}</span>
+                                <span class="material-icons-round text-slate-300 group-hover:text-indigo-500">open_in_new</span>
                             </button>
                         `).join('')}
                     </div>
@@ -264,7 +256,7 @@ export const parentHomework = {
             fileAreaHtml = `<div class="mt-4 p-4 text-center text-red-400 bg-red-50 rounded-xl text-sm font-bold">아직 과제를 제출하지 않았습니다.</div>`;
         }
 
-        // 모달 HTML 구조
+        // ⭐ [핵심 수정] 모달 내용 영역 스크롤 (max-h-70vh, overflow-y-auto)
         const modalHtml = `
             <div id="hw-detail-modal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
                 <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
@@ -275,7 +267,7 @@ export const parentHomework = {
                         </button>
                     </div>
 
-                    <div class="p-5 overflow-y-auto">
+                    <div class="p-5 overflow-y-auto custom-scrollbar">
                         <div class="flex gap-2 mb-4">
                             <span class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-bold">마감: ${hw.dueDate || '없음'}</span>
                             <span class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-bold">범위: ${hw.pages || '-'}</span>
@@ -290,22 +282,17 @@ export const parentHomework = {
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
 
-        // 이벤트 연결
         document.getElementById('modal-close-btn').addEventListener('click', () => this.closeDetailModal());
-        
-        // 배경 클릭 시 닫기
         document.getElementById('hw-detail-modal').addEventListener('click', (e) => {
             if (e.target.id === 'hw-detail-modal') this.closeDetailModal();
         });
 
-        // 개별 다운로드
         document.querySelectorAll('.modal-file-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.downloadFile(btn.dataset.url, btn.dataset.name);
             });
         });
 
-        // 전체 다운로드 (ZIP)
         const zipBtn = document.getElementById('modal-download-all-btn');
         if (zipBtn) {
             zipBtn.addEventListener('click', () => {
@@ -319,7 +306,6 @@ export const parentHomework = {
         if (modal) modal.remove();
     },
 
-    // ⭐ ZIP 다운로드 기능 (기존 로직 유지)
     async handleDownloadAllAsZip(btnElement, hwId) {
         const ua = navigator.userAgent.toLowerCase();
         const isInApp = ua.includes('kakao') || ua.includes('naver');
@@ -363,8 +349,8 @@ export const parentHomework = {
             setTimeout(() => alert("압축 완료! 다운로드를 시작합니다."), 500);
 
         } catch (error) {
-            console.error("ZIP Error:", error);
-            alert("오류가 발생했습니다. 개별 다운로드를 이용해주세요.");
+            console.error(error);
+            alert("오류가 발생했습니다.");
         } finally {
             btnElement.innerHTML = originalText;
             btnElement.disabled = false;
