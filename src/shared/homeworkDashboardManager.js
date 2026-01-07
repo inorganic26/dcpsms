@@ -305,8 +305,15 @@ export const createHomeworkDashboardManager = (config) => {
     };
 
     // ============================================================
-    // ⭐ [완벽 수정] 폴더 구조 생성 및 전체 다운로드
+    // ⭐ [이름 안전하게 만들기] 함수 추가 (오류 해결 핵심!)
     // ============================================================
+    const sanitizeFileName = (name) => {
+        return name
+            .replace(/[\\/:*?"<>|]/g, "_") // 1. 특수문자 제거
+            .trim()                         // 2. 앞뒤 공백 제거 (Name not allowed 해결)
+            .replace(/\.$/, "");            // 3. 맨 끝 점 제거 (Name not allowed 해결)
+    };
+
     const downloadAllSubmissions = async () => {
         if (!('showDirectoryPicker' in window)) {
             alert("이 기능은 크롬(Chrome), 엣지(Edge) 브라우저의 PC버전에서만 지원됩니다.");
@@ -323,7 +330,6 @@ export const createHomeworkDashboardManager = (config) => {
         const btn = document.getElementById('custom-download-all-btn');
         const originalBtnText = btn ? btn.innerHTML : '전체 내려받기';
 
-        // ✨ [핵심] 옛날 제출 데이터(hwData.submissions)도 함께 확인하기 위해 준비
         const oldSubs = hwData.submissions || {};
 
         try {
@@ -338,7 +344,8 @@ export const createHomeworkDashboardManager = (config) => {
             showToast("다운로드를 시작합니다...", false);
 
             const folderDate = hwData.dueDate ? hwData.dueDate : new Date().toISOString().split('T')[0];
-            const safeTitle = hwData.title.replace(/[\\/:*?"<>|]/g, "_");
+            // ⭐ 제목도 안전하게 변환
+            const safeTitle = sanitizeFileName(hwData.title);
             const targetFolderName = `${folderDate}_${safeTitle}`; 
 
             const dateDirHandle = await dirHandle.getDirectoryHandle(targetFolderName, { create: true });
@@ -353,8 +360,6 @@ export const createHomeworkDashboardManager = (config) => {
             for (let i = 0; i < students.length; i++) {
                 try {
                     const student = students[i];
-                    
-                    // ✨ [수정] 신버전(subs) 또는 구버전(oldSubs) 어디든 데이터가 있으면 가져옴
                     const sub = subs[student.id] || oldSubs[student.id];
 
                     if (!sub) continue;
@@ -372,7 +377,8 @@ export const createHomeworkDashboardManager = (config) => {
                         btn.innerHTML = `<span class="material-icons text-sm animate-spin mr-1">download</span> 진행 중 (${i + 1}/${totalStudents})<br><span class="text-[10px]">${student.name}</span>`;
                     }
                     
-                    const safeStudentName = student.name.replace(/[\\/:*?"<>|]/g, "_");
+                    // ⭐ 학생 이름도 안전하게 변환 (오류 원인 해결!)
+                    const safeStudentName = sanitizeFileName(student.name);
                     const studentDirHandle = await dateDirHandle.getDirectoryHandle(safeStudentName, { create: true });
 
                     for (let j = 0; j < filesToDownload.length; j++) {
@@ -390,7 +396,6 @@ export const createHomeworkDashboardManager = (config) => {
                             continue;
                         }
 
-                        // 캐시 무시 + 보안 우회 시도
                         const cacheBuster = (fileUrl.includes('?') ? '&' : '?') + `t=${new Date().getTime()}`;
                         const safeUrl = fileUrl + cacheBuster;
 
