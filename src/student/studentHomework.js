@@ -52,14 +52,14 @@ export const studentHomework = {
         try {
             let allHomeworks = [];
 
-            // 1. 메인 반
+            // 1. 메인 반 숙제
             if (classId) {
                 const q = query(collection(db, "homeworks"), where("classId", "==", classId));
                 const snapshot = await getDocs(q);
                 snapshot.forEach(doc => allHomeworks.push({ id: doc.id, ...doc.data() }));
             }
 
-            // 2. 추가 반
+            // 2. 추가 반 숙제
             if (classIds.length > 0) {
                 const q2 = query(collection(db, "homeworks"), where("classId", "in", classIds));
                 const snapshot2 = await getDocs(q2);
@@ -70,7 +70,7 @@ export const studentHomework = {
                 });
             }
 
-            // 3. 정렬
+            // 3. 정렬 (최신순)
             allHomeworks.sort((a, b) => {
                 const dateA = a.dueDate || a.endDate || "0000-00-00";
                 const dateB = b.dueDate || b.endDate || "0000-00-00";
@@ -81,7 +81,7 @@ export const studentHomework = {
             let active = [];
             let past = [];
 
-            // 4. 분류
+            // 4. 활성/지난 숙제 분류
             allHomeworks.forEach(hw => {
                 const dateStr = hw.dueDate || hw.endDate;
                 if (!dateStr) {
@@ -96,7 +96,7 @@ export const studentHomework = {
                 }
             });
 
-            // 5. 제출 확인
+            // 5. 제출 확인 (최적화된 방식)
             this.state.homeworks = await this.checkSubmissionStatus(active);
             this.state.pastHomeworks = await this.checkSubmissionStatus(past);
 
@@ -108,55 +108,33 @@ export const studentHomework = {
         }
     },
 
+    // [핵심 수정] 쿼리(Query) 대신 직접 조회(Direct Get)로 변경하여 권한 오류 해결
     async checkSubmissionStatus(homeworkList) {
         const studentId = this.app.state.studentDocId;
-        const studentName = this.app.state.studentData?.name; 
-
         if (!studentId) return homeworkList;
 
         const results = await Promise.all(homeworkList.map(async (hw) => {
             try {
-                // 0. [초기 호환] 숙제 문서 자체 필드
+                // 1. [최우선] 숙제 문서 안에 내 제출 정보가 있는지 확인 (NoSQL 최적화 구조)
+                // (만약 선생님이 숙제 문서 자체에 submission map을 저장해뒀다면)
                 if (hw.submissions && hw.submissions[studentId]) {
                      return { ...hw, isSubmitted: true, submissionData: hw.submissions[studentId] };
                 }
 
-                // 1. [정석] 문서 ID
+                // 2. [정석] 서브컬렉션에서 '내 ID'로 된 문서가 있는지 직접 조회 (가장 빠르고 안전)
+                // 쿼리(where)를 쓰지 않으므로 'permission-denied'가 발생하지 않음!
                 const subRef = doc(db, "homeworks", hw.id, "submissions", studentId);
                 const subSnap = await getDoc(subRef);
+                
                 if (subSnap.exists()) {
                     return { ...hw, isSubmitted: true, submissionData: subSnap.data() };
                 } 
-                
-                const subColRef = collection(db, "homeworks", hw.id, "submissions");
 
-                // 2. [호환 1] studentId 필드
-                const q1 = query(subColRef, where("studentId", "==", studentId));
-                const snap1 = await getDocs(q1);
-                if (!snap1.empty) {
-                    return { ...hw, isSubmitted: true, submissionData: snap1.docs[0].data() };
-                }
-
-                // 3. [호환 2] studentDocId 필드
-                const q2 = query(subColRef, where("studentDocId", "==", studentId));
-                const snap2 = await getDocs(q2);
-                if (!snap2.empty) {
-                    return { ...hw, isSubmitted: true, submissionData: snap2.docs[0].data() };
-                }
-
-                // 4. [호환 3] studentName 필드
-                if (studentName) {
-                    const q3 = query(subColRef, where("studentName", "==", studentName));
-                    const snap3 = await getDocs(q3);
-                    if (!snap3.empty) {
-                        return { ...hw, isSubmitted: true, submissionData: snap3.docs[0].data() };
-                    }
-                }
-
+                // 3. 쿼리 방식 제거 (보안 규칙상 막힘)
                 return { ...hw, isSubmitted: false };
 
             } catch (e) {
-                console.error(e);
+                console.error("제출 확인 오류:", e);
                 return { ...hw, isSubmitted: false };
             }
         }));
@@ -248,7 +226,7 @@ export const studentHomework = {
         const modal = document.getElementById(this.elements.modal);
         if(modal) modal.style.display = 'flex';
 
-        // [수정] 제출 필요 페이지 수 표시 추가
+        // 제출 필요 페이지 수 표시
         const totalPagesText = hw.totalPages ? `${hw.totalPages}장` : '제한 없음';
 
         document.getElementById(this.elements.modalTitle).textContent = hw.title;
@@ -281,7 +259,7 @@ export const studentHomework = {
         fileInput.addEventListener('change', (e) => {
             const files = Array.from(e.target.files);
             
-            // [수정] 최대 페이지 수 제한 로직
+            // 최대 페이지 수 제한 로직
             const maxPages = homework.totalPages ? parseInt(homework.totalPages) : 0;
 
             if (maxPages > 0 && files.length > maxPages) {
@@ -339,7 +317,8 @@ export const studentHomework = {
             const current = this.state.selectedFiles.length;
             const status = (required > 0 && current < required) ? 'partial' : 'completed';
 
-            // 모든 호환 필드 저장
+            // [중요] 문서 ID를 'studentId'로 고정하여 저장 (권한 규칙 준수)
+            // merge: true를 써서 기존 데이터(부분제출 등) 위에 덮어쓰기
             await setDoc(doc(db, 'homeworks', hw.id, 'submissions', studentId), {
                 studentDocId: studentId,
                 studentId: studentId,
@@ -347,7 +326,7 @@ export const studentHomework = {
                 status: status, 
                 submittedAt: serverTimestamp(),
                 files: uploads,
-                fileUrl: uploads[0].fileUrl
+                fileUrl: uploads[0].fileUrl // 호환용 첫 번째 파일
             }, { merge: true });
 
             showToast("제출되었습니다!");
@@ -356,7 +335,7 @@ export const studentHomework = {
 
         } catch (e) {
             console.error(e);
-            showToast("제출 실패", true);
+            showToast("제출 실패: " + e.message, true);
         } finally {
             btn.disabled = false;
             btn.textContent = "제출하기";
