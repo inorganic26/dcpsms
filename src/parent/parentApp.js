@@ -2,11 +2,14 @@
 
 import { initializeApp } from "firebase/app";
 import { 
-    getFirestore, collection, query, where, getDocs, doc, getDoc
+    getFirestore, collection, getDocs, doc, getDoc
 } from "firebase/firestore";
 import { 
-    getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut 
+    getAuth, signInWithCustomToken, signOut 
 } from "firebase/auth";
+import { 
+    getFunctions, httpsCallable 
+} from "firebase/functions";
 
 // ✅ 기능별 모듈 불러오기
 import { parentDailyTest } from "./parentDailyTest.js";
@@ -96,7 +99,7 @@ async function loadClasses() {
 }
 
 // -----------------------------------------------------------------------------
-// 3. 로그인 로직
+// 3. 로그인 로직 (클라우드 함수 사용)
 // -----------------------------------------------------------------------------
 async function handleLogin() {
     const classIdEl = document.getElementById('parent-login-class');
@@ -119,81 +122,35 @@ async function handleLogin() {
 
     const loginBtn = document.getElementById('parent-login-btn');
     if (loginBtn) {
-        loginBtn.textContent = "확인 중...";
+        loginBtn.textContent = "로그인 중...";
         loginBtn.disabled = true;
     }
 
     try {
-        // 1. 학생 찾기 (DB 조회)
-        const studentsRef = collection(db, "students");
-        
-        // 반 ID로 먼저 검색
-        let q = query(
-            studentsRef, 
-            where("classId", "==", classId),
-            where("name", "==", studentName)
-        );
-        let querySnapshot = await getDocs(q);
-        
-        // 결과가 없으면 classIds 배열로 2차 검색 (학생이 여러 반인 경우 대비)
-        if (querySnapshot.empty) {
-            const q2 = query(
-                studentsRef, 
-                where("classIds", "array-contains", classId),
-                where("name", "==", studentName)
-            );
-            querySnapshot = await getDocs(q2);
+        // [서버 인증] 클라우드 함수 호출
+        const functions = getFunctions(app, 'asia-northeast3');
+        const verifyParentLoginFn = httpsCallable(functions, 'verifyParentLogin');
+
+        const result = await verifyParentLoginFn({ 
+            classId, 
+            studentName, 
+            phoneSuffix 
+        });
+
+        const data = result.data;
+
+        if (!data.success) {
+            throw new Error(data.message || "로그인 실패");
         }
 
-        if (querySnapshot.empty) {
-            throw new Error("STUDENT_NOT_FOUND");
-        }
+        // 인증 성공! 받아온 커스텀 토큰으로 로그인
+        await signInWithCustomToken(auth, data.token);
+        console.log("학부모 로그인 성공");
 
-        const studentDoc = querySnapshot.docs[0];
-        const studentData = studentDoc.data();
+        // 데이터 세팅
+        currentStudent = data.studentData;
 
-        // 2. 전화번호 검증 (DB 데이터와 입력값 대조)
-        const registeredPhone = studentData.phone || studentData.parentPhone || "";
-        const cleanPhone = registeredPhone.replace(/-/g, "").trim();
-        
-        if (!cleanPhone || cleanPhone.slice(-4) !== phoneSuffix) {
-             throw new Error("PHONE_MISMATCH");
-        }
-
-        // 3. 로그인 및 계정 생성
-        const email = `parent_${studentDoc.id}@dcpsms.com`;
-        
-        // 비밀번호 정책: "dcps" + 전화번호뒷4자리 (총 8자리)
-        const safePassword = "dcps" + phoneSuffix; 
-
-        try {
-            // A. 로그인 시도
-            await signInWithEmailAndPassword(auth, email, safePassword);
-            console.log("기존 계정으로 로그인 성공");
-
-        } catch (loginError) {
-            // B. 실패 시: 계정이 없거나(user-not-found), 비번이 틀림(invalid-credential)
-            if (loginError.code === 'auth/user-not-found' || loginError.code === 'auth/invalid-credential') {
-                try {
-                    // C. 계정 자동 생성 시도
-                    await createUserWithEmailAndPassword(auth, email, safePassword);
-                    console.log("새 계정 생성 후 로그인 성공");
-                } catch (createError) {
-                    if (createError.code === 'auth/email-already-in-use') {
-                        throw new Error("비밀번호(전화번호 뒷자리)가 일치하지 않거나 시스템 오류입니다.");
-                    } else {
-                        throw createError; 
-                    }
-                }
-            } else {
-                throw loginError;
-            }
-        }
-
-        // 4. 로그인 성공 후 데이터 세팅
-        currentStudent = { id: studentDoc.id, ...studentData };
-        
-        // 반 상세 정보 가져오기
+        // 반 상세 정보 가져오기 (평균 계산을 위해 필수)
         if (classId) {
             const classDoc = await getDoc(doc(db, "classes", classId));
             if(classDoc.exists()) {
@@ -202,9 +159,11 @@ async function handleLogin() {
         }
 
         // 5. 모듈 초기화 (DB, 학생정보 전달)
-        // [중요] parentHomework.init에는 db와 currentStudent를 전달합니다.
         if (parentDailyTest) parentDailyTest.init(db, currentStudent, currentClassData);
-        if (parentWeeklyTest) parentWeeklyTest.init(db, currentStudent); 
+        
+        // 🔴 [수정됨] 주간 테스트에도 currentClassData를 전달하도록 수정!
+        if (parentWeeklyTest) parentWeeklyTest.init(db, currentStudent, currentClassData); 
+        
         if (parentHomework) parentHomework.init(db, currentStudent); 
         if (parentProgress) parentProgress.init(db, currentStudent, currentClassData);
 
@@ -212,7 +171,6 @@ async function handleLogin() {
         const nameEl = document.getElementById('parent-student-name');
         if (nameEl) nameEl.textContent = currentStudent.name;
         
-        // 반 이름 표시
         const classEl = document.getElementById('parent-class-name');
         if (classEl) {
             let className = '';
@@ -236,17 +194,7 @@ async function handleLogin() {
 
     } catch (error) {
         console.error("로그인 프로세스 에러:", error);
-        
-        if (error.message === "STUDENT_NOT_FOUND") {
-            alert("학생 정보를 찾을 수 없습니다.\n반과 이름을 다시 확인해주세요.");
-        } else if (error.message === "PHONE_MISMATCH") {
-            alert("전화번호 뒷 4자리가 일치하지 않습니다.");
-        } else if (error.code === "auth/invalid-credential" || error.code === "auth/wrong-password") {
-            alert("로그인 정보가 올바르지 않습니다.");
-        } else {
-            alert("로그인 실패: " + (error.message || error.code));
-        }
-        
+        alert(error.message || "로그인 중 오류가 발생했습니다.");
         await signOut(auth);
     } finally {
         if (loginBtn) {
@@ -269,7 +217,6 @@ async function handleLogout() {
 // 4. 탭 전환 및 모듈 렌더링 호출
 // -----------------------------------------------------------------------------
 function switchTab(tabName) {
-    // 탭 버튼 스타일 변경
     document.querySelectorAll('.tab-btn').forEach(btn => {
         if (btn.dataset.tab === tabName) {
             btn.classList.add('active', 'text-blue-600', 'border-blue-600');
@@ -280,7 +227,6 @@ function switchTab(tabName) {
         }
     });
 
-    // 콘텐츠 영역 전환
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.add('hidden');
     });
@@ -289,7 +235,6 @@ function switchTab(tabName) {
 
     if (!currentStudent) return;
 
-    // 모듈 렌더링 실행
     switch (tabName) {
         case 'daily': 
             if(parentDailyTest) {
@@ -304,7 +249,6 @@ function switchTab(tabName) {
             }
             break;
         case 'homework': 
-            // [중요] fetchHomeworks() 호출 (parentHomework.js의 최신 메서드)
             if(parentHomework) parentHomework.fetchHomeworks(); 
             break;
         case 'progress': 

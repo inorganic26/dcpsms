@@ -1,79 +1,131 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ==========================================
-    // 1. 관리자/선생님 판별 (수정 없음)
-    // ==========================================
+    // =========================================================
+    // 🛡️ [보안] 권한 확인 도우미 함수들
+    // =========================================================
+    
+    // 1. 관리자 또는 선생님인지 확인
     function isTeacher() {
       return request.auth != null && (
         request.auth.token.email == "inorganic26@gmail.com" || 
-        exists(/databases/$(database)/documents/teachers/$(request.auth.uid)) ||
         request.auth.token.role == "teacher" ||
         request.auth.token.role == "admin"
       );
     }
 
-    // ==========================================
-    // 2. 학습 콘텐츠 (과목, 숙제문제 등)
-    // ==========================================
-    match /subjects/{subjectId} {
-      allow read: if request.auth != null; // 누구나 읽기 가능
-      allow write: if isTeacher();         // 쓰기는 선생님만
-      
-      match /lessons/{lessonId} {
+    // 2. 학생 본인인지 확인
+    function isStudent(studentId) {
+      return request.auth != null && request.auth.uid == studentId;
+    }
+
+    // 3. 학부모님 권한 확인
+    // (로그인 토큰의 자녀 ID와 데이터의 자녀 ID가 일치해야 함)
+    function isParentOf(studentId) {
+      return request.auth != null && 
+             request.auth.token.role == 'parent' && 
+             request.auth.token.studentId == studentId;
+    }
+
+    // =========================================================
+    // 📂 컬렉션별 보안 규칙
+    // =========================================================
+
+    // 1. 반 정보 (classes)
+    // [중요] 로그인 전에도 반 목록은 보여야 하므로 'if true'로 설정
+    match /classes/{classId} {
+      allow read: if true; 
+      allow write: if isTeacher();
+    }
+
+    // 2. 학생 개인 정보 (students)
+    match /students/{studentId} {
+      allow write: if isTeacher();
+      // 선생님, 학생 본인, 학부모님 조회 가능
+      allow read: if isTeacher() || isStudent(studentId) || isParentOf(studentId);
+    }
+
+    // 3. 일일 테스트 점수 (daily_tests)
+    match /daily_tests/{testId} {
+      allow write: if isTeacher();
+      allow read: if isTeacher() ||
+        (request.auth != null && resource.data.studentId == request.auth.uid) ||
+        isParentOf(resource.data.studentId);
+    }
+
+    // 4. 주간 테스트 점수 (weekly_tests)
+    match /weekly_tests/{testId} {
+      allow write: if isTeacher();
+      // (주간테스트는 학생 ID 필드명이 'uid'임)
+      allow read: if isTeacher() ||
+        (request.auth != null && resource.data.uid == request.auth.uid) ||
+        isParentOf(resource.data.uid);
+    }
+
+    // 5. 숙제 (homeworks)
+    match /homeworks/{homeworkId} {
+        // 숙제 목록(제목, 내용 등)은 로그인한 누구나 볼 수 있음
         allow read: if request.auth != null;
         allow write: if isTeacher();
 
-        // 퀴즈 제출물: 본인 것만!
+        // [서브 컬렉션] 숙제 제출물
         match /submissions/{studentId} {
-          allow read, write: if isTeacher() || (request.auth != null && request.auth.uid == studentId);
+            // 제출물은 본인, 선생님, 학부모님만 확인 가능
+            allow read: if isTeacher() || isStudent(studentId) || isParentOf(studentId);
+            allow write: if isTeacher() || isStudent(studentId);
         }
-      }
     }
 
-    match /homeworks/{homeworkId} {
+    // 6. 학습 현황/진도 (learning_status)
+    match /learning_status/{statusId} {
+      allow write: if isTeacher();
+      allow read: if isTeacher() ||
+        (request.auth != null && resource.data.studentId == request.auth.uid) ||
+        isParentOf(resource.data.studentId);
+    }
+
+    // 7. 리포트/성적표 (reports)
+    match /reports/{reportId} {
+      allow write: if isTeacher();
+      allow read: if isTeacher() ||
+        (request.auth != null && resource.data.studentId == request.auth.uid) ||
+        isParentOf(resource.data.studentId);
+    }
+
+    // 8. 학생 과제 제출물 (student_assignments - 별도 컬렉션인 경우)
+    match /student_assignments/{assignmentId} {
+      allow write: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.uid);
+      allow read: if isTeacher() ||
+        (request.auth != null && resource.data.studentId == request.auth.uid) ||
+        isParentOf(resource.data.studentId);
+    }
+
+    // 9. 과목/교재 정보 (subjects, textbooks)
+    // 로그인한 사용자는 조회 가능
+    match /subjects/{subjectId} {
       allow read: if request.auth != null;
       allow write: if isTeacher();
-
-      // 숙제 제출물: 본인 것만!
-      match /submissions/{studentId} {
-        allow read, write: if isTeacher() || (request.auth != null && request.auth.uid == studentId);
+      
+      match /{document=**} {
+        allow read: if request.auth != null;
+        allow write: if isTeacher();
       }
     }
-
-    // ==========================================
-    // 3. 학생 개인정보 (학생은 본인만, 선생님은 전체)
-    // ==========================================
-    match /students/{studentId} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == studentId);
-      allow write: if isTeacher(); 
+    match /textbooks/{textbookId} {
+      allow read: if request.auth != null;
+      allow write: if isTeacher();
     }
 
-    // ==========================================
-    // 4. 테스트 (일일/주간) - 학생 본인 수정 허용
-    // ==========================================
-    match /daily_tests/{testId} {
-      allow read: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.uid);
-      allow create: if isTeacher() || (request.auth != null && request.resource.data.studentId == request.auth.uid);
-      allow update: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.uid && request.resource.data.studentId == request.auth.uid);
-      allow delete: if isTeacher() || (request.auth != null && resource.data.studentId == request.auth.uid);
-    }
-    
-    match /weekly_tests/{testId} {
-      allow read: if isTeacher() || (request.auth != null && resource.data.uid == request.auth.uid);
-      allow create: if isTeacher() || (request.auth != null && request.resource.data.uid == request.auth.uid);
-      allow update: if isTeacher() || (request.auth != null && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid);
-      allow delete: if isTeacher() || (request.auth != null && resource.data.uid == request.auth.uid);
+    // 10. 선생님 목록 (teachers)
+    match /teachers/{teacherId} {
+      allow read: if request.auth != null;
+      allow write: if isTeacher();
     }
 
-    // ==========================================
-    // 5. 기본 규칙 (선생님은 어디든 접근 가능)
-    // ==========================================
-    match /classes/{document=**} { allow read: if true; allow write: if isTeacher(); }
-    match /teachers/{document=**} { allow read: if true; allow write: if isTeacher(); }
-    
-    // ✨ [핵심 수정] 선생님은 모든 곳에 접근 가능하게 설정
+    // 11. 그 외 모든 데이터
+    // 규칙에 없는 경로는 선생님만 접근 가능 (보안 안전장치)
     match /{document=**} {
       allow read, write: if isTeacher();
     }
