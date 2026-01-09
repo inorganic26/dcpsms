@@ -27,6 +27,10 @@
     };
   </script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <script type="module" crossorigin src="/assets/student-hwY9_F6t.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/index.esm-DCmU57Cr.js">
+  <link rel="modulepreload" crossorigin href="/assets/dateUtils-ph5bGcCf.js">
+  <link rel="modulepreload" crossorigin href="/assets/reportManager-C5EqHln8.js">
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen pb-safe">
 
@@ -60,15 +64,17 @@
             </select>
           </div>
         </div>
+
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1 ml-1">이름</label>
           <div class="relative">
             <span class="material-icons-round absolute left-3 top-3 text-slate-400">person</span>
-            <select id="student-name-select" class="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all disabled:opacity-50" disabled>
+            <select id="student-name-select" class="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all disabled:opacity-50">
               <option value="">이름을 선택해주세요</option>
             </select>
           </div>
         </div>
+
         <div>
           <label class="block text-xs font-bold text-slate-500 mb-1 ml-1">비밀번호</label>
           <div class="relative">
@@ -76,6 +82,7 @@
             <input type="password" id="student-password" class="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400" placeholder="전화번호 뒷 4자리">
           </div>
         </div>
+
         <button id="student-login-btn" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all mt-4 flex items-center justify-center gap-2">
           <span>로그인하기</span>
           <span class="material-icons-round text-sm">arrow_forward</span>
@@ -376,8 +383,6 @@
     </main>
   </div>
 
-  <script type="module" src="./studentApp.js"></script>
-  
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

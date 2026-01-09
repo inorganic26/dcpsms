@@ -160,10 +160,7 @@ async function handleLogin() {
 
         // 5. 모듈 초기화 (DB, 학생정보 전달)
         if (parentDailyTest) parentDailyTest.init(db, currentStudent, currentClassData);
-        
-        // 🔴 [수정됨] 주간 테스트에도 currentClassData를 전달하도록 수정!
         if (parentWeeklyTest) parentWeeklyTest.init(db, currentStudent, currentClassData); 
-        
         if (parentHomework) parentHomework.init(db, currentStudent); 
         if (parentProgress) parentProgress.init(db, currentStudent, currentClassData);
 
