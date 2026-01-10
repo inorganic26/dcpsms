@@ -8,8 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "vite preview",
-    "reorganize": "node scripts/merge-dist.js",
-    "deploy": "npm run build && npm run reorganize && firebase deploy --only hosting:svcm-v2"
+    "deploy": "npm run build && firebase deploy"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.15",

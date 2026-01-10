@@ -9,7 +9,7 @@ export const studentAuth = {
     app: null,
     elements: {
         classSelect: 'student-class-select',
-        nameSelect: 'student-name-select',
+        nameInput: 'student-name-input', // [변경] Input 태그 ID
         passwordInput: 'student-password',
         loginBtn: 'student-login-btn'
     },
@@ -22,17 +22,20 @@ export const studentAuth = {
     },
 
     cacheElements() {
-        // 실제 DOM 요소 캐싱
         this.el = {
             classSelect: document.getElementById(this.elements.classSelect),
-            nameSelect: document.getElementById(this.elements.nameSelect),
+            nameInput: document.getElementById(this.elements.nameInput),
             passwordInput: document.getElementById(this.elements.passwordInput),
             loginBtn: document.getElementById(this.elements.loginBtn)
         };
     },
 
     addEventListeners() {
-        this.el.classSelect?.addEventListener('change', (e) => this.handleClassChange(e.target.value));
+        // 반 변경 시 특별히 할 작업은 없지만, 입력 필드 초기화 정도는 가능
+        this.el.classSelect?.addEventListener('change', () => {
+             // 필요 시 로직 추가
+        });
+        
         this.el.loginBtn?.addEventListener('click', () => this.handleLogin());
     },
 
@@ -55,47 +58,13 @@ export const studentAuth = {
         }
     },
 
-    async handleClassChange(classId) {
-        if (!classId) {
-            if (this.el.nameSelect) {
-                this.el.nameSelect.innerHTML = '<option value="">이름을 선택해주세요</option>';
-                this.el.nameSelect.disabled = true;
-            }
-            return;
-        }
-
-        try {
-            if (this.el.nameSelect) {
-                this.el.nameSelect.innerHTML = '<option>로딩 중...</option>';
-                this.el.nameSelect.disabled = true;
-            }
-
-            const functions = getFunctions(app, 'asia-northeast3');
-            const getStudentsFn = httpsCallable(functions, 'getStudentsInClassForLogin');
-            const result = await getStudentsFn({ classId });
-            
-            const students = result.data || [];
-            
-            if (this.el.nameSelect) {
-                this.el.nameSelect.innerHTML = '<option value="">이름을 선택해주세요</option>';
-                students.forEach(s => {
-                    this.el.nameSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`;
-                });
-                this.el.nameSelect.disabled = false;
-            }
-        } catch (e) {
-            console.error(e);
-            showToast("학생 목록을 불러오지 못했습니다.", true);
-        }
-    },
-
     async handleLogin() {
         const classId = this.el.classSelect?.value;
-        const studentId = this.el.nameSelect?.value; // studentDocId
-        const password = this.el.passwordInput?.value;
+        const studentName = this.el.nameInput?.value.trim(); // [변경] 이름 직접 가져오기
+        const password = this.el.passwordInput?.value.trim();
 
-        if (!classId || !studentId || !password) {
-            showToast("모든 항목을 입력해주세요.", true);
+        if (!classId || !studentName || !password) {
+            showToast("반, 이름, 비밀번호를 모두 입력해주세요.", true);
             return;
         }
 
@@ -103,20 +72,22 @@ export const studentAuth = {
 
         try {
             const functions = getFunctions(app, 'asia-northeast3');
+            // Cloud Function은 { classId, studentName, password } 를 받도록 이미 구현되어 있음
             const verifyLoginFn = httpsCallable(functions, 'verifyStudentLogin');
-            
-            const result = await verifyLoginFn({ classId, studentId, password });
+            const result = await verifyLoginFn({ classId, studentName, password });
             
             if (result.data.success) {
                 await signInWithCustomToken(auth, result.data.token);
-                // 로그인 성공 시 App의 메서드 호출
-                this.app.onLoginSuccess(result.data.studentData, studentId);
+                // 로그인 성공 후 처리
+                if (this.app && this.app.onLoginSuccess) {
+                    this.app.onLoginSuccess(result.data.studentData, result.data.studentData.id);
+                }
             } else {
                 showToast(result.data.message || "로그인 실패", true);
             }
         } catch (e) {
             console.error(e);
-            showToast("로그인 중 오류가 발생했습니다.", true);
+            showToast("로그인 처리 중 오류가 발생했습니다.", true);
         }
     }
 };

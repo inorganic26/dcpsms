@@ -11,11 +11,12 @@ async function reorganizeDist() {
   console.log('🔧 Dist 폴더 구조 정리 중...');
 
   // 이동할 대상 목록 (소스 경로 -> 목적지 경로)
-  // 예: dist/src/admin -> dist/admin
   const moves = [
     { src: 'src/admin', dest: 'admin' },
     { src: 'src/teacher', dest: 'teacher' },
-    { src: 'src/student', dest: 'student' }
+    { src: 'src/student', dest: 'student' },
+    // ▼▼▼ [필수 추가] 학부모 앱 폴더 이동 ▼▼▼
+    { src: 'src/parent', dest: 'parent' } 
   ];
 
   for (const move of moves) {
@@ -31,7 +32,7 @@ async function reorganizeDist() {
     }
   }
 
-  // 빈 src 폴더 삭제
+  // 빈 src 폴더 삭제 (이제 안전하게 삭제 가능)
   const srcDir = path.join(distDir, 'src');
   if (await fs.pathExists(srcDir)) {
     await fs.remove(srcDir);
