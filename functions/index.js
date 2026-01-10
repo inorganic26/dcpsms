@@ -1,4 +1,5 @@
 // functions/index.js
+// 2025-01-10 Force Update: 로그인 세션 만료 문제 해결 및 강제 배포용 주석
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentDeleted } from "firebase-functions/v2/firestore";
@@ -48,6 +49,9 @@ export const createStudentAccount = onCall({ region }, async (request) => {
       password: shadowPassword,
       displayName: name,
     });
+    
+    // [보안 강화] 생성 시 역할 부여
+    await auth.setCustomUserClaims(studentId, { role: "student" });
 
     await studentRef.set({
       name: name,
@@ -164,6 +168,7 @@ export const createTeacherAccount = onCall({ region }, async (request) => {
       password: shadowPassword,
       displayName: name,
     });
+    // [중요] 교사 역할 영구 부여
     await auth.setCustomUserClaims(teacherId, { role: "teacher" });
     await teacherRef.set({
       name: name,
@@ -178,7 +183,7 @@ export const createTeacherAccount = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 6. 관리자 비밀번호 검증 (구버전)
+// 6. 관리자 비밀번호 검증
 // =====================================================
 export const verifyAdminPassword = onCall({ region }, async (request) => {
   if (isSuperAdmin(request.auth)) {
@@ -194,7 +199,7 @@ export const verifyAdminPassword = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 7. 선생님 로그인 (구버전 호환)
+// 7. 선생님 로그인
 // =====================================================
 export const verifyTeacherLogin = onCall({ region }, async (request) => {
   const { name, password } = request.data;
@@ -208,7 +213,9 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
     
     if (!isMatch) return { success: false, message: "비밀번호 불일치" };
 
-    const customToken = await auth.createCustomToken(teacherDoc.id, { role: "teacher" });
+    // 역할 재확인 및 부여
+    await auth.setCustomUserClaims(teacherDoc.id, { role: "teacher" });
+    const customToken = await auth.createCustomToken(teacherDoc.id);
     return { success: true, token: customToken, teacherId: teacherDoc.id, teacherData };
   } catch (error) {
     throw new HttpsError("internal", "로그인 오류");
@@ -226,7 +233,7 @@ export const getClassesForStudentLogin = onCall({ region }, async () => {
 });
 
 // =====================================================
-// 9. 학생 로그인용 학생 목록
+// 9. 학생 로그인용 학생 목록 (직접 입력으로 변경되어 사용 안 할 수도 있지만 호환성 위해 유지)
 // =====================================================
 export const getStudentsInClassForLogin = onCall({ region }, async (request) => {
     const { classId } = request.data;
@@ -243,25 +250,58 @@ export const getStudentsInClassForLogin = onCall({ region }, async (request) => 
 });
 
 // =====================================================
-// 10. 학생 로그인 검증
+// 10. [핵심 수정] 학생 로그인 검증 (이름 직접 입력 지원 + 권한 영구 저장)
 // =====================================================
 export const verifyStudentLogin = onCall({ region }, async (request) => {
-    const { studentId, password } = request.data;
+    const { classId, studentName, password } = request.data; 
+    
+    if (!classId || !studentName || !password) {
+        throw new HttpsError("invalid-argument", "정보 부족");
+    }
+
     try {
-        const docSnap = await db.collection("students").doc(studentId).get();
-        if(!docSnap.exists) return { success: false, message: "학생 정보 없음" };
-        const data = docSnap.data();
-        const phone = data.phone || "";
-        const targetPw = phone.length >= 4 ? phone.slice(-4) : phone;
-        if(password !== targetPw) return { success: false, message: "비밀번호 불일치" };
+        const studentsRef = db.collection("students");
+        // 1. 해당 반에서 이름이 같은 학생 모두 검색 (메인 반)
+        let querySnapshot = await studentsRef.where("classId", "==", classId).where("name", "==", studentName).get();
         
-        const token = await auth.createCustomToken(studentId, { role: "student" });
-        return { success: true, token, studentData: data };
-    } catch(e) { throw new HttpsError("internal", "로그인 실패"); }
+        // 2. 없으면 멀티 반(classIds)에서도 검색
+        if (querySnapshot.empty) {
+            querySnapshot = await studentsRef.where("classIds", "array-contains", classId).where("name", "==", studentName).get();
+        }
+
+        if (querySnapshot.empty) return { success: false, message: "학생 정보가 없습니다." };
+
+        let targetStudent = null;
+
+        // 3. 검색된 학생들 중 비밀번호(전화번호 뒷자리)가 일치하는 사람 찾기
+        querySnapshot.forEach(doc => {
+            const data = doc.data();
+            const phone = data.phone || "";
+            const targetPw = phone.length >= 4 ? phone.slice(-4) : phone;
+            
+            // 비밀번호 비교
+            if (String(password) === String(targetPw)) {
+                targetStudent = { id: doc.id, ...data };
+            }
+        });
+
+        if (!targetStudent) return { success: false, message: "비밀번호가 일치하지 않습니다." };
+        
+        // 4. [수정됨] 권한 영구 저장 (Refresh 시에도 유지되도록)
+        await auth.setCustomUserClaims(targetStudent.id, { role: "student" });
+
+        // 5. 로그인 토큰 발급
+        const token = await auth.createCustomToken(targetStudent.id);
+        return { success: true, token, studentData: targetStudent };
+
+    } catch(e) { 
+        console.error("Student Login Error:", e);
+        throw new HttpsError("internal", "로그인 처리 중 오류 발생"); 
+    }
 });
 
 // =====================================================
-// 11. 학부모 로그인 검증
+// 11. 학부모 로그인 검증 (권한 영구 저장 로직 추가)
 // =====================================================
 export const verifyParentLogin = onCall({ region }, async (request) => {
     const { classId, studentName, phoneSuffix } = request.data;
@@ -285,23 +325,42 @@ export const verifyParentLogin = onCall({ region }, async (request) => {
       if (!targetStudent) return { success: false, message: '비밀번호 불일치' };
   
       const parentUid = `parent_${targetStudent.id}`;
-      const customToken = await auth.createCustomToken(parentUid, {
+
+      // [핵심 수정] 학부모 계정이 없으면 생성
+      try {
+        await auth.getUser(parentUid);
+      } catch (e) {
+        if (e.code === 'auth/user-not-found') {
+            await auth.createUser({ uid: parentUid });
+        } else {
+            throw e;
+        }
+      }
+
+      // [핵심 수정] 사용자 계정 자체에 영구적인 클레임(권한) 부여
+      // 이렇게 해야 1시간 뒤 토큰이 갱신되어도 권한이 유지됩니다.
+      await auth.setCustomUserClaims(parentUid, {
           role: 'parent',
-          studentId: targetStudent.id
+          studentId: targetStudent.id 
       });
+
+      // 토큰 생성 (추가 정보 없이 UID만으로 생성해도 위에서 설정한 권한이 따라옴)
+      const customToken = await auth.createCustomToken(parentUid);
       return { success: true, token: customToken, studentData: targetStudent };
-    } catch (error) { throw new HttpsError('internal', '로그인 오류'); }
+    } catch (error) { 
+        console.error("Parent Login Error:", error);
+        throw new HttpsError('internal', '로그인 오류'); 
+    }
 });
 
 // =====================================================
-// 12. [핵심 수정] 일일 테스트 반 평균 계산 (관리자 로직 적용)
+// 12. 일일 테스트 반 평균 계산
 // =====================================================
 export const getDailyTestAverages = onCall({ region }, async (request) => {
     const { classId } = request.data;
     if (!classId) return {};
 
     try {
-        // 1. 해당 반 학생 명단 확보 (DB에 classId 필드가 없는 데이터 대비)
         const q1 = db.collection("students").where("classId", "==", classId).get();
         const q2 = db.collection("students").where("classIds", "array-contains", classId).get();
         const [s1, s2] = await Promise.all([q1, q2]);
@@ -312,22 +371,17 @@ export const getDailyTestAverages = onCall({ region }, async (request) => {
 
         if (studentIds.size === 0) return {};
 
-        // 2. 전체(최근) 데이터에서 우리 반 학생 것만 필터링
         const snapshot = await db.collection("daily_tests")
             .orderBy("date", "desc")
-            .limit(500) // 넉넉하게 가져와서 메모리에서 필터링
+            .limit(500)
             .get();
 
         const grouped = {};
         snapshot.forEach(doc => {
             const data = doc.data();
-            
-            // 우리 반 학생이 아니면 패스
             if (!studentIds.has(data.studentId)) return;
 
             const key = `${data.date}_${data.subjectName}`;
-            
-            // [중요] 미응시자(null, undefined, 빈문자열) 제외 로직
             const score = data.score;
             if (score !== null && score !== undefined && score !== '') {
                 if (!grouped[key]) grouped[key] = { sum: 0, count: 0 };
@@ -336,10 +390,9 @@ export const getDailyTestAverages = onCall({ region }, async (request) => {
             }
         });
 
-        // 3. 관리자처럼 정수 반올림
         const averages = {};
         for (const [key, val] of Object.entries(grouped)) {
-            averages[key] = Math.round(val.sum / val.count); // 정수 반올림
+            averages[key] = Math.round(val.sum / val.count);
         }
         return averages;
     } catch (e) {
@@ -349,14 +402,13 @@ export const getDailyTestAverages = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 13. [핵심 수정] 주간 테스트 반 평균 계산 (관리자 로직 적용)
+// 13. 주간 테스트 반 평균 계산
 // =====================================================
 export const getWeeklyTestAverages = onCall({ region }, async (request) => {
     const { classId } = request.data;
     if (!classId) return {};
 
     try {
-        // 1. 해당 반 학생 명단 확보
         const q1 = db.collection("students").where("classId", "==", classId).get();
         const q2 = db.collection("students").where("classIds", "array-contains", classId).get();
         const [s1, s2] = await Promise.all([q1, q2]);
@@ -367,7 +419,6 @@ export const getWeeklyTestAverages = onCall({ region }, async (request) => {
 
         if (studentIds.size === 0) return {};
 
-        // 2. 전체(최근) 데이터에서 우리 반 학생 것만 필터링 (DB에 classId 필드 없음 대응)
         const snapshot = await db.collection("weekly_tests")
             .orderBy("targetDate", "desc")
             .limit(300) 
@@ -376,13 +427,9 @@ export const getWeeklyTestAverages = onCall({ region }, async (request) => {
         const grouped = {};
         snapshot.forEach(doc => {
             const data = doc.data();
-            
-            // 우리 반 학생이 아니면 패스
-            if (!studentIds.has(data.uid)) return; // 주간테스트는 필드명이 uid
+            if (!studentIds.has(data.uid)) return;
 
             const key = data.targetDate || data.weekLabel; 
-            
-            // [중요] 미응시자(null, undefined, 빈문자열) 제외 로직
             const score = data.score;
             if (score !== null && score !== undefined && score !== '') {
                 if (!grouped[key]) grouped[key] = { sum: 0, count: 0 };
@@ -391,10 +438,9 @@ export const getWeeklyTestAverages = onCall({ region }, async (request) => {
             }
         });
 
-        // 3. 관리자처럼 정수 반올림
         const averages = {};
         for (const [key, val] of Object.entries(grouped)) {
-            averages[key] = Math.round(val.sum / val.count); // 정수 반올림
+            averages[key] = Math.round(val.sum / val.count);
         }
         return averages;
     } catch (e) {

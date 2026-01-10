@@ -8,7 +8,8 @@ import { studentHomework } from "./studentHomework.js";
 import { classVideoManager } from "../student/classVideoManager.js"; 
 import { reportManager } from "../shared/reportManager.js";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
-import { db } from "../shared/firebase.js";
+import { db, auth } from "../shared/firebase.js"; // auth 추가
+import { onAuthStateChanged } from "firebase/auth"; // onAuthStateChanged 추가
 import { studentWeeklyTest } from "./studentWeeklyTest.js"; 
 import { studentDailyTest } from "./studentDailyTest.js";
 
@@ -42,7 +43,41 @@ export const StudentApp = {
         classVideoManager.init(this);
         studentDashboard.init(this);
         this.addEventListeners();
-        this.showScreen('student-login-screen');
+        
+        // [수정] 로그인 상태 체크 (새로고침 대응)
+        this.checkLoginStatus();
+    },
+
+    checkLoginStatus() {
+        onAuthStateChanged(auth, async (user) => {
+            const isLoginPage = document.getElementById(this.elements.loginScreen).style.display === 'flex';
+
+            if (user) {
+                // 이미 데이터가 로드된 상태라면 스킵
+                if (this.state.studentData && this.state.studentData.id === user.uid) return;
+
+                console.log("세션 복구 중...");
+                try {
+                    // 학생 문서 다시 불러오기
+                    const docSnap = await getDoc(doc(db, "students", user.uid));
+                    if (docSnap.exists()) {
+                        const data = { id: docSnap.id, ...docSnap.data() };
+                        this.onLoginSuccess(data, user.uid);
+                    } else {
+                        // 학생 문서가 없으면 로그아웃 처리
+                        this.showScreen('student-login-screen');
+                    }
+                } catch (e) {
+                    console.error("세션 복구 실패", e);
+                    this.showScreen('student-login-screen');
+                }
+            } else {
+                // 로그아웃 상태
+                if (!isLoginPage) {
+                    this.showScreen('student-login-screen');
+                }
+            }
+        });
     },
 
     addEventListeners() {
