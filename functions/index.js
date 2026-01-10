@@ -1,4 +1,5 @@
 // functions/index.js
+// 2025-01-10 Force Update: 로그인 세션 만료 문제 해결 및 강제 배포용 주석
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentDeleted } from "firebase-functions/v2/firestore";
@@ -48,6 +49,9 @@ export const createStudentAccount = onCall({ region }, async (request) => {
       password: shadowPassword,
       displayName: name,
     });
+    
+    // [보안 강화] 생성 시 역할 부여
+    await auth.setCustomUserClaims(studentId, { role: "student" });
 
     await studentRef.set({
       name: name,
@@ -164,6 +168,7 @@ export const createTeacherAccount = onCall({ region }, async (request) => {
       password: shadowPassword,
       displayName: name,
     });
+    // [중요] 교사 역할 영구 부여
     await auth.setCustomUserClaims(teacherId, { role: "teacher" });
     await teacherRef.set({
       name: name,
@@ -208,7 +213,9 @@ export const verifyTeacherLogin = onCall({ region }, async (request) => {
     
     if (!isMatch) return { success: false, message: "비밀번호 불일치" };
 
-    const customToken = await auth.createCustomToken(teacherDoc.id, { role: "teacher" });
+    // 역할 재확인 및 부여
+    await auth.setCustomUserClaims(teacherDoc.id, { role: "teacher" });
+    const customToken = await auth.createCustomToken(teacherDoc.id);
     return { success: true, token: customToken, teacherId: teacherDoc.id, teacherData };
   } catch (error) {
     throw new HttpsError("internal", "로그인 오류");
@@ -243,10 +250,10 @@ export const getStudentsInClassForLogin = onCall({ region }, async (request) => 
 });
 
 // =====================================================
-// 10. [핵심 수정] 학생 로그인 검증 (이름 직접 입력 지원)
+// 10. [핵심 수정] 학생 로그인 검증 (이름 직접 입력 지원 + 권한 영구 저장)
 // =====================================================
 export const verifyStudentLogin = onCall({ region }, async (request) => {
-    const { classId, studentName, password } = request.data; // studentId 대신 studentName 사용
+    const { classId, studentName, password } = request.data; 
     
     if (!classId || !studentName || !password) {
         throw new HttpsError("invalid-argument", "정보 부족");
@@ -280,8 +287,11 @@ export const verifyStudentLogin = onCall({ region }, async (request) => {
 
         if (!targetStudent) return { success: false, message: "비밀번호가 일치하지 않습니다." };
         
-        // 4. 로그인 토큰 발급
-        const token = await auth.createCustomToken(targetStudent.id, { role: "student" });
+        // 4. [수정됨] 권한 영구 저장 (Refresh 시에도 유지되도록)
+        await auth.setCustomUserClaims(targetStudent.id, { role: "student" });
+
+        // 5. 로그인 토큰 발급
+        const token = await auth.createCustomToken(targetStudent.id);
         return { success: true, token, studentData: targetStudent };
 
     } catch(e) { 
@@ -291,7 +301,7 @@ export const verifyStudentLogin = onCall({ region }, async (request) => {
 });
 
 // =====================================================
-// 11. 학부모 로그인 검증
+// 11. 학부모 로그인 검증 (권한 영구 저장 로직 추가)
 // =====================================================
 export const verifyParentLogin = onCall({ region }, async (request) => {
     const { classId, studentName, phoneSuffix } = request.data;
@@ -315,12 +325,32 @@ export const verifyParentLogin = onCall({ region }, async (request) => {
       if (!targetStudent) return { success: false, message: '비밀번호 불일치' };
   
       const parentUid = `parent_${targetStudent.id}`;
-      const customToken = await auth.createCustomToken(parentUid, {
+
+      // [핵심 수정] 학부모 계정이 없으면 생성
+      try {
+        await auth.getUser(parentUid);
+      } catch (e) {
+        if (e.code === 'auth/user-not-found') {
+            await auth.createUser({ uid: parentUid });
+        } else {
+            throw e;
+        }
+      }
+
+      // [핵심 수정] 사용자 계정 자체에 영구적인 클레임(권한) 부여
+      // 이렇게 해야 1시간 뒤 토큰이 갱신되어도 권한이 유지됩니다.
+      await auth.setCustomUserClaims(parentUid, {
           role: 'parent',
           studentId: targetStudent.id 
       });
+
+      // 토큰 생성 (추가 정보 없이 UID만으로 생성해도 위에서 설정한 권한이 따라옴)
+      const customToken = await auth.createCustomToken(parentUid);
       return { success: true, token: customToken, studentData: targetStudent };
-    } catch (error) { throw new HttpsError('internal', '로그인 오류'); }
+    } catch (error) { 
+        console.error("Parent Login Error:", error);
+        throw new HttpsError('internal', '로그인 오류'); 
+    }
 });
 
 // =====================================================

@@ -5,7 +5,7 @@ import {
     getFirestore, collection, getDocs, doc, getDoc
 } from "firebase/firestore";
 import { 
-    getAuth, signInWithCustomToken, signOut 
+    getAuth, signInWithCustomToken, signOut, onAuthStateChanged 
 } from "firebase/auth";
 import { 
     getFunctions, httpsCallable 
@@ -61,7 +61,77 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (logoutBtn) {
         logoutBtn.addEventListener('click', handleLogout);
     }
+
+    // [핵심 추가] 세션 복구 리스너 (새로고침 대응)
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            // 이미 데이터가 로드되어 있으면 스킵
+            if (currentStudent) return;
+
+            try {
+                // 토큰에서 claims(권한 정보) 확인
+                const tokenResult = await user.getIdTokenResult();
+                const claims = tokenResult.claims;
+
+                if (claims.role === 'parent' && claims.studentId) {
+                    console.log("학부모 세션 복구 중...", claims.studentId);
+                    
+                    // 자녀 정보 다시 불러오기
+                    const studentDoc = await getDoc(doc(db, "students", claims.studentId));
+                    if (studentDoc.exists()) {
+                        const sData = { id: studentDoc.id, ...studentDoc.data() };
+                        
+                        // 전역 변수 복구
+                        currentStudent = sData;
+                        
+                        // 반 정보 복구
+                        if (sData.classId) {
+                            const cDoc = await getDoc(doc(db, "classes", sData.classId));
+                            if(cDoc.exists()) currentClassData = { id: cDoc.id, ...cDoc.data() };
+                        }
+
+                        // 모듈 초기화
+                        if (parentDailyTest) parentDailyTest.init(db, currentStudent, currentClassData);
+                        if (parentWeeklyTest) parentWeeklyTest.init(db, currentStudent, currentClassData); 
+                        if (parentHomework) parentHomework.init(db, currentStudent); 
+                        if (parentProgress) parentProgress.init(db, currentStudent, currentClassData);
+
+                        // UI 업데이트 (로그인 성공 시와 동일)
+                        updateUIOnLogin();
+                        
+                    }
+                }
+            } catch(e) { 
+                console.error("세션 복구 실패", e); 
+            }
+        } else {
+            // 로그아웃 상태면 로그인 화면 보이기
+            const loginContainer = document.getElementById('parent-login-container');
+            const dashboard = document.getElementById('parent-dashboard');
+            if (loginContainer) loginContainer.classList.remove('hidden');
+            if (dashboard) dashboard.classList.add('hidden');
+        }
+    });
 });
+
+// UI 업데이트 헬퍼 함수
+function updateUIOnLogin() {
+    const nameEl = document.getElementById('parent-student-name');
+    if (nameEl) nameEl.textContent = currentStudent.name;
+    
+    const classEl = document.getElementById('parent-class-name');
+    if (classEl && currentClassData) {
+        classEl.textContent = currentClassData.name;
+    }
+    
+    const loginContainer = document.getElementById('parent-login-container');
+    const dashboard = document.getElementById('parent-dashboard');
+    
+    if (loginContainer) loginContainer.classList.add('hidden');
+    if (dashboard) dashboard.classList.remove('hidden');
+
+    switchTab('daily');
+}
 
 // 반 목록 드롭다운 채우기
 async function loadClasses() {
@@ -75,14 +145,12 @@ async function loadClasses() {
         const classes = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data();
-            // DB 필드명 호환성 체크 (name 또는 className)
             const clsName = data.name || data.className;
             if (clsName) {
                 classes.push({ id: doc.id, name: clsName });
             }
         });
         
-        // 가나다순 정렬
         classes.sort((a, b) => a.name.localeCompare(b.name));
 
         classes.forEach(cls => {
@@ -127,7 +195,6 @@ async function handleLogin() {
     }
 
     try {
-        // [서버 인증] 클라우드 함수 호출
         const functions = getFunctions(app, 'asia-northeast3');
         const verifyParentLoginFn = httpsCallable(functions, 'verifyParentLogin');
 
@@ -143,14 +210,12 @@ async function handleLogin() {
             throw new Error(data.message || "로그인 실패");
         }
 
-        // 인증 성공! 받아온 커스텀 토큰으로 로그인
         await signInWithCustomToken(auth, data.token);
         console.log("학부모 로그인 성공");
 
         // 데이터 세팅
         currentStudent = data.studentData;
 
-        // 반 상세 정보 가져오기 (평균 계산을 위해 필수)
         if (classId) {
             const classDoc = await getDoc(doc(db, "classes", classId));
             if(classDoc.exists()) {
@@ -158,36 +223,12 @@ async function handleLogin() {
             }
         }
 
-        // 5. 모듈 초기화 (DB, 학생정보 전달)
         if (parentDailyTest) parentDailyTest.init(db, currentStudent, currentClassData);
         if (parentWeeklyTest) parentWeeklyTest.init(db, currentStudent, currentClassData); 
         if (parentHomework) parentHomework.init(db, currentStudent); 
         if (parentProgress) parentProgress.init(db, currentStudent, currentClassData);
 
-        // 6. UI 업데이트
-        const nameEl = document.getElementById('parent-student-name');
-        if (nameEl) nameEl.textContent = currentStudent.name;
-        
-        const classEl = document.getElementById('parent-class-name');
-        if (classEl) {
-            let className = '';
-            if (currentClassData) {
-                className = currentClassData.name;
-            } else if (classIdEl && classIdEl.options[classIdEl.selectedIndex]) {
-                className = classIdEl.options[classIdEl.selectedIndex].text;
-            }
-            classEl.textContent = className;
-        }
-        
-        // 화면 전환
-        const loginContainer = document.getElementById('parent-login-container');
-        const dashboard = document.getElementById('parent-dashboard');
-        
-        if (loginContainer) loginContainer.classList.add('hidden');
-        if (dashboard) dashboard.classList.remove('hidden');
-
-        // 첫 탭 열기
-        switchTab('daily');
+        updateUIOnLogin();
 
     } catch (error) {
         console.error("로그인 프로세스 에러:", error);
