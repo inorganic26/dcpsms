@@ -12,6 +12,8 @@
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   
+  <link href="../shared/style.css" rel="stylesheet">
+  
   <style>
     body { font-family: 'Pretendard', sans-serif; }
     .glass-effect { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
@@ -27,10 +29,6 @@
     };
   </script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
-  <script type="module" crossorigin src="/assets/student-hwY9_F6t.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/index.esm-DCmU57Cr.js">
-  <link rel="modulepreload" crossorigin href="/assets/dateUtils-ph5bGcCf.js">
-  <link rel="modulepreload" crossorigin href="/assets/reportManager-C5EqHln8.js">
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen pb-safe">
 
@@ -69,9 +67,7 @@
           <label class="block text-xs font-bold text-slate-500 mb-1 ml-1">이름</label>
           <div class="relative">
             <span class="material-icons-round absolute left-3 top-3 text-slate-400">person</span>
-            <select id="student-name-select" class="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all disabled:opacity-50">
-              <option value="">이름을 선택해주세요</option>
-            </select>
+            <input type="text" id="student-name-input" class="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400" placeholder="이름을 입력하세요 (예: 홍길동)">
           </div>
         </div>
 
@@ -392,5 +388,7 @@
       });
     }
   </script>
+  
+  <script type="module" src="./studentApp.js"></script>
 </body>
 </html>
