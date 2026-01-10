@@ -4,6 +4,34 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DCPSMS 학원 통합 포털</title>
+  
+  <script>
+    (function() {
+      const hostname = window.location.hostname;
+      const pathname = window.location.pathname;
+
+      // 메인 페이지일 때만 작동
+      if (pathname === '/' || pathname === '/index.html') {
+        
+        // 1. 학부모 앱
+        if (hostname.includes('pa-dcprime') || hostname.includes('parent')) {
+          window.location.replace('/src/parent/index.html');
+        }
+        // 2. 학생 앱
+        else if (hostname.includes('st-dcprime') || hostname.includes('student')) {
+          window.location.replace('/src/student/index.html');
+        }
+        // 3. 선생님 앱
+        else if (hostname.includes('t-dcprime') || hostname.includes('teacher')) {
+          window.location.replace('/src/teacher/index.html');
+        }
+        // 4. 관리자 앱
+        else if (hostname.includes('dcprime-admin') || hostname.includes('admin')) {
+          window.location.replace('/src/admin/index.html');
+        }
+      }
+    })();
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
