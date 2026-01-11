@@ -8,7 +8,6 @@ import { studentHomework } from "./studentHomework.js";
 import { classVideoManager } from "../student/classVideoManager.js"; 
 import { reportManager } from "../shared/reportManager.js";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
-// 👇 [수정] signOut 추가됨
 import { db, auth } from "../shared/firebase.js"; 
 import { onAuthStateChanged, signOut } from "firebase/auth"; 
 import { studentWeeklyTest } from "./studentWeeklyTest.js"; 
@@ -34,7 +33,6 @@ export const StudentApp = {
         videoTitlesScreen: 'student-video-titles-screen',
         welcomeMessage: 'student-welcome-message',
         selectedSubjectTitle: 'student-selected-subject-title',
-        // 👇 [추가] 로그아웃 버튼 ID 등록
         logoutBtn: 'student-logout-btn'
     },
 
@@ -97,18 +95,15 @@ export const StudentApp = {
         bindClick('student-back-to-lessons-from-video-btn', () => this.exitVideoScreen());
         bindClick('student-back-to-lessons-from-result-btn', () => this.exitVideoScreen());
 
-        // 👇 [추가] 로그아웃 버튼 클릭 시 실행할 함수 연결
+        // 로그아웃 버튼 연결
         bindClick(this.elements.logoutBtn, () => this.handleLogout());
     },
 
-    // 🚀 [추가] 로그아웃 실행 함수
     async handleLogout() {
         if (confirm("정말 로그아웃 하시겠습니까?")) {
             try {
-                // 파이어베이스에서 로그아웃 (세션 삭제)
                 await signOut(auth);
                 alert("로그아웃 되었습니다.");
-                // 화면을 새로고침하여 로그인 화면으로 깨끗하게 이동
                 window.location.reload();
             } catch (error) {
                 console.error("로그아웃 실패:", error);

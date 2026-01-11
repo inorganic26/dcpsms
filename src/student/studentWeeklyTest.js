@@ -14,7 +14,7 @@ export const studentWeeklyTest = {
         studentId: null,
         studentName: null,
         record: null, // 이번 주 내 데이터
-        history: [],  // [추가] 전체 누적 기록
+        history: [],  // 전체 누적 기록
         loading: false
     },
 
@@ -27,7 +27,7 @@ export const studentWeeklyTest = {
         saveBtn: 'weekly-test-save-btn',
         statusMsg: 'weekly-test-status',
         backBtn: 'student-back-to-subjects-from-weekly-btn',
-        historyList: 'weekly-test-history-list' // [추가] 리스트 컨테이너 ID
+        historyList: 'weekly-test-history-list'
     },
 
     // 초기화 및 실행
@@ -111,7 +111,7 @@ export const studentWeeklyTest = {
         if(titleEl) titleEl.textContent = `주간테스트 (${label})`;
     },
 
-    // [기존] 이번 주 내 예약/점수 정보 가져오기
+    // 이번 주 내 예약/점수 정보 가져오기
     async fetchCurrentWeekData() {
         if (!this.state.studentId) return;
 
@@ -136,7 +136,7 @@ export const studentWeeklyTest = {
         }
     },
 
-    // [추가] 전체 누적 기록 가져오기
+    // 전체 누적 기록 가져오기
     async fetchHistory() {
         if (!this.state.studentId) return;
 
@@ -187,7 +187,7 @@ export const studentWeeklyTest = {
         }
     },
 
-    // [추가] 누적 기록 리스트 그리기
+    // 누적 기록 리스트 그리기
     renderHistory() {
         const container = document.getElementById(this.elements.historyList);
         if (!container) return;
@@ -245,8 +245,9 @@ export const studentWeeklyTest = {
         const targetDateStr = formatDateString(targetDate);
         const docId = `${this.state.studentId}_${targetDateStr}`;
 
+        // 👇 [수정됨] uid를 studentId로 변경하여 보안 규칙과 일치시킴
         const payload = {
-            uid: this.state.studentId,
+            studentId: this.state.studentId, // uid -> studentId
             userName: this.state.studentName || "학생",
             targetDate: targetDateStr,
             weekLabel: getWeekLabel(targetDate),
@@ -254,7 +255,8 @@ export const studentWeeklyTest = {
             examTime: examTime,
             score: score ? Number(score) : null,
             status: score ? 'completed' : 'reserved',
-            updatedAt: new Date()
+            updatedAt: new Date(),
+            uid: this.state.studentId // (옵션) 혹시 몰라 uid도 남겨둠, 하지만 보안 규칙 통과 핵심은 studentId
         };
 
         try {
@@ -262,13 +264,13 @@ export const studentWeeklyTest = {
             this.state.record = payload;
             this.renderCurrentData(payload);
             
-            // [추가] 저장 후 히스토리 목록도 갱신
+            // 저장 후 히스토리 목록도 갱신
             await this.fetchHistory();
             
             alert("저장되었습니다.");
         } catch (e) {
             console.error(e);
-            alert("저장 실패");
+            alert("저장 실패: 권한 문제일 가능성이 큽니다.");
         }
     }
 };
