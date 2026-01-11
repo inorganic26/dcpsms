@@ -1,6 +1,7 @@
 // src/admin/adminAuth.js
 
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+// 👇 [수정] setPersistence, browserLocalPersistence 추가
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { auth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
@@ -119,6 +120,9 @@ export const adminAuth = {
         if (typeof showToast === 'function') showToast("관리자 권한 확인 중...", false);
 
         try {
+            // 🚀 [핵심 수정] 관리자 로그인 상태 영구 유지 설정
+            await setPersistence(auth, browserLocalPersistence);
+
             // 2. 내부 시스템 계정으로 파이어베이스 로그인 시도
             await signInWithEmailAndPassword(auth, SYSTEM_ADMIN_EMAIL, SYSTEM_ADMIN_PW);
             console.log("로그인 성공!");

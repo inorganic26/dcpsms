@@ -1,7 +1,8 @@
 // src/student/studentAuth.js
 
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { signInWithCustomToken } from "firebase/auth";
+// 👇 [수정] setPersistence, browserLocalPersistence 추가
+import { signInWithCustomToken, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { app, auth } from "../shared/firebase.js";
 import { showToast } from "../shared/utils.js";
 
@@ -9,7 +10,7 @@ export const studentAuth = {
     app: null,
     elements: {
         classSelect: 'student-class-select',
-        nameInput: 'student-name-input', // [변경] Input 태그 ID
+        nameInput: 'student-name-input',
         passwordInput: 'student-password',
         loginBtn: 'student-login-btn'
     },
@@ -31,7 +32,6 @@ export const studentAuth = {
     },
 
     addEventListeners() {
-        // 반 변경 시 특별히 할 작업은 없지만, 입력 필드 초기화 정도는 가능
         this.el.classSelect?.addEventListener('change', () => {
              // 필요 시 로직 추가
         });
@@ -60,7 +60,7 @@ export const studentAuth = {
 
     async handleLogin() {
         const classId = this.el.classSelect?.value;
-        const studentName = this.el.nameInput?.value.trim(); // [변경] 이름 직접 가져오기
+        const studentName = this.el.nameInput?.value.trim();
         const password = this.el.passwordInput?.value.trim();
 
         if (!classId || !studentName || !password) {
@@ -71,13 +71,17 @@ export const studentAuth = {
         showToast("로그인 중...", false);
 
         try {
+            // 🚀 [핵심 수정] 로그인 상태 영구 유지 설정 (앱 꺼도 유지됨)
+            await setPersistence(auth, browserLocalPersistence);
+
             const functions = getFunctions(app, 'asia-northeast3');
-            // Cloud Function은 { classId, studentName, password } 를 받도록 이미 구현되어 있음
             const verifyLoginFn = httpsCallable(functions, 'verifyStudentLogin');
             const result = await verifyLoginFn({ classId, studentName, password });
             
             if (result.data.success) {
+                // 설정 적용 후 로그인
                 await signInWithCustomToken(auth, result.data.token);
+                
                 // 로그인 성공 후 처리
                 if (this.app && this.app.onLoginSuccess) {
                     this.app.onLoginSuccess(result.data.studentData, result.data.studentData.id);

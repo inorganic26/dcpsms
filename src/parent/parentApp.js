@@ -5,7 +5,8 @@ import {
     getFirestore, collection, getDocs, doc, getDoc
 } from "firebase/firestore";
 import { 
-    getAuth, signInWithCustomToken, signOut, onAuthStateChanged 
+    getAuth, signInWithCustomToken, signOut, onAuthStateChanged,
+    setPersistence, browserLocalPersistence 
 } from "firebase/auth";
 import { 
     getFunctions, httpsCallable 
@@ -62,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         logoutBtn.addEventListener('click', handleLogout);
     }
 
-    // [핵심 추가] 세션 복구 리스너 (새로고침 대응)
+    // [핵심] 로그인 상태 감지 (로딩 멈춤 해결)
     onAuthStateChanged(auth, async (user) => {
         if (user) {
             // 이미 데이터가 로드되어 있으면 스킵
@@ -73,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tokenResult = await user.getIdTokenResult();
                 const claims = tokenResult.claims;
 
+                // 🚀 [수정됨] 학부모 권한이 확실할 때만 진행
                 if (claims.role === 'parent' && claims.studentId) {
                     console.log("학부모 세션 복구 중...", claims.studentId);
                     
@@ -96,20 +98,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (parentHomework) parentHomework.init(db, currentStudent); 
                         if (parentProgress) parentProgress.init(db, currentStudent, currentClassData);
 
-                        // UI 업데이트 (로그인 성공 시와 동일)
+                        // UI 업데이트
                         updateUIOnLogin();
-                        
+                    } else {
+                        // 학생 데이터가 사라진 경우 -> 로그아웃
+                        throw new Error("학생 정보를 찾을 수 없습니다.");
                     }
+                } else {
+                    // 🚀 [추가됨] 로그인은 됐는데 학부모가 아닌 경우 -> 로그아웃
+                    console.warn("학부모 권한이 없습니다. 로그아웃합니다.");
+                    await signOut(auth); // 여기서 강제로 내보내서 로그인 화면으로 보냄
                 }
             } catch(e) { 
-                console.error("세션 복구 실패", e); 
+                console.error("세션 복구 실패:", e); 
+                await signOut(auth); // 에러 나면 안전하게 로그아웃
             }
         } else {
             // 로그아웃 상태면 로그인 화면 보이기
-            const loginContainer = document.getElementById('parent-login-container');
-            const dashboard = document.getElementById('parent-dashboard');
-            if (loginContainer) loginContainer.classList.remove('hidden');
-            if (dashboard) dashboard.classList.add('hidden');
+            showLoginScreen();
         }
     });
 });
@@ -131,6 +137,14 @@ function updateUIOnLogin() {
     if (dashboard) dashboard.classList.remove('hidden');
 
     switchTab('daily');
+}
+
+// 🚀 [추가됨] 로그인 화면 강제 표시 함수
+function showLoginScreen() {
+    const loginContainer = document.getElementById('parent-login-container');
+    const dashboard = document.getElementById('parent-dashboard');
+    if (loginContainer) loginContainer.classList.remove('hidden');
+    if (dashboard) dashboard.classList.add('hidden');
 }
 
 // 반 목록 드롭다운 채우기
@@ -167,7 +181,7 @@ async function loadClasses() {
 }
 
 // -----------------------------------------------------------------------------
-// 3. 로그인 로직 (클라우드 함수 사용)
+// 3. 로그인 로직
 // -----------------------------------------------------------------------------
 async function handleLogin() {
     const classIdEl = document.getElementById('parent-login-class');
@@ -195,6 +209,9 @@ async function handleLogin() {
     }
 
     try {
+        // [핵심] 로그인 유지 설정
+        await setPersistence(auth, browserLocalPersistence);
+
         const functions = getFunctions(app, 'asia-northeast3');
         const verifyParentLoginFn = httpsCallable(functions, 'verifyParentLogin');
 

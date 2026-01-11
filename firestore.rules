@@ -7,7 +7,6 @@ service cloud.firestore {
     // 🛡️ [보안] 권한 확인 도우미 함수들
     // =========================================================
     
-    // 1. 관리자/선생님 확인
     function isTeacher() {
       return request.auth != null && (
         request.auth.token.email == "inorganic26@gmail.com" || 
@@ -16,12 +15,12 @@ service cloud.firestore {
       );
     }
 
-    // 2. 학생 본인 확인
+    // 학생 본인인지 확인 (내 ID랑 문서의 주인 ID가 같은지)
     function isStudent(studentId) {
       return request.auth != null && request.auth.uid == studentId;
     }
 
-    // 3. 학부모님 확인
+    // 학부모인지 확인
     function isParentOf(studentId) {
       return request.auth != null && 
              request.auth.token.role == 'parent' && 
@@ -41,23 +40,38 @@ service cloud.firestore {
     // 2. 반 정보 (classes)
     match /classes/{classId} {
       allow write: if isTeacher();
-      allow read: if true; // 로그인 전 목록 로딩 허용
+      allow read: if true;
     }
 
     // 3. 일일 테스트 (daily_tests)
+    // 🚀 [변경] 학생이 자기 점수를 수정/삭제할 수 있게 허용
     match /daily_tests/{testId} {
       allow write: if isTeacher();
+      
+      // 생성: 내 ID로 만들면 OK
       allow create: if isStudent(request.resource.data.studentId);
-      // [수정] 학생의 삭제 권한 제거 (안전성 확보)
+      
+      // 수정/삭제: 이미 있는 문서의 주인이 나면 OK
+      allow update, delete: if isStudent(resource.data.studentId);
+      
+      // 읽기: 선생님, 나, 우리 부모님
       allow read: if isTeacher() ||
         (request.auth != null && resource.data.studentId == request.auth.uid) ||
         isParentOf(resource.data.studentId);
     }
 
     // 4. 주간 테스트 (weekly_tests)
+    // 🚀 [변경] 학생이 예약/점수를 입력(생성)하고 수정할 수 있게 허용
     match /weekly_tests/{testId} {
       allow write: if isTeacher();
-      // [수정] uid -> studentId (필드명 오류 수정)
+
+      // 생성: 내 ID로 만들면 OK
+      allow create: if isStudent(request.resource.data.studentId);
+      
+      // 수정: 내 ID로 된 문서면 OK (점수 수정 등)
+      allow update: if isStudent(resource.data.studentId);
+
+      // 읽기
       allow read: if isTeacher() ||
         (request.auth != null && resource.data.studentId == request.auth.uid) ||
         isParentOf(resource.data.studentId);
@@ -69,13 +83,17 @@ service cloud.firestore {
         allow write: if isTeacher();
 
         // 5-1. 숙제 제출물 (submissions)
+        // 🚀 [변경] 학생이 재제출(update) 할 수 있도록 권한 강화
         match /submissions/{submissionId} {
-            // [수정] ID 체크 단순화
             allow read: if isTeacher() ||
                        (request.auth != null && resource.data.studentId == request.auth.uid) ||
                        isParentOf(resource.data.studentId);
-            allow write: if isTeacher() ||
-                        (request.auth != null && request.resource.data.studentId == request.auth.uid);
+            
+            // 생성: 내 ID로 제출
+            allow create: if isStudent(request.resource.data.studentId);
+            
+            // 수정/삭제: 내 제출물이면 수정 가능
+            allow update, delete: if isStudent(resource.data.studentId);
         }
     }
 
@@ -95,7 +113,7 @@ service cloud.firestore {
         isParentOf(resource.data.studentId);
     }
 
-    // 8. 과목/교재/선생님 등 공용 정보
+    // 8. 공용 정보 (과목, 교재, 선생님, 영상)
     match /subjects/{subjectId} {
       allow read, write: if isTeacher();
       allow read: if request.auth != null;
@@ -112,17 +130,6 @@ service cloud.firestore {
       allow read, write: if isTeacher();
       allow read: if request.auth != null;
     }
-    
-    // 9. 학생 과제 제출물 (student_assignments)
-    match /student_assignments/{assignmentId} {
-      allow read, write: if isTeacher();
-      // [수정] 생성/수정 규칙 분리 (쓰기 오류 방지)
-      allow create: if isStudent(request.resource.data.studentId);
-      allow update, delete: if isStudent(resource.data.studentId);
-      allow read: if isParentOf(resource.data.studentId);
-    }
-
-    // 10. 영상 관련 권한
     match /classLectures/{videoId} {
       allow write: if isTeacher();
       allow read: if request.auth != null;
@@ -131,8 +138,16 @@ service cloud.firestore {
       allow write: if isTeacher();
       allow read: if request.auth != null;
     }
+    
+    // 9. 학생 과제 (구버전 호환)
+    match /student_assignments/{assignmentId} {
+      allow read, write: if isTeacher();
+      allow create: if isStudent(request.resource.data.studentId);
+      allow update, delete: if isStudent(resource.data.studentId);
+      allow read: if isParentOf(resource.data.studentId);
+    }
 
-    // 11. 그 외 차단
+    // 10. 그 외 차단
     match /{document=**} {
       allow read, write: if isTeacher();
     }

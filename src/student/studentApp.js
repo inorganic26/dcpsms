@@ -8,8 +8,9 @@ import { studentHomework } from "./studentHomework.js";
 import { classVideoManager } from "../student/classVideoManager.js"; 
 import { reportManager } from "../shared/reportManager.js";
 import { doc, getDoc, collection, getDocs } from "firebase/firestore";
-import { db, auth } from "../shared/firebase.js"; // auth 추가
-import { onAuthStateChanged } from "firebase/auth"; // onAuthStateChanged 추가
+// 👇 [수정] signOut 추가됨
+import { db, auth } from "../shared/firebase.js"; 
+import { onAuthStateChanged, signOut } from "firebase/auth"; 
 import { studentWeeklyTest } from "./studentWeeklyTest.js"; 
 import { studentDailyTest } from "./studentDailyTest.js";
 
@@ -33,6 +34,8 @@ export const StudentApp = {
         videoTitlesScreen: 'student-video-titles-screen',
         welcomeMessage: 'student-welcome-message',
         selectedSubjectTitle: 'student-selected-subject-title',
+        // 👇 [추가] 로그아웃 버튼 ID 등록
+        logoutBtn: 'student-logout-btn'
     },
 
     init() {
@@ -44,7 +47,7 @@ export const StudentApp = {
         studentDashboard.init(this);
         this.addEventListeners();
         
-        // [수정] 로그인 상태 체크 (새로고침 대응)
+        // 로그인 상태 체크
         this.checkLoginStatus();
     },
 
@@ -53,18 +56,18 @@ export const StudentApp = {
             const isLoginPage = document.getElementById(this.elements.loginScreen).style.display === 'flex';
 
             if (user) {
-                // 이미 데이터가 로드된 상태라면 스킵
+                // 로그인 상태 (앱 껐다 켜도 유지됨)
                 if (this.state.studentData && this.state.studentData.id === user.uid) return;
 
                 console.log("세션 복구 중...");
                 try {
-                    // 학생 문서 다시 불러오기
                     const docSnap = await getDoc(doc(db, "students", user.uid));
                     if (docSnap.exists()) {
                         const data = { id: docSnap.id, ...docSnap.data() };
                         this.onLoginSuccess(data, user.uid);
                     } else {
-                        // 학생 문서가 없으면 로그아웃 처리
+                        // 학생 정보가 없으면 강제 로그아웃
+                        await signOut(auth);
                         this.showScreen('student-login-screen');
                     }
                 } catch (e) {
@@ -72,7 +75,7 @@ export const StudentApp = {
                     this.showScreen('student-login-screen');
                 }
             } else {
-                // 로그아웃 상태
+                // 로그아웃 상태 (로그인 화면 보여주기)
                 if (!isLoginPage) {
                     this.showScreen('student-login-screen');
                 }
@@ -93,6 +96,25 @@ export const StudentApp = {
         bindClick('student-back-to-subjects-from-weekly-btn', () => this.showSubjectSelectionScreen());
         bindClick('student-back-to-lessons-from-video-btn', () => this.exitVideoScreen());
         bindClick('student-back-to-lessons-from-result-btn', () => this.exitVideoScreen());
+
+        // 👇 [추가] 로그아웃 버튼 클릭 시 실행할 함수 연결
+        bindClick(this.elements.logoutBtn, () => this.handleLogout());
+    },
+
+    // 🚀 [추가] 로그아웃 실행 함수
+    async handleLogout() {
+        if (confirm("정말 로그아웃 하시겠습니까?")) {
+            try {
+                // 파이어베이스에서 로그아웃 (세션 삭제)
+                await signOut(auth);
+                alert("로그아웃 되었습니다.");
+                // 화면을 새로고침하여 로그인 화면으로 깨끗하게 이동
+                window.location.reload();
+            } catch (error) {
+                console.error("로그아웃 실패:", error);
+                alert("로그아웃 중 오류가 발생했습니다.");
+            }
+        }
     },
 
     exitVideoScreen() {

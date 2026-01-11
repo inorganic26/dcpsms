@@ -1,7 +1,8 @@
 // src/teacher/teacherApp.js
 
 import { doc, getDoc, getDocs, collection, query, where, onSnapshot, updateDoc, orderBy } from "firebase/firestore";
-import { signInWithCustomToken, signOut } from "firebase/auth";
+// 👇 [수정] setPersistence, browserLocalPersistence 추가됨
+import { signInWithCustomToken, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import app, { db, auth } from '../shared/firebase.js';
 import { showToast } from '../shared/utils.js';
@@ -35,7 +36,10 @@ const TeacherApp = {
     init() {
         if (this.isInitialized) return;
         this.cacheElements();
-        signOut(auth).then(() => console.log("Logged out for security."));
+        // ⚠️ 주의: 기존 코드에 있던 자동 로그아웃(signOut)은 제거하거나 주석 처리해야 
+        // 앱을 켰을 때 로그인이 유지됩니다. 보안을 위해 남겨두고 싶으시다면 두셔도 되지만,
+        // "유지"를 원하신다면 아래 줄을 지우는 것이 좋습니다.
+        // signOut(auth).then(() => console.log("Logged out for security.")); 
 
         this.elements.loginBtn?.addEventListener('click', () => {
             this.handleLogin(this.elements.nameInput?.value, this.elements.passwordInput?.value);
@@ -112,6 +116,9 @@ const TeacherApp = {
         showToast("로그인 중...", false);
 
         try {
+            // 🚀 [핵심 수정] 로그인 상태 영구 유지 설정
+            await setPersistence(auth, browserLocalPersistence);
+
             const functions = getFunctions(app, 'asia-northeast3');
             const verifyLogin = httpsCallable(functions, 'verifyTeacherLogin');
             const result = await verifyLogin({ name, password });
