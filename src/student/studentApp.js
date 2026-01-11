@@ -16,6 +16,8 @@ import { studentDailyTest } from "./studentDailyTest.js";
 export const StudentApp = {
     state: studentState.data,
     
+    // 🚀 [수정 1] logoutBtn을 여기서 제거했습니다.
+    // 여기에 두면 showScreen 함수가 화면 전환할 때 버튼을 강제로 숨겨버리기 때문입니다.
     elements: {
         loadingScreen: 'student-loading-screen',
         loginScreen: 'student-login-screen',
@@ -32,8 +34,8 @@ export const StudentApp = {
         qnaVideoDateScreen: 'student-qna-video-date-screen',
         videoTitlesScreen: 'student-video-titles-screen',
         welcomeMessage: 'student-welcome-message',
-        selectedSubjectTitle: 'student-selected-subject-title',
-        logoutBtn: 'student-logout-btn'
+        selectedSubjectTitle: 'student-selected-subject-title'
+        // logoutBtn 제거됨
     },
 
     init() {
@@ -54,7 +56,7 @@ export const StudentApp = {
             const isLoginPage = document.getElementById(this.elements.loginScreen).style.display === 'flex';
 
             if (user) {
-                // 로그인 상태 (앱 껐다 켜도 유지됨)
+                // 로그인 상태
                 if (this.state.studentData && this.state.studentData.id === user.uid) return;
 
                 console.log("세션 복구 중...");
@@ -73,7 +75,7 @@ export const StudentApp = {
                     this.showScreen('student-login-screen');
                 }
             } else {
-                // 로그아웃 상태 (로그인 화면 보여주기)
+                // 로그아웃 상태
                 if (!isLoginPage) {
                     this.showScreen('student-login-screen');
                 }
@@ -95,8 +97,8 @@ export const StudentApp = {
         bindClick('student-back-to-lessons-from-video-btn', () => this.exitVideoScreen());
         bindClick('student-back-to-lessons-from-result-btn', () => this.exitVideoScreen());
 
-        // 로그아웃 버튼 연결
-        bindClick(this.elements.logoutBtn, () => this.handleLogout());
+        // 🚀 [수정 2] elements 목록에서 뺐으므로 ID('student-logout-btn')를 직접 입력합니다.
+        bindClick('student-logout-btn', () => this.handleLogout());
     },
 
     async handleLogout() {
@@ -122,6 +124,7 @@ export const StudentApp = {
     },
 
     showScreen(screenId) {
+        // 여기서 elements에 있는 모든 것을 숨기는데, logoutBtn을 뺐으니 이제 버튼은 안 건드립니다.
         Object.values(this.elements).forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'none';

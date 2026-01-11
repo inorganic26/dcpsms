@@ -386,16 +386,6 @@
     </main>
   </div>
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-          .then(() => console.log('Student PWA 등록 성공!'))
-          .catch((err) => console.log('Student PWA 실패:', err));
-      });
-    }
-  </script>
-  
   <script type="module" src="./studentApp.js"></script>
 </body>
 </html>
