@@ -1,10 +1,9 @@
 // public/sw.js
 
-// 🔴 [중요] 배포할 때마다 버전을 올려주세요 (v2 -> v3 -> v4...)
-// 그래야 사용자의 휴대폰이 "새로운 파일이구나"라고 인식하고 다시 다운로드 받습니다.
-const CACHE_NAME = 'dcps-pwa-v2-20250110-fix';
+// 🔴 [수정됨] 배포할 때마다 버전을 올려주세요 (v2 -> v3)
+const CACHE_NAME = 'dcps-pwa-v3-20260110-update';
 
-// 캐싱할 파일 목록 (필요에 따라 추가 가능)
+// 캐싱할 파일 목록
 const urlsToCache = [
   '/',
   '/index.html',
@@ -13,7 +12,7 @@ const urlsToCache = [
 
 // 1. 설치 (Install)
 self.addEventListener('install', (event) => {
-    // 대기 없이 바로 새 서비스 워커를 적용 (기존 탭이 닫히지 않아도 적용)
+    // 대기 없이 바로 새 서비스 워커를 적용
     self.skipWaiting();
     
     event.waitUntil(
@@ -41,7 +40,7 @@ self.addEventListener('activate', (event) => {
                 })
             );
         }).then(() => {
-            // 클라이언트(열려있는 페이지) 제어권 즉시 가져오기
+            // 클라이언트 제어권 즉시 가져오기
             return self.clients.claim();
         })
     );
@@ -49,10 +48,10 @@ self.addEventListener('activate', (event) => {
 
 // 3. 요청 가로채기 (Fetch)
 self.addEventListener('fetch', (event) => {
-    // http, https 요청이 아니면(크롬 익스텐션 등) 건너뜀
+    // http, https 요청이 아니면 건너뜀
     if (!event.request.url.startsWith('http')) return;
     
-    // POST 요청 등 데이터 전송은 캐싱하지 않고 네트워크로 보냄
+    // POST 요청 등 데이터 전송은 캐싱하지 않음
     if (event.request.method !== 'GET') return;
 
     event.respondWith(
@@ -63,7 +62,6 @@ self.addEventListener('fetch', (event) => {
                     return response;
                 }
 
-                // 응답 복제 (스트림은 한 번만 사용 가능하므로)
                 const responseToCache = response.clone();
                 caches.open(CACHE_NAME)
                     .then((cache) => {
@@ -79,7 +77,7 @@ self.addEventListener('fetch', (event) => {
                         if (response) {
                             return response;
                         }
-                        // 캐시에도 없다면 오프라인 메시지 표시
+                        // 캐시에도 없다면 오프라인 메시지
                         return new Response("오프라인 상태입니다. 인터넷 연결을 확인해주세요.", {
                             status: 503,
                             headers: { 'Content-Type': 'text/plain; charset=utf-8' }

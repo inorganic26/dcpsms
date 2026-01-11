@@ -8,7 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "vite preview",
-    "deploy": "npm run build && firebase deploy"
+
+    "//_comment_single": "--- 개별 사이트 배포 명령어 (필요할 때만 사용) ---",
+    "deploy:portal": "firebase deploy --only hosting:svcm-v2",
+    "deploy:student": "firebase deploy --only hosting:st-dcprime",
+    
+    "//_comment_all": "--- [중요] 전체 사이트 동시 배포 명령어 (평소엔 이걸 쓰세요) ---",
+    "deploy:all": "npm run build && firebase deploy --only hosting"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.15",

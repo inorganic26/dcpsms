@@ -67,16 +67,17 @@ export const AdminApp = {
         this.addEventListeners();
         this.setupStoreBridges();
 
-        // ⭐ [핵심 수정] 메인 콘텐츠 영역에 스크롤 기능 강제 주입
-        // (HTML 구조를 몰라도 JS로 강제 적용하여 스크롤 문제를 해결함)
+        // [수정됨] JS를 통한 강제 스타일 주입 코드 제거
+        // 아래 스타일 클래스들은 admin/index.html의 해당 요소에 직접 추가해주세요.
+        /*
         const mainContent = document.getElementById('admin-main-content') || document.querySelector('main');
         if (mainContent) {
             mainContent.classList.add('overflow-y-auto', 'h-full', 'pb-20');
-            // 부모 컨테이너도 높이 제한 확인
             if(mainContent.parentElement) {
                 mainContent.parentElement.classList.add('h-screen', 'overflow-hidden', 'flex', 'flex-col');
             }
         }
+        */
     },
 
     cacheElements() {

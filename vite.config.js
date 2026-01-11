@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import vue from '@vitejs/plugin-vue'; // [필수 추가]
 
+// vue 플러그인 제거 (Vanilla JS 프로젝트이므로 불필요)
 export default defineConfig({
-  plugins: [vue()], // [필수 추가] 이게 없으면 화면이 하얗게 나옵니다.
+  // plugins: [vue()], // 삭제됨
   base: '/', 
   build: {
     outDir: 'dist',
