@@ -44,16 +44,19 @@ service cloud.firestore {
     }
 
     // 3. 일일 테스트 (daily_tests)
-    // 🚀 [변경] 학생이 자기 점수를 수정/삭제할 수 있게 허용
+    // 🚀 [수정됨] 학생은 생성/수정 가능하지만 삭제는 불가능 (데이터 보호)
     match /daily_tests/{testId} {
       allow write: if isTeacher();
       
       // 생성: 내 ID로 만들면 OK
       allow create: if isStudent(request.resource.data.studentId);
       
-      // 수정/삭제: 이미 있는 문서의 주인이 나면 OK
-      allow update, delete: if isStudent(resource.data.studentId);
+      // 수정: 내 문서라면 내용 수정 가능 (삭제는 불가능)
+      allow update: if isStudent(resource.data.studentId);
       
+      // 삭제: 학생은 삭제 불가 (선생님만 write 권한으로 가능)
+      allow delete: if false;
+
       // 읽기: 선생님, 나, 우리 부모님
       allow read: if isTeacher() ||
         (request.auth != null && resource.data.studentId == request.auth.uid) ||
@@ -61,20 +64,20 @@ service cloud.firestore {
     }
 
     // 4. 주간 테스트 (weekly_tests)
-    // 🚀 [변경] 학생이 예약/점수를 입력(생성)하고 수정할 수 있게 허용
+    // 🚀 [수정됨] 데이터가 'uid' 필드로 저장되므로 규칙도 'uid'를 검사하도록 수정 (학부모/학생앱 오류 해결)
     match /weekly_tests/{testId} {
       allow write: if isTeacher();
-
-      // 생성: 내 ID로 만들면 OK
-      allow create: if isStudent(request.resource.data.studentId);
       
-      // 수정: 내 ID로 된 문서면 OK (점수 수정 등)
-      allow update: if isStudent(resource.data.studentId);
-
-      // 읽기
+      // 생성: 내 ID(uid)로 만들면 OK
+      allow create: if request.auth.uid == request.resource.data.uid;
+      
+      // 수정: 내 ID(uid)로 된 문서면 OK
+      allow update: if request.auth.uid == resource.data.uid;
+      
+      // 읽기: 선생님, 본인(uid 일치), 부모님(uid 필드가 자녀 ID와 일치)
       allow read: if isTeacher() ||
-        (request.auth != null && resource.data.studentId == request.auth.uid) ||
-        isParentOf(resource.data.studentId);
+        (request.auth != null && resource.data.uid == request.auth.uid) ||
+        isParentOf(resource.data.uid);
     }
 
     // 5. 숙제 (homeworks)
@@ -83,11 +86,12 @@ service cloud.firestore {
         allow write: if isTeacher();
 
         // 5-1. 숙제 제출물 (submissions)
-        // 🚀 [변경] 학생이 재제출(update) 할 수 있도록 권한 강화
+        // 🚀 [핵심 수정] 미제출 상태에서도 에러가 안 나도록 문서ID(submissionId)로 본인 확인
         match /submissions/{submissionId} {
+            // 읽기: 문서 내용(resource.data) 대신 문서 제목(submissionId)이 내 ID인지 확인
             allow read: if isTeacher() ||
-                       (request.auth != null && resource.data.studentId == request.auth.uid) ||
-                       isParentOf(resource.data.studentId);
+                       (request.auth != null && submissionId == request.auth.uid) ||
+                       isParentOf(submissionId);
             
             // 생성: 내 ID로 제출
             allow create: if isStudent(request.resource.data.studentId);
