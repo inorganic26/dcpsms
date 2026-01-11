@@ -1,55 +1,62 @@
 {
+  "hosting": [
+    {
+      "target": "portal",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "/admin/**", "destination": "/src/admin/index.html" },
+        { "source": "/teacher/**", "destination": "/src/teacher/index.html" },
+        { "source": "/student/**", "destination": "/src/student/index.html" },
+        { "source": "/parent/**", "destination": "/src/parent/index.html" },
+        { "source": "**", "destination": "/index.html" }
+      ]
+    },
+    {
+      "target": "student",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "**", "destination": "/src/student/index.html" }
+      ]
+    },
+    {
+      "target": "parent",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "**", "destination": "/src/parent/index.html" }
+      ]
+    },
+    {
+      "target": "teacher",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "**", "destination": "/src/teacher/index.html" }
+      ]
+    },
+    {
+      "target": "admin",
+      "public": "dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "**", "destination": "/src/admin/index.html" }
+      ]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ]
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  },
+  "storage": {
+    "rules": "storage.rules"
   },
   "functions": [
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log"
-      ]
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     }
-  ],
-  "hosting": {
-    "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/admin/**",
-        "destination": "/src/admin/index.html"
-      },
-      {
-        "source": "/teacher/**",
-        "destination": "/src/teacher/index.html"
-      },
-      {
-        "source": "/student/**",
-        "destination": "/src/student/index.html"
-      },
-      {
-        "source": "/parent/**",
-        "destination": "/src/parent/index.html"
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  },
-  "storage": {
-    "rules": "storage.rules"
-  }
+  ]
 }

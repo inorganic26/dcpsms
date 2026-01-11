@@ -3,40 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DCPSMS 학원 통합 포털</title>
+  <title>DCPSMS 로딩중...</title>
   
   <script>
     (function() {
       const hostname = window.location.hostname;
-      const pathname = window.location.pathname;
-
-      // 메인 페이지일 때만 작동
-      if (pathname === '/' || pathname === '/index.html') {
-        
-        // 1. 학부모 앱
-        if (hostname.includes('pa-dcprime') || hostname.includes('parent')) {
-          window.location.replace('/src/parent/index.html');
-        }
-        // 2. 학생 앱
-        else if (hostname.includes('st-dcprime') || hostname.includes('student')) {
-          window.location.replace('/src/student/index.html');
-        }
-        // 3. 선생님 앱
-        else if (hostname.includes('t-dcprime') || hostname.includes('teacher')) {
-          window.location.replace('/src/teacher/index.html');
-        }
-        // 4. 관리자 앱
-        else if (hostname.includes('dcprime-admin') || hostname.includes('admin')) {
-          window.location.replace('/src/admin/index.html');
-        }
+      
+      // 1. 관리자 주소면 -> 관리자 앱 파일로 즉시 이동
+      if (hostname.includes('admin')) {
+        window.location.replace('/src/admin/index.html');
+      }
+      // 2. 학생 주소면 -> 학생 앱 파일로 즉시 이동
+      else if (hostname.includes('st-dcprime') || hostname.includes('student')) {
+        window.location.replace('/src/student/index.html');
+      }
+      // 3. 학부모 주소면 -> 학부모 앱 파일로 즉시 이동
+      else if (hostname.includes('pa-dcprime') || hostname.includes('parent')) {
+        window.location.replace('/src/parent/index.html');
+      }
+      // 4. 선생님 주소면 -> 선생님 앱 파일로 즉시 이동
+      else if (hostname.includes('t-dcprime') || hostname.includes('teacher')) {
+        window.location.replace('/src/teacher/index.html');
       }
     })();
   </script>
+
+  <link rel="manifest" href="/manifest.json">
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-  <style>
-      body { font-family: 'Noto Sans KR', sans-serif; }
-  </style>
+  <style> body { font-family: 'Noto Sans KR', sans-serif; } </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
 
@@ -45,45 +40,19 @@
     <p class="text-slate-500 mb-10">접속하실 서비스를 선택해주세요</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      
-      <a href="/src/admin/index.html" class="group block p-6 bg-indigo-50 hover:bg-indigo-600 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-lg border border-indigo-100 hover:border-transparent">
-        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors shadow-sm">
-          <span class="text-3xl">🛡️</span>
-        </div>
-        <h2 class="text-xl font-bold text-indigo-900 group-hover:text-white mb-2">관리자</h2>
-        <p class="text-sm text-indigo-600/70 group-hover:text-indigo-100">학원 운영 및 관리</p>
-      </a>
-
-      <a href="/src/teacher/index.html" class="group block p-6 bg-purple-50 hover:bg-purple-600 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-lg border border-purple-100 hover:border-transparent">
-        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors shadow-sm">
-          <span class="text-3xl">👨‍🏫</span>
-        </div>
-        <h2 class="text-xl font-bold text-purple-900 group-hover:text-white mb-2">선생님</h2>
-        <p class="text-sm text-purple-600/70 group-hover:text-purple-100">수업 및 학생 관리</p>
-      </a>
-
-      <a href="/src/student/index.html" class="group block p-6 bg-blue-50 hover:bg-blue-600 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-lg border border-blue-100 hover:border-transparent">
-        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors shadow-sm">
-          <span class="text-3xl">👨‍🎓</span>
-        </div>
-        <h2 class="text-xl font-bold text-blue-900 group-hover:text-white mb-2">학생</h2>
-        <p class="text-sm text-blue-600/70 group-hover:text-blue-100">강의 수강 및 과제</p>
-      </a>
-
-      <a href="/src/parent/index.html" class="group block p-6 bg-green-50 hover:bg-green-600 rounded-2xl transition-all duration-300 shadow-sm hover:shadow-lg border border-green-100 hover:border-transparent">
-        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors shadow-sm">
-          <span class="text-3xl">👪</span>
-        </div>
-        <h2 class="text-xl font-bold text-green-900 group-hover:text-white mb-2">학부모님</h2>
-        <p class="text-sm text-green-600/70 group-hover:text-green-100">자녀 학습 현황 확인</p>
-      </a>
-
-    </div>
-
-    <div class="mt-12 pt-8 border-t border-slate-100">
-      <p class="text-xs text-slate-400">© 2024 DCPSMS Academy System. All rights reserved.</p>
+      <a href="/src/admin/index.html" class="block p-6 bg-indigo-50 rounded-2xl">관리자</a>
+      <a href="/src/teacher/index.html" class="block p-6 bg-purple-50 rounded-2xl">선생님</a>
+      <a href="/src/student/index.html" class="block p-6 bg-blue-50 rounded-2xl">학생</a>
+      <a href="/src/parent/index.html" class="block p-6 bg-green-50 rounded-2xl">학부모</a>
     </div>
   </div>
 
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js');
+      });
+    }
+  </script>
 </body>
 </html>
