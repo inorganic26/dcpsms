@@ -15,7 +15,7 @@ service cloud.firestore {
       );
     }
 
-    // 학생 본인인지 확인 (내 ID랑 문서의 주인 ID가 같은지)
+    // 학생 본인인지 확인
     function isStudent(studentId) {
       return request.auth != null && request.auth.uid == studentId;
     }
@@ -44,37 +44,21 @@ service cloud.firestore {
     }
 
     // 3. 일일 테스트 (daily_tests)
-    // 🚀 [수정됨] 학생은 생성/수정 가능하지만 삭제는 불가능 (데이터 보호)
     match /daily_tests/{testId} {
       allow write: if isTeacher();
-      
-      // 생성: 내 ID로 만들면 OK
       allow create: if isStudent(request.resource.data.studentId);
-      
-      // 수정: 내 문서라면 내용 수정 가능 (삭제는 불가능)
       allow update: if isStudent(resource.data.studentId);
-      
-      // 삭제: 학생은 삭제 불가 (선생님만 write 권한으로 가능)
       allow delete: if false;
-
-      // 읽기: 선생님, 나, 우리 부모님
       allow read: if isTeacher() ||
         (request.auth != null && resource.data.studentId == request.auth.uid) ||
         isParentOf(resource.data.studentId);
     }
 
     // 4. 주간 테스트 (weekly_tests)
-    // 🚀 [수정됨] 데이터가 'uid' 필드로 저장되므로 규칙도 'uid'를 검사하도록 수정 (학부모/학생앱 오류 해결)
     match /weekly_tests/{testId} {
       allow write: if isTeacher();
-      
-      // 생성: 내 ID(uid)로 만들면 OK
       allow create: if request.auth.uid == request.resource.data.uid;
-      
-      // 수정: 내 ID(uid)로 된 문서면 OK
       allow update: if request.auth.uid == resource.data.uid;
-      
-      // 읽기: 선생님, 본인(uid 일치), 부모님(uid 필드가 자녀 ID와 일치)
       allow read: if isTeacher() ||
         (request.auth != null && resource.data.uid == request.auth.uid) ||
         isParentOf(resource.data.uid);
@@ -85,23 +69,16 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow write: if isTeacher();
 
-        // 5-1. 숙제 제출물 (submissions)
-        // 🚀 [핵심 수정] 미제출 상태에서도 에러가 안 나도록 문서ID(submissionId)로 본인 확인
         match /submissions/{submissionId} {
-            // 읽기: 문서 내용(resource.data) 대신 문서 제목(submissionId)이 내 ID인지 확인
             allow read: if isTeacher() ||
                        (request.auth != null && submissionId == request.auth.uid) ||
                        isParentOf(submissionId);
-            
-            // 생성: 내 ID로 제출
             allow create: if isStudent(request.resource.data.studentId);
-            
-            // 수정/삭제: 내 제출물이면 수정 가능
             allow update, delete: if isStudent(resource.data.studentId);
         }
     }
 
-    // 6. 학습 현황 (learning_status)
+    // 6. 학습 현황 (learning_status) - 구버전 호환용
     match /learning_status/{statusId} {
       allow write: if isTeacher();
       allow read: if isTeacher() ||
@@ -118,14 +95,25 @@ service cloud.firestore {
     }
 
     // 8. 공용 정보 (과목, 교재, 선생님, 영상)
+    // 🚀 [여기가 수정되었습니다] 학생이 영상 기록을 저장할 수 있게 허용
     match /subjects/{subjectId} {
-      allow read, write: if isTeacher();
       allow read: if request.auth != null;
-      match /{document=**} {
+      allow write: if isTeacher();
+
+      match /lessons/{lessonId} {
         allow read: if request.auth != null;
         allow write: if isTeacher();
+
+        // 👇 [추가됨] 레슨 하위의 submissions 폴더는 학생이 쓰고 읽을 수 있음
+        match /submissions/{submissionId} {
+            allow read, write: if isStudent(submissionId) || isTeacher();
+            // 학부모님도 읽기 가능
+            allow read: if isParentOf(submissionId);
+        }
       }
     }
+    
+    // 나머지 공용 정보들
     match /textbooks/{textbookId} {
       allow read, write: if isTeacher();
       allow read: if request.auth != null;
