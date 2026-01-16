@@ -111,7 +111,7 @@ export const studentWeeklyTest = {
         if(titleEl) titleEl.textContent = `주간테스트 (${label})`;
     },
 
-    // 이번 주 내 예약/점수 정보 가져오기
+    // 🚀 [수정됨] 이번 주 예약 정보 가져오기 (에러 무시 처리 추가)
     async fetchCurrentWeekData() {
         if (!this.state.studentId) return;
 
@@ -128,11 +128,15 @@ export const studentWeeklyTest = {
                 this.state.record = data;
                 this.renderCurrentData(data);
             } else {
+                // 데이터 없음 (정상 상황)
                 this.state.record = null;
                 this.renderStatus("아직 예약 내역이 없습니다.");
             }
         } catch (error) {
-            console.error("이번 주 데이터 로딩 실패:", error);
+            // 권한 에러 등 발생 시 -> 예약 없음으로 간주하고 에러 무시
+            // console.warn("이번 주 데이터 로딩 이슈(예약 없음 등):", error); // 디버깅용 로그도 주석 처리 가능
+            this.state.record = null;
+            this.renderStatus("아직 예약 내역이 없습니다.");
         }
     },
 
@@ -245,7 +249,6 @@ export const studentWeeklyTest = {
         const targetDateStr = formatDateString(targetDate);
         const docId = `${this.state.studentId}_${targetDateStr}`;
 
-        // 👇 [수정됨] uid를 studentId로 변경하여 보안 규칙과 일치시킴
         const payload = {
             studentId: this.state.studentId, // uid -> studentId
             userName: this.state.studentName || "학생",
@@ -256,7 +259,7 @@ export const studentWeeklyTest = {
             score: score ? Number(score) : null,
             status: score ? 'completed' : 'reserved',
             updatedAt: new Date(),
-            uid: this.state.studentId // (옵션) 혹시 몰라 uid도 남겨둠, 하지만 보안 규칙 통과 핵심은 studentId
+            uid: this.state.studentId 
         };
 
         try {

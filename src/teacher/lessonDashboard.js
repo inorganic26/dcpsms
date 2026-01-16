@@ -9,8 +9,6 @@ export const lessonDashboard = {
 
     init(app) {
         this.app = app;
-
-        // 요소가 존재하는지 확인 후 이벤트 리스너 추가
         if (this.app.elements.subjectSelectLesson) {
             this.app.elements.subjectSelectLesson.addEventListener('change', (e) => this.populateLessonSelect(e.target.value));
         }
@@ -52,7 +50,12 @@ export const lessonDashboard = {
                 return;
             }
             const submissions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            submissions.sort((a, b) => (b.lastAttemptAt?.toMillis() || 0) - (a.lastAttemptAt?.toMillis() || 0));
+            // 최근 활동 순 정렬 (lastAttemptAt 우선, 없으면 lastWatchUpdate)
+            submissions.sort((a, b) => {
+                const timeA = a.lastAttemptAt?.toMillis() || a.lastWatchUpdate?.toMillis() || 0;
+                const timeB = b.lastAttemptAt?.toMillis() || b.lastWatchUpdate?.toMillis() || 0;
+                return timeB - timeA;
+            });
             submissions.forEach(sub => this.renderSubmissionRow(sub));
         });
     },
@@ -60,14 +63,51 @@ export const lessonDashboard = {
     renderSubmissionRow(data) {
         const row = document.createElement('tr');
         row.className = 'bg-white border-b hover:bg-slate-50';
-        const score = (data.score !== undefined) ? `${data.score} / ${data.totalQuestions}` : '-';
-        const dateRaw = data.lastAttemptAt;
+        
+        // 🚀 [수정] 점수 표시 로직 강화
+        // 1순위: 맞은개수/전체개수, 2순위: 100점 환산점수, 3순위: -
+        let scoreDisplay = '-';
+        if (data.correctCount !== undefined && data.totalQuestions !== undefined) {
+            scoreDisplay = `${data.score}점 (${data.correctCount}/${data.totalQuestions})`;
+        } else if (data.score !== undefined) {
+            scoreDisplay = `${data.score}점`;
+        }
+
+        const dateRaw = data.lastAttemptAt || data.lastWatchUpdate;
         const date = (dateRaw && typeof dateRaw.toDate === 'function') ? dateRaw.toDate().toLocaleString() : '정보 없음';
-        let statusClass = '';
-        if (data.status.includes('통과')) statusClass = 'text-green-600 font-semibold';
-        if (data.status.includes('실패')) statusClass = 'text-red-600 font-semibold';
-        row.innerHTML = `<td class="px-6 py-4 font-medium text-slate-900">${data.studentName}</td><td class="px-6 py-4 ${statusClass}">${data.status}</td><td class.px-6 py-4">${score}</td><td class="px-6 py-4">${date}</td><td class="px-6 py-4"><button data-id="${data.id}" class="reset-lesson-btn text-xs bg-yellow-500 text-white font-semibold px-3 py-1 rounded-lg">기록 삭제</button></td>`;
+
+        // 🚀 [수정] 상태 표시 로직 강화 (영어 코드 -> 한글 변환 및 색상 적용)
+        let statusText = '학습 중';
+        let statusClass = 'text-slate-500';
+
+        // 안전한 접근을 위해 data.status가 있을 때만 체크
+        const status = data.status || '';
+
+        if (status === 'completed' || status.includes('통과')) {
+            statusText = '통과';
+            statusClass = 'text-green-600 font-bold';
+        } else if (status === 'failed' || status.includes('실패')) {
+            statusText = '재도전 필요';
+            statusClass = 'text-red-600 font-bold';
+        } else if (data.watchedSeconds > 0) {
+            // 퀴즈는 안 풀었지만 영상은 보고 있는 경우
+            statusText = '영상 시청 중';
+            statusClass = 'text-blue-500';
+        }
+
+        row.innerHTML = `
+            <td class="px-6 py-4 font-medium text-slate-900">${data.studentName || '이름 없음'}</td>
+            <td class="px-6 py-4 ${statusClass}">${statusText}</td>
+            <td class="px-6 py-4">${scoreDisplay}</td>
+            <td class="px-6 py-4 text-sm text-slate-500">${date}</td>
+            <td class="px-6 py-4">
+                <button data-id="${data.id}" class="reset-lesson-btn text-xs bg-red-100 hover:bg-red-200 text-red-600 font-semibold px-3 py-1 rounded-lg transition">
+                    기록 삭제
+                </button>
+            </td>`;
+            
         this.app.elements.resultsTableBody.appendChild(row);
+        
         row.querySelector('.reset-lesson-btn').addEventListener('click', (e) => this.resetStudentLessonProgress(e.target.dataset.id, data.studentName));
     },
 

@@ -1,10 +1,9 @@
 // src/student/studentLesson.js
 
-import { collection, getDocs, query, orderBy, doc, setDoc, getDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../shared/firebase.js";
-import { showToast } from "../shared/utils.js"; 
 
-// YouTube API 로드 (오류 방지를 위해 상단 선언 필수)
+// YouTube API 로드
 let isYouTubeApiReady = false;
 if (!window.YT) {
     const tag = document.createElement('script');
@@ -21,7 +20,7 @@ export const studentLesson = {
     player: null,     
     player2: null,    
     watchTimer: null,
-    saveTimer: null, // DB 저장용 타이머
+    saveTimer: null,
     
     trickClickCount: 0,
     lastClickTime: 0,
@@ -65,12 +64,11 @@ export const studentLesson = {
 
     init(app) {
         this.app = app;
-        document.getElementById(this.elements.retryBtn)?.addEventListener('click', () => this.startQuiz());
-        document.getElementById(this.elements.rewatchBtn)?.addEventListener('click', () => {
-            this.app.showScreen(this.elements.videoScreen);
-        });
-        document.getElementById(this.elements.startQuizBtn)?.addEventListener('click', () => this.startQuiz());
-        document.getElementById(this.elements.backFromResBtn)?.addEventListener('click', () => this.app.exitVideoScreen());
+        const bind = (id, fn) => document.getElementById(id)?.addEventListener('click', fn);
+        bind(this.elements.retryBtn, () => this.startQuiz());
+        bind(this.elements.rewatchBtn, () => this.app.showScreen(this.elements.videoScreen));
+        bind(this.elements.startQuizBtn, () => this.startQuiz());
+        bind(this.elements.backFromResBtn, () => this.app.exitVideoScreen());
     },
 
     async loadLessons(subjectId) {
@@ -123,8 +121,7 @@ export const studentLesson = {
         this.state.isVideoCompleted = false;
         this.state.trickClickCount = 0;
 
-        if (this.watchTimer) clearInterval(this.watchTimer);
-        if (this.saveTimer) clearInterval(this.saveTimer);
+        this.stopVideo(); // 타이머 등 초기화
 
         // UI 초기화
         const titleEl = document.getElementById(this.elements.videoTitle);
@@ -135,7 +132,7 @@ export const studentLesson = {
         if(quizBtn) quizBtn.classList.add('hidden');
         if(revBtn) revBtn.style.display = 'none';
 
-        // 1. DB에서 기존 기록 조회
+        // DB 기록 확인
         try {
             const studentId = this.app.state.studentDocId;
             const subjectId = this.app.state.selectedSubject.id;
@@ -145,37 +142,33 @@ export const studentLesson = {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 
-                // 자기주도반 & 퀴즈 통과 시 분기 처리
+                // 이미 완료한 경우
                 if (data.status === 'completed') {
                     const classType = this.app.state.classType || 'live-lecture';
                     
                     if (classType === 'self-directed') {
                         if (confirm("이미 퀴즈를 통과했습니다.\n[확인] -> 2번 영상(다음 진도) 보기\n[취소] -> 1번 영상(복습) 다시 보기")) {
-                            
                             this.prepareQuiz(lesson); 
                             
-                            // [수정] 2000점 오류 해결: 총 문제 수(5)를 기준으로 맞은 개수 환산
+                            // 점수 복구 로직
                             const questionCount = Math.min(5, this.state.allQuestions.length) || 5;
                             this.state.selectedQuestions = this.state.allQuestions.slice(0, questionCount);
                             
-                            // DB에는 100(점)이 저장되어 있음 -> 이를 맞은 개수(5)로 변환
+                            // 저장된 점수(100점 만점)를 기반으로 맞은 개수 역산
                             const savedPercentage = data.score !== undefined ? Number(data.score) : 100;
                             this.state.score = Math.round((savedPercentage / 100) * questionCount); 
                             
-                            this.finishQuiz(true); // forceShowResult = true
+                            this.finishQuiz(true); // 결과 화면 바로 보여주기
                             return; 
                         }
                     } else {
-                        if(!confirm("이미 학습을 완료했습니다. 다시 학습하시겠습니까?")) {
-                            return;
-                        }
+                        if(!confirm("이미 학습을 완료했습니다. 다시 학습하시겠습니까?")) return;
                     }
                 }
 
                 // 시청 시간 복구
                 if (data.watchedSeconds) {
                     this.state.watchedSeconds = data.watchedSeconds;
-                    console.log(`기존 시청 시간 복구: ${this.state.watchedSeconds}초`);
                 }
             }
         } catch(e) {
@@ -198,6 +191,7 @@ export const studentLesson = {
         msg.className = "w-full text-center p-4 bg-gray-100 border-2 border-gray-300 rounded-xl text-gray-700 font-bold cursor-pointer select-none transition hover:bg-gray-200";
         msg.textContent = "⏳ 누적 시청 시간: 0% (진행 중)";
         
+        // (이스터에그) 5번 클릭 시 강제 완료
         msg.addEventListener('click', () => {
             const now = Date.now();
             if (now - this.lastClickTime < 500) this.trickClickCount++; 
@@ -244,21 +238,12 @@ export const studentLesson = {
             width: '100%',
             videoId: videoId,
             host: 'https://www.youtube.com',
-            playerVars: { 
-                'playsinline': 1, 
-                'rel': 0, 
-                'enablejsapi': 1, 
-                'origin': origin 
-            },
+            playerVars: { 'playsinline': 1, 'rel': 0, 'enablejsapi': 1, 'origin': origin },
             events: {
                 'onReady': (event) => {
                     this.state.videoDuration = event.target.getDuration();
                     event.target.playVideo();
-                    
-                    if (this.state.watchedSeconds > 0) {
-                        this.updateProgress();
-                    }
-                    
+                    if (this.state.watchedSeconds > 0) this.updateProgress();
                     this.startWatchTimer();
                 },
                 'onStateChange': (event) => this.onPlayerStateChange(event)
@@ -275,7 +260,6 @@ export const studentLesson = {
 
     startWatchTimer() {
         if (this.watchTimer) clearInterval(this.watchTimer);
-        
         this.watchTimer = setInterval(() => {
             if (this.player && this.player.getPlayerState && this.player.getPlayerState() === YT.PlayerState.PLAYING) {
                 this.state.watchedSeconds++;
@@ -289,17 +273,17 @@ export const studentLesson = {
         }, 10000); // 10초마다 저장
     },
 
-    async saveWatchProgressToDB() {
-        if (this.state.isVideoCompleted) return; 
+    // 🚀 [수정] force 옵션 추가: 완료 시 강제 저장 위함
+    async saveWatchProgressToDB(force = false) {
+        // 완료된 상태면, force(강제저장)가 아닐 경우 중복 저장 방지
+        if (this.state.isVideoCompleted && !force) return;
 
         try {
             const studentId = this.app.state.studentDocId;
             const subjectId = this.app.state.selectedSubject.id;
             const lessonId = this.state.currentLesson.id;
             
-            const docRef = doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId);
-            
-            await setDoc(docRef, {
+            await setDoc(doc(db, "subjects", subjectId, "lessons", lessonId, "submissions", studentId), {
                 watchedSeconds: this.state.watchedSeconds,
                 lastWatchUpdate: serverTimestamp(),
                 studentId: studentId, 
@@ -307,17 +291,18 @@ export const studentLesson = {
             }, { merge: true });
             
         } catch (e) {
-            console.warn("시청 시간 저장 실패(네트워크 등):", e);
+            console.warn("시청 시간 저장 실패:", e);
         }
     },
 
     onPlayerStateChange(event) {
         if (event.data === YT.PlayerState.ENDED) {
             this.checkCompletion();
-            this.saveWatchProgressToDB(); 
+            // 종료 시점 즉시 저장 (force=true)
+            this.saveWatchProgressToDB(true);
         }
         if (event.data === YT.PlayerState.PAUSED) {
-            this.saveWatchProgressToDB(); 
+            this.saveWatchProgressToDB(true); 
         }
     },
 
@@ -333,6 +318,7 @@ export const studentLesson = {
         if (!this.state.videoDuration) return;
         const percent = (this.state.watchedSeconds / this.state.videoDuration) * 100;
         
+        // 60% 이상 시청 시 완료
         if (percent >= 60) {
             this.completeVideo();
         } else {
@@ -345,11 +331,14 @@ export const studentLesson = {
     },
 
     completeVideo() {
-        this.state.isVideoCompleted = true;
+        // 🚀 [수정] 중요: 완료 플래그(isVideoCompleted)를 true로 바꾸기 전에 저장을 먼저 시도합니다.
+        // 기존 코드에서는 isVideoCompleted=true 후 saveWatchProgressToDB를 부르면, 함수 내부에서 "이미 완료됨"으로 판단해 리턴해버리는 버그가 있었습니다.
         if(this.watchTimer) clearInterval(this.watchTimer);
-        this.saveWatchProgressToDB(); 
-        
+        this.saveWatchProgressToDB(true); // force=true로 저장 수행
+
+        this.state.isVideoCompleted = true;
         this.updateStatusMessageText("✅ 영상 학습 완료! 아래 퀴즈를 풀어보세요.", true);
+        
         const quizBtn = document.getElementById(this.elements.startQuizBtn);
         if(quizBtn) {
             quizBtn.style.display = 'block';
@@ -373,6 +362,7 @@ export const studentLesson = {
             alert("등록된 문제가 없습니다.");
             return;
         }
+        // 문제 섞기
         for (let i = all.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [all[i], all[j]] = [all[j], all[i]];
@@ -388,15 +378,17 @@ export const studentLesson = {
     renderQuestion() {
         const q = this.state.selectedQuestions[this.state.currentQuestionIndex];
         const total = this.state.selectedQuestions.length;
-        const progressText = document.getElementById(this.elements.progressText);
+        
+        const setText = (id, txt) => { const el = document.getElementById(id); if(el) el.textContent = txt; };
+        setText(this.elements.progressText, `문제 ${this.state.currentQuestionIndex + 1} / ${total}`);
+        
         const progressBar = document.getElementById(this.elements.progressBar);
-        const qText = document.getElementById(this.elements.questionText);
-        const optContainer = document.getElementById(this.elements.optionsContainer);
-
-        if(progressText) progressText.textContent = `문제 ${this.state.currentQuestionIndex + 1} / ${total}`;
         if(progressBar) progressBar.style.width = `${((this.state.currentQuestionIndex) / total) * 100}%`;
+        
+        const qText = document.getElementById(this.elements.questionText);
         if(qText) qText.innerHTML = q.question;
         
+        const optContainer = document.getElementById(this.elements.optionsContainer);
         if(optContainer) {
             optContainer.innerHTML = '';
             q.options.forEach((opt, idx) => {
@@ -407,6 +399,7 @@ export const studentLesson = {
                 optContainer.appendChild(btn);
             });
         }
+        // 수식 렌더링
         if (window.MathJax && window.MathJax.typesetPromise) {
             const screen = document.getElementById(this.elements.quizScreen);
             if(screen) window.MathJax.typesetPromise([screen]).catch(()=>{});
@@ -417,8 +410,8 @@ export const studentLesson = {
         const currentQ = this.state.selectedQuestions[this.state.currentQuestionIndex];
         const userSelect = String(selectedIdx).trim();
         const dbAnswer = String(currentQ.answer).trim();
+        
         let isCorrect = false;
-
         if (userSelect === dbAnswer) isCorrect = true;
         else if (currentQ.options && currentQ.options[selectedIdx - 1]) {
             const selectedText = String(currentQ.options[selectedIdx - 1]).trim();
@@ -427,6 +420,7 @@ export const studentLesson = {
 
         if (isCorrect) this.state.score++;
         this.state.currentQuestionIndex++;
+        
         if (this.state.currentQuestionIndex < this.state.selectedQuestions.length) {
             this.renderQuestion();
         } else {
@@ -436,11 +430,12 @@ export const studentLesson = {
 
     async finishQuiz(forceShowResult = false) {
         const total = this.state.selectedQuestions.length || 5; 
-        const score = this.state.score;
-        const percentage = Math.round((score / total) * 100);
+        const score = this.state.score; // 맞은 개수
+        const percentage = Math.round((score / total) * 100); // 100점 환산
         const isPass = forceShowResult ? true : (score >= (total >= 5 ? 4 : Math.ceil(total * 0.8)));
 
         this.app.showScreen(this.elements.resultScreen);
+        
         const successDiv = document.getElementById(this.elements.successMsg);
         const failDiv = document.getElementById(this.elements.failureMsg);
         const revContainer = document.getElementById(this.elements.reviewVideoContainer);
@@ -454,10 +449,10 @@ export const studentLesson = {
             failDiv.style.display = 'none';
             document.getElementById(this.elements.scoreTextSuccess).textContent = `${score} / ${total} 문제 정답 (${percentage}점)`;
             
+            // 2차 영상 처리
             const classType = this.app.state.classType || 'live-lecture'; 
             const lesson = this.state.currentLesson;
-            const origin = window.location.origin;
-
+            
             if (classType === 'self-directed' && (lesson.video2Url || (lesson.video2List && lesson.video2List.length > 0))) {
                 revContainer.classList.remove('hidden');
                 revContainer.style.display = 'block';
@@ -468,44 +463,42 @@ export const studentLesson = {
                 if (window.YT && vid) {
                      if(this.player2) { try{ this.player2.destroy(); }catch(e){} }
                      this.player2 = new YT.Player(this.elements.reviewVideoIframe, {
-                        height: '100%',
-                        width: '100%',
-                        videoId: vid,
+                        height: '100%', width: '100%', videoId: vid,
                         host: 'https://www.youtube.com',
-                        playerVars: { 
-                            'playsinline': 1, 
-                            'rel': 0,
-                            'origin': origin 
-                        },
+                        playerVars: { 'playsinline': 1, 'rel': 0, 'origin': window.location.origin },
                     });
                 }
                 if(exitBtn) exitBtn.textContent = "학습 완료 및 목록으로";
-
             } else {
                 if(exitBtn) exitBtn.textContent = "목록으로 나가기";
             }
             
             if (!forceShowResult) {
-                await this.saveResult('completed', percentage);
+                // 🚀 [수정] 맞은 개수(correctCount)와 전체 개수(totalQuestions)를 같이 저장
+                await this.saveResult('completed', percentage, score, total);
             }
         } else {
             successDiv.style.display = 'none';
             failDiv.style.display = 'block';
             document.getElementById(this.elements.scoreTextFailure).textContent = `${score} / ${total} 문제 정답 (${percentage}점)`;
-            await this.saveResult('failed', percentage);
+            await this.saveResult('failed', percentage, score, total);
         }
     },
 
-    async saveResult(status, score) {
+    async saveResult(status, percentage, correctCount, totalQuestions) {
         try {
             const sid = this.app.state.studentDocId;
             const subId = this.app.state.selectedSubject.id;
             const lid = this.state.currentLesson.id;
+            
+            // 데이터베이스 저장
             await setDoc(doc(db, "subjects", subId, "lessons", lid, "submissions", sid), {
                 studentId: sid,
                 studentName: this.app.state.studentName,
-                status: status,
-                score: score,
+                status: status,      // 'completed' or 'failed'
+                score: percentage,   // 100점 만점 기준 점수
+                correctCount: correctCount, // 맞은 개수
+                totalQuestions: totalQuestions, // 전체 문제 수
                 watchedSeconds: this.state.watchedSeconds, 
                 lastAttemptAt: serverTimestamp()
             }, { merge: true });

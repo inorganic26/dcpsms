@@ -4,12 +4,16 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================================================
-    // 🛡️ [보안] 권한 확인 도우미 함수들
+    // 🛡️ [수정됨] 선생님 인증 함수 (가짜 이메일 허용)
     // =========================================================
     
     function isTeacher() {
       return request.auth != null && (
+        // 1. 관리자 진짜 이메일
         request.auth.token.email == "inorganic26@gmail.com" || 
+        // 2. [추가됨] 선생님 앱용 가짜 이메일 계정 허용 (@dcpsms.teacher)
+        request.auth.token.email.matches(".*@dcpsms[.]teacher") ||
+        // 3. 기존 역할 기반 체크
         request.auth.token.role == "teacher" ||
         request.auth.token.role == "admin"
       );
@@ -28,7 +32,7 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 📂 컬렉션별 보안 규칙
+    // 📂 컬렉션별 보안 규칙 (이제 isTeacher()가 통과되므로 해결됨)
     // =========================================================
 
     // 1. 학생 개인 정보 (students)
@@ -60,8 +64,8 @@ service cloud.firestore {
       allow create: if request.auth.uid == request.resource.data.uid;
       allow update: if request.auth.uid == resource.data.uid;
       allow read: if isTeacher() ||
-        (request.auth != null && resource.data.uid == request.auth.uid) ||
-        isParentOf(resource.data.uid);
+        (request.auth != null && (resource == null || resource.data.uid == request.auth.uid)) ||
+        (resource != null && isParentOf(resource.data.uid));
     }
 
     // 5. 숙제 (homeworks)
@@ -78,7 +82,7 @@ service cloud.firestore {
         }
     }
 
-    // 6. 학습 현황 (learning_status) - 구버전 호환용
+    // 6. 학습 현황 (learning_status)
     match /learning_status/{statusId} {
       allow write: if isTeacher();
       allow read: if isTeacher() ||
@@ -95,7 +99,6 @@ service cloud.firestore {
     }
 
     // 8. 공용 정보 (과목, 교재, 선생님, 영상)
-    // 🚀 [여기가 수정되었습니다] 학생이 영상 기록을 저장할 수 있게 허용
     match /subjects/{subjectId} {
       allow read: if request.auth != null;
       allow write: if isTeacher();
@@ -104,10 +107,8 @@ service cloud.firestore {
         allow read: if request.auth != null;
         allow write: if isTeacher();
 
-        // 👇 [추가됨] 레슨 하위의 submissions 폴더는 학생이 쓰고 읽을 수 있음
         match /submissions/{submissionId} {
             allow read, write: if isStudent(submissionId) || isTeacher();
-            // 학부모님도 읽기 가능
             allow read: if isParentOf(submissionId);
         }
       }
@@ -131,7 +132,7 @@ service cloud.firestore {
       allow read: if request.auth != null;
     }
     
-    // 9. 학생 과제 (구버전 호환)
+    // 9. 학생 과제
     match /student_assignments/{assignmentId} {
       allow read, write: if isTeacher();
       allow create: if isStudent(request.resource.data.studentId);
