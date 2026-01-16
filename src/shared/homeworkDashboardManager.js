@@ -163,19 +163,28 @@ export const createHomeworkDashboardManager = (config) => {
         students.forEach(student => {
             const sub = subs[student.id] || oldSubs[student.id];
             
-            const statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
+            let statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
+
+            // ⭐ [수정 1] 부분 제출('partial')인 경우, 헬퍼 함수 결과와 상관없이 강제로 '부분 제출'로 표시
+            if (sub && sub.status === 'partial') {
+                statusInfo = { text: '부분 제출', color: 'text-orange-600 font-bold' };
+            }
+
             const downloadBtn = homeworkManagerHelper.renderFileButtons(sub, '반'); 
             const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
 
-            let actionBtn = (sub && !sub.manualComplete) ? `
-                <button class="force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition" 
+            // ⭐ [수정 2] 강제 완료 버튼 표시 조건 변경
+            // (제출 기록이 없거나, 부분 제출이거나, 미완료 상태면 모두 버튼 표시)
+            const isCompleted = sub && (sub.status === 'completed' || sub.manualComplete);
+            let actionBtn = !isCompleted ? `
+                <button class="force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition whitespace-nowrap" 
                         data-id="${student.id}" title="강제 완료 처리">✅ 확인</button>` : '';
 
             tbody.innerHTML += `
                 <tr class="hover:bg-slate-50 border-b">
-                    <td class="p-3 font-medium text-slate-700">${student.name}</td>
-                    <td class="p-3 ${statusInfo.color}">${statusInfo.text} ${actionBtn}</td>
-                    <td class="p-3 text-xs text-slate-500">${date}</td>
+                    <td class="p-3 font-medium text-slate-700 whitespace-nowrap">${student.name}</td>
+                    <td class="p-3 ${statusInfo.color} whitespace-nowrap">${statusInfo.text} ${actionBtn}</td>
+                    <td class="p-3 text-xs text-slate-500 whitespace-nowrap">${date}</td>
                     <td class="p-3 text-center"><div>${downloadBtn}</div></td>
                 </tr>`;
         });
@@ -186,11 +195,22 @@ export const createHomeworkDashboardManager = (config) => {
     };
 
     const forceComplete = async (studentId) => {
-        if (!confirm("페이지 수가 부족해도 '완료' 상태로 변경하시겠습니까?")) return;
+        if (!confirm("이 학생의 숙제를 '완료' 상태로 변경하시겠습니까?\n(미제출 상태여도 완료 처리됩니다)")) return;
+        
+        // ⭐ [수정 3] 미제출 학생의 경우 DB에 이름 정보가 없을 수 있으므로, 학생 목록에서 이름을 찾아 채워줌
+        const student = state.cachedStudents.find(s => s.id === studentId);
+        const studentName = student ? student.name : "이름 없음";
+
         try {
+            // merge: true를 사용하여 기존 데이터(부분제출 등)는 유지하되 status만 덮어씀
             await setDoc(doc(db, 'homeworks', state.selectedHomeworkId, 'submissions', studentId), {
-                studentDocId: studentId, manualComplete: true, status: 'completed', updatedAt: serverTimestamp()
+                studentDocId: studentId, 
+                studentName: studentName, // 학생 이름 추가
+                manualComplete: true, 
+                status: 'completed', 
+                updatedAt: serverTimestamp()
             }, { merge: true });
+            
             showToast("완료 처리되었습니다.");
         } catch (e) { console.error(e); showToast("처리 실패", true); }
     };
@@ -305,13 +325,13 @@ export const createHomeworkDashboardManager = (config) => {
     };
 
     // ============================================================
-    // ⭐ [이름 안전하게 만들기] 함수 추가 (오류 해결 핵심!)
+    // ⭐ [이름 안전하게 만들기] 함수 추가
     // ============================================================
     const sanitizeFileName = (name) => {
         return name
             .replace(/[\\/:*?"<>|]/g, "_") // 1. 특수문자 제거
-            .trim()                         // 2. 앞뒤 공백 제거 (Name not allowed 해결)
-            .replace(/\.$/, "");            // 3. 맨 끝 점 제거 (Name not allowed 해결)
+            .trim()                         // 2. 앞뒤 공백 제거
+            .replace(/\.$/, "");            // 3. 맨 끝 점 제거
     };
 
     const downloadAllSubmissions = async () => {
@@ -344,7 +364,6 @@ export const createHomeworkDashboardManager = (config) => {
             showToast("다운로드를 시작합니다...", false);
 
             const folderDate = hwData.dueDate ? hwData.dueDate : new Date().toISOString().split('T')[0];
-            // ⭐ 제목도 안전하게 변환
             const safeTitle = sanitizeFileName(hwData.title);
             const targetFolderName = `${folderDate}_${safeTitle}`; 
 
@@ -377,7 +396,6 @@ export const createHomeworkDashboardManager = (config) => {
                         btn.innerHTML = `<span class="material-icons text-sm animate-spin mr-1">download</span> 진행 중 (${i + 1}/${totalStudents})<br><span class="text-[10px]">${student.name}</span>`;
                     }
                     
-                    // ⭐ 학생 이름도 안전하게 변환 (오류 원인 해결!)
                     const safeStudentName = sanitizeFileName(student.name);
                     const studentDirHandle = await dateDirHandle.getDirectoryHandle(safeStudentName, { create: true });
 
