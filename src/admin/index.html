@@ -102,7 +102,7 @@
 
     <div id="admin-subject-mgmt-view" class="admin-view hidden p-6 max-w-4xl mx-auto" style="display: none;">
       <button class="back-to-admin-dashboard-btn mb-6 text-slate-500 hover:text-slate-800 flex items-center gap-2"><span class="material-icons">arrow_back</span> 메인으로 돌아가기</button>
-      <header class="mb-8"><h1 class="text-3xl font-bold text-slate-800">과목 관리</h1></header>
+      <header class="mb-8"><h1 class="text-3xl font-bold text-slate-800"> 과목 관리</h1></header>
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <div class="flex gap-3"><input type="text" id="admin-new-subject-name" class="form-input flex-grow" placeholder="새 과목 이름"><button id="admin-add-subject-btn" class="btn-primary whitespace-nowrap">추가</button></div>
       </div>
@@ -142,7 +142,20 @@
         <button id="admin-add-student-btn" class="btn-primary w-full">학생 등록</button>
       </div>
       <div class="mb-4"><input type="text" id="search-student-input" class="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="학생 검색..."></div>
-      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"><table class="w-full text-left border-collapse"><thead class="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm"><tr><th class="p-3 font-bold">이름</th><th class="p-3 font-bold">전화번호</th><th class="p-3 font-bold">배정 반</th><th class="p-3 text-right font-bold">관리</th></tr></thead><tbody id="admin-students-list" class="divide-y divide-slate-100"></tbody></table></div>
+      
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-y-auto h-[calc(100vh-350px)] min-h-[400px] custom-scrollbar">
+        <table class="w-full text-left border-collapse">
+          <thead class="bg-slate-50 border-b border-slate-100 text-slate-500 text-sm sticky top-0 z-10 shadow-sm">
+            <tr>
+              <th class="p-3 font-bold bg-slate-50">이름</th>
+              <th class="p-3 font-bold bg-slate-50">전화번호</th>
+              <th class="p-3 font-bold bg-slate-50">배정 반</th>
+              <th class="p-3 text-right font-bold bg-slate-50">관리</th>
+            </tr>
+          </thead>
+          <tbody id="admin-students-list" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
       <div id="admin-student-pagination" class="flex justify-center items-center gap-2 mt-6"></div>
     </div>
 
@@ -221,23 +234,23 @@
       </div>
       <div id="admin-homework-main-content" style="display: none;">
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div class="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 p-4 h-96 lg:h-[calc(100vh-300px)] flex flex-col">
+          <div class="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-200 p-4 h-[calc(100vh-300px)] flex flex-col">
             <div class="flex justify-between items-center mb-4"><h3 class="font-bold text-slate-700">숙제 목록</h3><button id="admin-assign-homework-btn" class="text-sm bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-bold">+ 새 숙제</button></div>
             <select id="admin-homework-select" class="form-select mb-2" size="10" style="height: 100%; overflow-y: auto;"></select>
             <div id="admin-homework-management-buttons" class="mt-2 flex gap-2" style="display: none;"><button id="admin-edit-homework-btn" class="flex-1 bg-slate-100 text-slate-600 text-xs py-2 rounded font-bold">수정</button><button id="admin-delete-homework-btn" class="flex-1 bg-red-50 text-red-500 text-xs py-2 rounded font-bold">삭제</button></div>
           </div>
           
-          <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 p-6 min-h-[50vh] lg:h-[calc(100vh-300px)] lg:overflow-hidden flex flex-col">
+          <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 p-6 h-[calc(100vh-300px)] overflow-hidden flex flex-col">
             <div id="admin-homework-content" style="display: none;" class="h-full flex flex-col">
                 <h3 id="admin-selected-homework-title" class="text-xl font-bold text-slate-800 mb-4 pb-4 border-b"></h3>
-                <div class="overflow-x-auto flex-grow h-full lg:overflow-y-auto">
+                <div class="overflow-x-auto h-full overflow-y-auto custom-scrollbar">
                     <table class="w-full text-sm text-left border-collapse">
-                        <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10">
+                        <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th class="p-3 border-b font-bold">이름</th>
-                                <th class="p-3 border-b font-bold">상태</th>
-                                <th class="p-3 border-b font-bold">제출일시</th>
-                                <th class="p-3 border-b font-bold text-center">확인</th>
+                                <th class="p-3 border-b font-bold bg-slate-50">이름</th>
+                                <th class="p-3 border-b font-bold bg-slate-50">상태</th>
+                                <th class="p-3 border-b font-bold bg-slate-50">제출일시</th>
+                                <th class="p-3 border-b font-bold text-center bg-slate-50">확인</th>
                             </tr>
                         </thead>
                         <tbody id="admin-homework-table-body" class="divide-y divide-slate-100"></tbody>
