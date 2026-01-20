@@ -33,7 +33,7 @@ export const adminHomeworkDashboard = {
             cancelBtn: document.getElementById('admin-cancel-homework-btn'),
         };
 
-        // ⭐ [PC/모바일 공통] 스크롤 및 잘림 현상 강력 해결
+        // ⭐ [PC/모바일 공통] 스크롤 및 잘림 현상 강력 해결 (수정된 버전)
         if (this.elements.tableBody) {
             const table = this.elements.tableBody.closest('table');
             const wrapper = table?.parentElement;
@@ -58,8 +58,9 @@ export const adminHomeworkDashboard = {
                 observer.observe(this.elements.tableBody, { childList: true });
 
                 // 3. ⭐ 스크롤 박스 강제 설정 (PC 화면 핵심)
-                // 기존 클래스(overflow-hidden 등)를 무시하고 스크롤을 강제합니다.
-                wrapper.className = ''; 
+                // [수정] 기존 클래스를 초기화하지 않고(className = '' 삭제), 필요한 스타일만 추가합니다.
+                // wrapper.className = '';  <-- 이 줄을 삭제했습니다.
+                
                 wrapper.classList.add(
                     'overflow-auto', // 상하좌우 스크롤 자동 생성
                     'w-full',
@@ -69,10 +70,10 @@ export const adminHomeworkDashboard = {
                     'shadow-sm'
                 );
                 
-                // 4. 높이 강제 제한 (PC에서 아래가 잘리는 원인 해결)
-                // 화면 높이의 65%까지만 늘어나고, 그보다 길어지면 스크롤바 생성
-                wrapper.style.height = 'auto';
-                wrapper.style.maxHeight = '65vh'; 
+                // 4. ⭐ [수정] 높이 강제 제한 해제
+                // vh 단위 대신 부모 높이를 따라가도록 변경하여 저해상도에서도 꽉 차게 나옵니다.
+                wrapper.style.height = '100%';       // (변경됨) auto -> 100%
+                wrapper.style.maxHeight = 'none';    // (변경됨) 65vh -> none
             }
         }
 
