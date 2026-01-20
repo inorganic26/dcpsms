@@ -38,10 +38,8 @@ export const createHomeworkDashboardManager = (config) => {
     const getStudentList = async (classId) => {
         // Teacher 모드
         if (mode === 'teacher' && app.state.studentsInClass) {
-            // Teacher 모드에서는 studentsInClass Map에 createdAt 정보가 없을 수 있음.
-            // 필요하다면 별도 fetch가 필요하나, 일단 이름 기준으로 정렬
             return Array.from(app.state.studentsInClass.entries())
-                .map(([id, name]) => ({ id, name, createdAt: null })) // createdAt null이면 모든 숙제 표시됨
+                .map(([id, name]) => ({ id, name, createdAt: null })) // 교사 모드는 일단 모두 표시
                 .sort((a, b) => a.name.localeCompare(b.name));
         }
         
@@ -55,6 +53,7 @@ export const createHomeworkDashboardManager = (config) => {
                 snap.forEach(doc => {
                     const data = doc.data();
                     let isInClass = data.classId === classId;
+                    // classIds 배열 확인
                     if (data.classIds && Array.isArray(data.classIds) && data.classIds.includes(classId)) {
                         isInClass = true;
                     }
@@ -62,7 +61,7 @@ export const createHomeworkDashboardManager = (config) => {
                         students.push({ 
                             id: doc.id, 
                             name: data.name,
-                            // 등록일이 없으면 아주 옛날로 취급 (모두 표시)
+                            // 등록일이 없으면 아주 옛날(2000년)로 취급하여 모든 숙제 표시
                             createdAt: data.createdAt ? data.createdAt.toDate() : new Date('2000-01-01') 
                         });
                     }
@@ -121,9 +120,11 @@ export const createHomeworkDashboardManager = (config) => {
         if (elements.contentDiv) elements.contentDiv.classList.remove('hidden');
         if (elements.placeholder) elements.placeholder.style.display = 'none';
         
+        // 버튼 영역 표시 및 [전체 다운로드 버튼] 추가
         if (elements.btnsDiv) {
             elements.btnsDiv.style.display = 'flex';
             
+            // 중복 추가 방지
             if (!elements.btnsDiv.querySelector('#custom-download-all-btn')) {
                 const downloadAllBtn = document.createElement('button');
                 downloadAllBtn.id = 'custom-download-all-btn';
@@ -133,6 +134,7 @@ export const createHomeworkDashboardManager = (config) => {
                 elements.btnsDiv.appendChild(downloadAllBtn);
             }
 
+            // [제출된 내역만 보기] 필터 추가
             if (!elements.btnsDiv.querySelector('#filter-submitted-only-container')) {
                 const filterContainer = document.createElement('div');
                 filterContainer.id = 'filter-submitted-only-container';
@@ -151,6 +153,7 @@ export const createHomeworkDashboardManager = (config) => {
 
         if (elements.tableBody) elements.tableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center">데이터를 불러오는 중...</td></tr>';
 
+        // 1. 숙제 정보 구독
         state.unsubHomework = onSnapshot(doc(db, 'homeworks', homeworkId), (snap) => {
             if (!snap.exists()) {
                 if(elements.tableBody) elements.tableBody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-500">삭제됨</td></tr>';
@@ -163,6 +166,7 @@ export const createHomeworkDashboardManager = (config) => {
             renderTable();
         });
 
+        // 2. 제출 내역 구독
         const subCol = collection(db, 'homeworks', homeworkId, 'submissions');
         state.unsubSubmissions = onSnapshot(subCol, async (snap) => {
             state.cachedSubmissions = {};
@@ -176,13 +180,14 @@ export const createHomeworkDashboardManager = (config) => {
                 }
             });
 
+            // 이동한 학생 정보 가져오기 (비동기)
             const movedList = [];
             await Promise.all(orphanIds.map(async (uid) => {
                 try {
                     const sSnap = await getDoc(doc(db, 'students', uid));
                     if (sSnap.exists()) {
                         const sData = sSnap.data();
-                        // 퇴원생이 아닌 경우(반 정보가 있음)만 추가
+                        // 퇴원생(반 정보 없음) 제외, 다른 반에 있는 경우만 추가
                         if (sData.classId) {
                             movedList.push({ 
                                 id: uid, 
@@ -199,12 +204,11 @@ export const createHomeworkDashboardManager = (config) => {
         });
     };
 
-    // --- ⭐ [핵심 기능] 등록일 비교 로직 ---
+    // --- [신입생 필터] 등록일 비교 로직 ---
     const isHomeworkBeforeStudent = (homeworkDateStr, studentDate) => {
         if (!homeworkDateStr || !studentDate) return false;
         const hwDate = new Date(homeworkDateStr);
-        // 숙제 마감일이 학생 등록일보다 이전이면 -> 등록 전 숙제임
-        // (여유있게 하루 정도 오차는 허용하거나, 엄격하게 하려면 getTime() 비교)
+        // 숙제 마감일 < 학생 등록일 이면 true (등록 전 숙제)
         return hwDate.getTime() < studentDate.getTime();
     };
 
@@ -224,13 +228,10 @@ export const createHomeworkDashboardManager = (config) => {
                 return;
             }
 
-            // 2. [신입생 처리] 숙제 마감일 vs 학생 등록일 비교
-            // 학생이 등록되기 전의 숙제라면 -> "등록 전" 표시 (회색)
-            // 단, 이미 제출한 기록이 있다면(sub 존재) 날짜가 이상해도 보여줌
+            // 2. [신입생 처리] 제출 기록이 없는데, 숙제 날짜가 등록일보다 빠르면 -> 숨김/회색 처리
             const isBefore = !sub && isHomeworkBeforeStudent(hwData.dueDate, student.createdAt);
 
             if (isBefore) {
-                // 등록 전 데이터 숨김/회색 처리
                 tbody.innerHTML += `
                     <tr class="bg-slate-50/50 border-b">
                         <td class="p-3 text-slate-400 whitespace-nowrap flex items-center gap-2">
@@ -245,7 +246,7 @@ export const createHomeworkDashboardManager = (config) => {
                 return;
             }
 
-            // 정상 상태 표시 로직
+            // 정상 상태 표시
             let statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
             if (sub && sub.status === 'partial') {
                 statusInfo = { text: '부분 제출', color: 'text-orange-600 font-bold' };
@@ -259,11 +260,11 @@ export const createHomeworkDashboardManager = (config) => {
                 <button class="force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition whitespace-nowrap" 
                         data-id="${student.id}" title="강제 완료 처리">✅ 확인</button>` : '';
 
-            // ⭐ [팝업 버튼] 학생 이름 옆 상세 보기
+            // 팝업 버튼 (상세 보기)
             const detailBtn = `
                 <button class="view-history-btn ml-1 text-slate-400 hover:text-indigo-600 transition" 
-                        data-id="${student.id}" data-name="${student.name}" title="이전 기록 보기">
-                    <span class="material-icons text-sm align-middle">assignment_ind</span>
+                        data-id="${student.id}" data-name="${student.name}" title="정보 보기">
+                    <span class="material-icons text-sm align-middle">info</span>
                 </button>
             `;
 
@@ -286,11 +287,12 @@ export const createHomeworkDashboardManager = (config) => {
             return;
         }
 
-        // 렌더링 실행
+        // 현재 반 학생 출력
         students.forEach(s => renderRow(s, false));
 
+        // 반 이동 학생 출력 (제출 기록이 있는 경우)
         if (movedStudents.length > 0) {
-            const hasData = movedStudents.some(s => subs[s.id]); // 제출 데이터가 있는 경우만 헤더 표시
+            const hasData = movedStudents.some(s => subs[s.id]);
             if (!state.showSubmittedOnly || hasData) {
                 tbody.innerHTML += `
                     <tr class="bg-slate-100 border-y-2 border-slate-200">
@@ -303,31 +305,21 @@ export const createHomeworkDashboardManager = (config) => {
             }
         }
         
-        // ⭐ [UI 수정] 잘림 방지용 하단 여백 추가
-        // 테이블 맨 아래에 투명한 행을 추가하여 스크롤 여유 공간 확보
-        tbody.innerHTML += `<tr class="h-12 w-full bg-transparent border-none"><td colspan="4"></td></tr>`;
+        // ⭐ [UI 수정] 잘림 방지용 하단 여백 추가 (투명 행)
+        // 이 코드가 있어야 스크롤 끝까지 내렸을 때 마지막 버튼이 잘리지 않습니다.
+        tbody.innerHTML += `<tr class="h-24 w-full bg-transparent border-none pointer-events-none"><td colspan="4"></td></tr>`;
 
         // 리스너 연결
         tbody.querySelectorAll('.force-complete-btn').forEach(btn => {
             btn.addEventListener('click', () => forceComplete(btn.dataset.id));
         });
         
-        // 상세 보기(History) 버튼 리스너
         tbody.querySelectorAll('.view-history-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                e.stopPropagation(); // 행 클릭 이벤트 방지
-                showStudentHistory(btn.dataset.id, btn.dataset.name);
+                e.stopPropagation(); 
+                alert(`[${btn.dataset.name}] 학생 정보\n\n이동 전 기록 확인은 '학생 관리' 메뉴를 이용해주세요.`);
             });
         });
-    };
-
-    // --- [팝업] 학생 기록 보기 (임시 구현) ---
-    const showStudentHistory = (studentId, studentName) => {
-        // 실제로는 여기서 학생의 이전 반 기록을 DB에서 긁어와야 하지만,
-        // 현재는 "이동해 온 반"에서의 기록만이라도 모아서 보여주는 팝업을 띄웁니다.
-        // 추후 'student_assignments' 컬렉션 전체 조회 등으로 확장 가능합니다.
-        
-        alert(`[${studentName}] 학생의 상세 기록\n\n현재 이 기능은 '이동해 온 반'에서의 기록만 보여줍니다.\n이전 반의 기록을 보려면 관리자 메뉴의 '학생 관리 -> 상세'를 이용해주세요.`);
     };
 
     const forceComplete = async (studentId) => {
@@ -345,12 +337,11 @@ export const createHomeworkDashboardManager = (config) => {
                 status: 'completed', 
                 updatedAt: serverTimestamp()
             }, { merge: true });
-            
             showToast("완료 처리되었습니다.");
         } catch (e) { console.error(e); showToast("처리 실패", true); }
     };
 
-    // ... (이하 모달 및 저장/삭제 로직은 기존과 동일) ...
+    // ... 모달 및 저장 로직 ...
     const openModal = async (type) => {
         const isEdit = type === 'edit';
         if (elements.modalTitle) elements.modalTitle.textContent = isEdit ? '숙제 수정' : '새 숙제 등록';
@@ -402,12 +393,9 @@ export const createHomeworkDashboardManager = (config) => {
     const handleSubjectChange = async (subjectId) => {
         const tbSelect = elements.textbookSelect;
         if (!tbSelect) return;
-        
         tbSelect.innerHTML = '<option>로딩 중...</option>';
         tbSelect.disabled = true;
-        
         if (!subjectId) { tbSelect.innerHTML = '<option value="">교재 선택</option>'; return; }
-
         try {
             const q = query(collection(db, 'textbooks'), where('subjectId', '==', subjectId), orderBy('name'));
             const snap = await getDocs(q);
@@ -422,7 +410,6 @@ export const createHomeworkDashboardManager = (config) => {
 
     const saveHomework = async () => {
         if (!state.selectedClassId) { showToast("반 정보가 없습니다."); return; }
-        
         const data = {
             classId: state.selectedClassId,
             title: elements.titleInput.value,
@@ -433,9 +420,7 @@ export const createHomeworkDashboardManager = (config) => {
             totalPages: Number(elements.totalPagesInput.value) || 0,
             updatedAt: serverTimestamp()
         };
-
         if (!data.title || !data.subjectId) { showToast("제목과 과목은 필수입니다.", true); return; }
-
         try {
             if (state.editingHomework) {
                 await updateDoc(doc(db, 'homeworks', state.editingHomework.id), data);
@@ -463,6 +448,7 @@ export const createHomeworkDashboardManager = (config) => {
         return (name || "unknown").replace(/[\\/:*?"<>|]/g, "_").trim().replace(/\.$/, "");
     };
 
+    // --- ⭐ [다운로드 기능] 전체 다운로드 로직 ---
     const downloadAllSubmissions = async () => {
         const { cachedStudents, movedStudents, cachedSubmissions: subs, cachedHomeworkData: hwData } = state;
         const allTargetStudents = [...cachedStudents, ...movedStudents];
@@ -476,13 +462,17 @@ export const createHomeworkDashboardManager = (config) => {
         const btn = document.getElementById('custom-download-all-btn');
         const originalBtnHTML = btn ? btn.innerHTML : '전체 다운로드';
 
+        // 1. 크롬/엣지: 폴더 선택 방식
         if ('showDirectoryPicker' in window) {
             await downloadViaFileSystem(allTargetStudents, subs, hwData, btn, originalBtnHTML);
-        } else {
+        } 
+        // 2. 사파리/파이어폭스: ZIP 압축 방식
+        else {
             await downloadViaZip(allTargetStudents, subs, hwData, btn, originalBtnHTML);
         }
     };
 
+    // [Method A] 폴더 직접 저장 (크롬/엣지)
     const downloadViaFileSystem = async (students, subs, hwData, btn, originalBtnHTML) => {
         try {
             if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 경로 선택 중...'; }
@@ -529,9 +519,12 @@ export const createHomeworkDashboardManager = (config) => {
         finally { if(btn) { btn.disabled = false; btn.innerHTML = originalBtnHTML; } }
     };
 
+    // [Method B] ZIP 압축 (사파리/파이어폭스)
     const downloadViaZip = async (students, subs, hwData, btn, originalBtnHTML) => {
         try {
             if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">hourglass_empty</span> JSZip 로드 중...'; }
+            
+            // CDN에서 JSZip 동적 로드
             if (!window.JSZip) { await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm").then(module => { window.JSZip = module.default; }); }
 
             const zip = new window.JSZip();
@@ -540,7 +533,7 @@ export const createHomeworkDashboardManager = (config) => {
             const rootFolder = zip.folder(`${folderDate}_${safeTitle}`);
 
             if (btn) btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">download</span> 파일 수집 중...';
-            showToast("파일을 압축하고 있습니다.", false);
+            showToast("파일을 압축하고 있습니다...", false);
 
             let count = 0;
             const promises = [];

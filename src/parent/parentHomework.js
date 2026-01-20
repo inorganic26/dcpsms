@@ -45,6 +45,7 @@ export const parentHomework = {
             let allHomeworks = [];
             snapshot.forEach(doc => allHomeworks.push({ id: doc.id, ...doc.data() }));
 
+            // 추가 반(classIds)에 대한 숙제도 가져오기
             if (classIds.length > 0) {
                 const q2 = query(collection(this.db, "homeworks"), where("classId", "in", classIds));
                 const snapshot2 = await getDocs(q2);
@@ -55,26 +56,57 @@ export const parentHomework = {
                 });
             }
 
-            allHomeworks.sort((a, b) => {
+            // 1. 먼저 제출 상태를 모두 확인합니다. (제출 여부 판단이 먼저)
+            const checkedHomeworks = await this.checkSubmissionStatus(allHomeworks);
+
+            // 2. ⭐ [필터링 로직 적용] 
+            // - 신입생/이동 학생의 경우 등록일 이전 숙제 숨김
+            // - 기존 학생은 등록일이 옛날이므로 필터에 걸리지 않고 다 보임 (미제출 포함)
+            
+            // 학생의 가입일(createdAt)을 가져옵니다. 없으면 아주 옛날(2000년)로 설정하여 모두 보여줍니다.
+            const studentJoinDate = this.student.createdAt 
+                ? (this.student.createdAt.toDate ? this.student.createdAt.toDate() : new Date(this.student.createdAt))
+                : new Date('2000-01-01');
+
+            const filteredHomeworks = checkedHomeworks.filter(hw => {
+                // (A) 이미 제출했다면? -> 무조건 보여줌 (과거 이력 확인용)
+                if (hw.isSubmitted) return true;
+
+                // (B) 마감일이 없으면? -> 보여줌
+                const dateStr = hw.dueDate || hw.endDate;
+                if (!dateStr) return true;
+
+                // (C) 마감일 vs 등록일 비교
+                // 숙제 마감일(그 날의 23:59:59)이 학생 등록일보다 '이후'여야 보여줌
+                // 즉, 마감일 < 등록일이면(학생이 오기 전에 끝난 숙제면) 숨김
+                const hwDueDate = new Date(dateStr + "T23:59:59"); 
+                
+                return hwDueDate >= studentJoinDate; 
+            });
+
+            // 3. 정렬 (최신 마감일 순)
+            filteredHomeworks.sort((a, b) => {
                 const dateA = a.dueDate || a.endDate || "0000-00-00";
                 const dateB = b.dueDate || b.endDate || "0000-00-00";
                 return new Date(dateB) - new Date(dateA);
             });
 
+            // 4. 진행 중 / 지난 과제 분류
             const now = new Date();
             let active = [];
             let past = [];
 
-            allHomeworks.forEach(hw => {
+            filteredHomeworks.forEach(hw => {
                 const dateStr = hw.dueDate || hw.endDate;
                 if (!dateStr) { active.push(hw); return; }
                 const endDateTime = new Date(dateStr + "T23:59:59");
+                
                 if (endDateTime < now) past.push(hw);
                 else active.push(hw);
             });
 
-            this.state.homeworks = await this.checkSubmissionStatus(active);
-            this.state.pastHomeworks = await this.checkSubmissionStatus(past);
+            this.state.homeworks = active;
+            this.state.pastHomeworks = past;
 
             this.renderList();
         });
@@ -86,30 +118,36 @@ export const parentHomework = {
 
         const results = await Promise.all(homeworkList.map(async (hw) => {
             try {
+                // 1. 메모리 상의 데이터 확인 (Optimistic UI)
                 if (hw.submissions && hw.submissions[this.student.id]) {
                      return { ...hw, isSubmitted: true, submissionData: hw.submissions[this.student.id] };
                 }
 
+                // 2. 개별 문서 직접 조회 (가장 정확)
                 const subRef = doc(this.db, "homeworks", hw.id, "submissions", this.student.id);
                 const subSnap = await getDoc(subRef);
                 if (subSnap.exists()) {
                     return { ...hw, isSubmitted: true, submissionData: subSnap.data() };
                 } 
                 
+                // 3. 컬렉션 쿼리 (혹시 ID가 다를 경우 대비)
                 const subColRef = collection(this.db, "homeworks", hw.id, "submissions");
 
+                // studentId 필드로 검색
                 const q1 = query(subColRef, where("studentId", "==", this.student.id));
                 const snap1 = await getDocs(q1);
                 if (!snap1.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap1.docs[0].data() };
                 }
 
+                // studentDocId 필드로 검색
                 const q2 = query(subColRef, where("studentDocId", "==", this.student.id));
                 const snap2 = await getDocs(q2);
                 if (!snap2.empty) {
                     return { ...hw, isSubmitted: true, submissionData: snap2.docs[0].data() };
                 }
 
+                // 이름으로 검색 (최후의 수단)
                 if (studentName) {
                     const q3 = query(subColRef, where("studentName", "==", studentName));
                     const snap3 = await getDocs(q3);
@@ -143,6 +181,9 @@ export const parentHomework = {
         if(!listEl) return;
 
         let html = '';
+
+        // UI 잘림 방지: 리스트 컨테이너에 하단 패딩 추가
+        listEl.style.paddingBottom = "80px"; 
 
         if (this.state.homeworks.length > 0) {
             html += `<div class="mb-2 px-1 text-sm font-bold text-slate-700 flex items-center gap-2"><span class="material-icons-round text-base text-blue-500">assignment</span> 진행 중인 과제</div>`;
@@ -256,7 +297,6 @@ export const parentHomework = {
             fileAreaHtml = `<div class="mt-4 p-4 text-center text-red-400 bg-red-50 rounded-xl text-sm font-bold">아직 과제를 제출하지 않았습니다.</div>`;
         }
 
-        // ⭐ [핵심 수정] 모달 내용 영역 스크롤 (max-h-70vh, overflow-y-auto)
         const modalHtml = `
             <div id="hw-detail-modal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-0 sm:p-4">
                 <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
