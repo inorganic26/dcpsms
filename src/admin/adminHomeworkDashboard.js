@@ -33,47 +33,49 @@ export const adminHomeworkDashboard = {
             cancelBtn: document.getElementById('admin-cancel-homework-btn'),
         };
 
-        // ⭐ [PC/모바일 공통] 스크롤 및 잘림 현상 강력 해결 (수정된 버전)
+        // ⭐ [PC/모바일 공통] 스크롤 및 높이 자동 조절 (최종 수정)
         if (this.elements.tableBody) {
             const table = this.elements.tableBody.closest('table');
             const wrapper = table?.parentElement;
 
             if (table && wrapper) {
-                // 1. 테이블 가로 최소 너비 확보 (PC에서 창 줄였을 때 이름 찌그러짐 방지)
+                // 1. 테이블 가로 최소 너비 확보
                 table.style.minWidth = '600px'; 
                 
-                // 2. 이름 및 상태 텍스트 줄바꿈 방지 (한 줄로 깔끔하게 나오게)
+                // 2. 텍스트 줄바꿈 방지
                 const updateTableStyles = () => {
                     const rows = table.querySelectorAll('tr');
                     rows.forEach(row => {
                         const cells = row.querySelectorAll('th, td');
                         if(cells.length > 0) {
-                            cells[0].style.whiteSpace = 'nowrap'; // 이름
-                            if(cells[1]) cells[1].style.whiteSpace = 'nowrap'; // 상태
+                            cells[0].style.whiteSpace = 'nowrap';
+                            if(cells[1]) cells[1].style.whiteSpace = 'nowrap';
                         }
                     });
                 };
-                // 데이터 로드될 때마다 스타일 적용
                 const observer = new MutationObserver(updateTableStyles);
                 observer.observe(this.elements.tableBody, { childList: true });
 
-                // 3. ⭐ 스크롤 박스 강제 설정 (PC 화면 핵심)
-                // [수정] 기존 클래스를 초기화하지 않고(className = '' 삭제), 필요한 스타일만 추가합니다.
-                // wrapper.className = '';  <-- 이 줄을 삭제했습니다.
-                
+                // 3. ⭐ [수정] 박스 높이 최적화
+                // 기존 'h-full' 클래스가 있으면 강제로 꽉 차버리므로 제거합니다.
+                wrapper.classList.remove('h-full');
+
+                // Flexbox 환경에서 스크롤이 정상 작동하도록 클래스 추가
                 wrapper.classList.add(
-                    'overflow-auto', // 상하좌우 스크롤 자동 생성
+                    'overflow-auto', // 스크롤바 생성
                     'w-full',
                     'border',
                     'rounded-lg',
                     'bg-white',
-                    'shadow-sm'
+                    'shadow-sm',
+                    'flex-1',       // 남는 공간 채우기 (최대치까지)
+                    'min-h-0'       // Flex 내부 스크롤 필수 속성
                 );
                 
-                // 4. ⭐ [수정] 높이 강제 제한 해제
-                // vh 단위 대신 부모 높이를 따라가도록 변경하여 저해상도에서도 꽉 차게 나옵니다.
-                wrapper.style.height = '100%';       // (변경됨) auto -> 100%
-                wrapper.style.maxHeight = 'none';    // (변경됨) 65vh -> none
+                // 4. ⭐ [수정] 강제 높이 설정 변경
+                // '100%' 대신 'auto'를 주어 내용이 적으면 박스도 작아지게 합니다.
+                wrapper.style.height = 'auto';       
+                wrapper.style.maxHeight = 'none';    
             }
         }
 

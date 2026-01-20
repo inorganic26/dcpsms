@@ -58,7 +58,7 @@
         </div>
         <div id="goto-subject-mgmt-btn" class="dashboard-card cursor-pointer bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition border border-slate-100 flex flex-col items-center justify-center gap-4 group">
           <div class="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center group-hover:bg-purple-100 transition"><span class="material-icons text-purple-600 text-3xl">menu_book</span></div>
-          <h3 class="font-bold text-slate-700 text-lg">과목 관리</h3>
+          <h3 class="font-bold text-slate-700 text-lg"> 과목 관리</h3>
         </div>
         <div id="goto-textbook-mgmt-btn" class="dashboard-card cursor-pointer bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition border border-slate-100 flex flex-col items-center justify-center gap-4 group">
           <div class="w-16 h-16 bg-pink-50 rounded-full flex items-center justify-center group-hover:bg-pink-100 transition"><span class="material-icons text-pink-600 text-3xl">library_books</span></div>
@@ -240,7 +240,7 @@
             <div id="admin-homework-management-buttons" class="mt-2 flex gap-2" style="display: none;"><button id="admin-edit-homework-btn" class="flex-1 bg-slate-100 text-slate-600 text-xs py-2 rounded font-bold">수정</button><button id="admin-delete-homework-btn" class="flex-1 bg-red-50 text-red-500 text-xs py-2 rounded font-bold">삭제</button></div>
           </div>
           
-          <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 p-6 h-[calc(100vh-220px)] overflow-hidden flex flex-col">
+          <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-h-[calc(100vh-220px)] h-fit overflow-hidden flex flex-col">
             <div id="admin-homework-content" style="display: none;" class="h-full flex flex-col">
                 <h3 id="admin-selected-homework-title" class="text-xl font-bold text-slate-800 mb-4 pb-4 border-b"></h3>
                 <div class="overflow-x-auto h-full overflow-y-auto custom-scrollbar">
@@ -325,7 +325,6 @@
     </div>
 
   </div> 
-  
   <div id="admin-edit-teacher-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
     <div class="bg-white p-6 rounded-xl w-full max-w-md shadow-2xl">
       <h3 class="text-lg font-bold mb-4">교사 정보 수정</h3>
