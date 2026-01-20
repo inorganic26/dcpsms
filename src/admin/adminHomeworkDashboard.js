@@ -33,16 +33,13 @@ export const adminHomeworkDashboard = {
             cancelBtn: document.getElementById('admin-cancel-homework-btn'),
         };
 
-        // ⭐ [PC/모바일 공통] 스크롤 및 높이 자동 조절 (최종 수정)
+        // --- 1. 테이블 UI 최적화 ---
         if (this.elements.tableBody) {
             const table = this.elements.tableBody.closest('table');
             const wrapper = table?.parentElement;
 
             if (table && wrapper) {
-                // 1. 테이블 가로 최소 너비 확보
                 table.style.minWidth = '600px'; 
-                
-                // 2. 텍스트 줄바꿈 방지
                 const updateTableStyles = () => {
                     const rows = table.querySelectorAll('tr');
                     rows.forEach(row => {
@@ -56,33 +53,41 @@ export const adminHomeworkDashboard = {
                 const observer = new MutationObserver(updateTableStyles);
                 observer.observe(this.elements.tableBody, { childList: true });
 
-                // 3. ⭐ [수정] 박스 높이 최적화
-                // 기존 'h-full' 클래스가 있으면 강제로 꽉 차버리므로 제거합니다.
                 wrapper.classList.remove('h-full');
-
-                // Flexbox 환경에서 스크롤이 정상 작동하도록 클래스 추가
-                wrapper.classList.add(
-                    'overflow-auto', // 스크롤바 생성
-                    'w-full',
-                    'border',
-                    'rounded-lg',
-                    'bg-white',
-                    'shadow-sm',
-                    'flex-1',       // 남는 공간 채우기 (최대치까지)
-                    'min-h-0'       // Flex 내부 스크롤 필수 속성
-                );
-                
-                // 4. ⭐ [수정] 강제 높이 설정 변경
-                // '100%' 대신 'auto'를 주어 내용이 적으면 박스도 작아지게 합니다.
+                wrapper.classList.add('overflow-auto', 'w-full', 'border', 'rounded-lg', 'bg-white', 'shadow-sm', 'flex-1', 'min-h-0');
                 wrapper.style.height = 'auto';       
                 wrapper.style.maxHeight = 'none';    
             }
         }
 
+        // --- 2. 매니저 초기화 ---
         this.manager = createHomeworkDashboardManager({
             app: app,
             elements: this.elements,
             mode: 'admin' 
+        });
+
+        // --- 3. [수정됨] 모바일 스크롤 로직 ---
+        const detailWrapper = document.getElementById('admin-homework-content')?.parentElement;
+
+        this.elements.homeworkSelect?.addEventListener('change', (e) => {
+            const classId = this.elements.classSelect.value;
+            const homeworkId = e.target.value;
+            
+            if (classId && homeworkId) {
+                document.getElementById('admin-homework-main-content').style.display = 'block';
+                this.manager.loadHomeworkList(classId); // (내부적으로 상세 로드 호출)
+                
+                // ⭐ 모바일(화면 작을 때)이면 상세 내용 쪽으로 부드럽게 스크롤
+                if (window.innerWidth < 1024 && detailWrapper) {
+                    // 약간의 딜레이를 주어 화면이 렌더링된 후 스크롤되게 함
+                    setTimeout(() => {
+                        detailWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }, 100);
+                }
+            } else {
+                document.getElementById('admin-homework-main-content').style.display = 'none';
+            }
         });
 
         this.populateClassSelect();
