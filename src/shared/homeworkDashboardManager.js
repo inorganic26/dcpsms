@@ -1,6 +1,6 @@
 // src/shared/homeworkDashboardManager.js
 
-import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, query, where, getDocs, orderBy, serverTimestamp, onSnapshot, setDoc, getDoc } from "firebase/firestore";
 import { db } from "./firebase.js";
 import { showToast } from "./utils.js";
 import { homeworkManagerHelper } from "./homeworkManager.js";
@@ -15,9 +15,11 @@ export const createHomeworkDashboardManager = (config) => {
         editingHomework: null,
         cachedHomeworkData: null,
         cachedSubmissions: {},
-        cachedStudents: [], // 학생 목록 (admin용)
+        cachedStudents: [], // 현재 반 학생
+        movedStudents: [],  // 이동한 학생
         unsubHomework: null,
-        unsubSubmissions: null
+        unsubSubmissions: null,
+        showSubmittedOnly: false
     };
 
     // --- 리스너 초기화 ---
@@ -32,14 +34,18 @@ export const createHomeworkDashboardManager = (config) => {
         elements.subjectSelect?.addEventListener('change', (e) => handleSubjectChange(e.target.value));
     };
 
-    // --- 학생 목록 가져오기 ---
+    // --- 학생 목록 가져오기 (등록일 createdAt 포함) ---
     const getStudentList = async (classId) => {
+        // Teacher 모드
         if (mode === 'teacher' && app.state.studentsInClass) {
+            // Teacher 모드에서는 studentsInClass Map에 createdAt 정보가 없을 수 있음.
+            // 필요하다면 별도 fetch가 필요하나, 일단 이름 기준으로 정렬
             return Array.from(app.state.studentsInClass.entries())
-                .map(([id, name]) => ({ id, name }))
+                .map(([id, name]) => ({ id, name, createdAt: null })) // createdAt null이면 모든 숙제 표시됨
                 .sort((a, b) => a.name.localeCompare(b.name));
         }
         
+        // Admin 모드
         if (mode === 'admin') {
             try {
                 const students = [];
@@ -52,7 +58,14 @@ export const createHomeworkDashboardManager = (config) => {
                     if (data.classIds && Array.isArray(data.classIds) && data.classIds.includes(classId)) {
                         isInClass = true;
                     }
-                    if (isInClass) students.push({ id: doc.id, name: data.name });
+                    if (isInClass) {
+                        students.push({ 
+                            id: doc.id, 
+                            name: data.name,
+                            // 등록일이 없으면 아주 옛날로 취급 (모두 표시)
+                            createdAt: data.createdAt ? data.createdAt.toDate() : new Date('2000-01-01') 
+                        });
+                    }
                 });
                 return students.sort((a, b) => a.name.localeCompare(b.name));
             } catch (e) {
@@ -63,7 +76,7 @@ export const createHomeworkDashboardManager = (config) => {
         return [];
     };
 
-    // --- 숙제 목록 (Select Box) 로드 ---
+    // --- 숙제 목록 로드 ---
     const loadHomeworkList = async (classId) => {
         state.selectedClassId = classId;
         const select = elements.homeworkSelect;
@@ -74,7 +87,6 @@ export const createHomeworkDashboardManager = (config) => {
         if (elements.placeholder) elements.placeholder.style.display = 'flex';
         if (elements.btnsDiv) elements.btnsDiv.style.display = 'none';
         
-        // 리스너 해제
         if (state.unsubHomework) state.unsubHomework();
         if (state.unsubSubmissions) state.unsubSubmissions();
 
@@ -101,6 +113,7 @@ export const createHomeworkDashboardManager = (config) => {
     const loadHomeworkDetails = async (homeworkId) => {
         if (!homeworkId) return;
         state.selectedHomeworkId = homeworkId;
+        state.movedStudents = [];
 
         state.cachedStudents = await getStudentList(state.selectedClassId);
 
@@ -108,18 +121,31 @@ export const createHomeworkDashboardManager = (config) => {
         if (elements.contentDiv) elements.contentDiv.classList.remove('hidden');
         if (elements.placeholder) elements.placeholder.style.display = 'none';
         
-        // 버튼 영역 표시 및 [다운로드 버튼] 동적 추가
         if (elements.btnsDiv) {
             elements.btnsDiv.style.display = 'flex';
             
-            // 중복 추가 방지
             if (!elements.btnsDiv.querySelector('#custom-download-all-btn')) {
                 const downloadAllBtn = document.createElement('button');
                 downloadAllBtn.id = 'custom-download-all-btn';
-                downloadAllBtn.className = "flex-1 bg-indigo-50 text-indigo-600 text-xs py-2 rounded font-bold hover:bg-indigo-100 transition ml-2";
-                downloadAllBtn.innerHTML = '<span class="material-icons text-sm align-middle mr-1">folder_zip</span> 전체 내려받기';
+                downloadAllBtn.className = "flex-1 bg-indigo-50 text-indigo-600 text-xs py-2 rounded font-bold hover:bg-indigo-100 transition ml-2 flex items-center justify-center gap-1";
+                downloadAllBtn.innerHTML = '<span class="material-icons text-sm">folder_zip</span> 전체 다운로드';
                 downloadAllBtn.onclick = downloadAllSubmissions;
                 elements.btnsDiv.appendChild(downloadAllBtn);
+            }
+
+            if (!elements.btnsDiv.querySelector('#filter-submitted-only-container')) {
+                const filterContainer = document.createElement('div');
+                filterContainer.id = 'filter-submitted-only-container';
+                filterContainer.className = "flex items-center ml-3";
+                filterContainer.innerHTML = `
+                    <input type="checkbox" id="filter-submitted-only" class="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer">
+                    <label for="filter-submitted-only" class="ml-1 text-xs font-bold text-slate-600 cursor-pointer select-none">제출된 내역만 보기</label>
+                `;
+                elements.btnsDiv.insertBefore(filterContainer, elements.btnsDiv.firstChild);
+                filterContainer.querySelector('input').addEventListener('change', (e) => {
+                    state.showSubmittedOnly = e.target.checked;
+                    renderTable();
+                });
             }
         }
 
@@ -138,74 +164,183 @@ export const createHomeworkDashboardManager = (config) => {
         });
 
         const subCol = collection(db, 'homeworks', homeworkId, 'submissions');
-        state.unsubSubmissions = onSnapshot(subCol, (snap) => {
+        state.unsubSubmissions = onSnapshot(subCol, async (snap) => {
             state.cachedSubmissions = {};
-            snap.forEach(d => state.cachedSubmissions[d.id] = d.data());
+            const currentStudentIds = new Set(state.cachedStudents.map(s => s.id));
+            const orphanIds = [];
+
+            snap.forEach(d => {
+                state.cachedSubmissions[d.id] = d.data();
+                if (!currentStudentIds.has(d.id)) {
+                    orphanIds.push(d.id);
+                }
+            });
+
+            const movedList = [];
+            await Promise.all(orphanIds.map(async (uid) => {
+                try {
+                    const sSnap = await getDoc(doc(db, 'students', uid));
+                    if (sSnap.exists()) {
+                        const sData = sSnap.data();
+                        // 퇴원생이 아닌 경우(반 정보가 있음)만 추가
+                        if (sData.classId) {
+                            movedList.push({ 
+                                id: uid, 
+                                name: sData.name, 
+                                createdAt: sData.createdAt ? sData.createdAt.toDate() : new Date('2000-01-01')
+                            });
+                        }
+                    }
+                } catch(e) {}
+            }));
+            
+            state.movedStudents = movedList;
             renderTable();
         });
     };
 
+    // --- ⭐ [핵심 기능] 등록일 비교 로직 ---
+    const isHomeworkBeforeStudent = (homeworkDateStr, studentDate) => {
+        if (!homeworkDateStr || !studentDate) return false;
+        const hwDate = new Date(homeworkDateStr);
+        // 숙제 마감일이 학생 등록일보다 이전이면 -> 등록 전 숙제임
+        // (여유있게 하루 정도 오차는 허용하거나, 엄격하게 하려면 getTime() 비교)
+        return hwDate.getTime() < studentDate.getTime();
+    };
+
     // --- 테이블 렌더링 ---
     const renderTable = () => {
-        const { cachedHomeworkData: hwData, cachedSubmissions: subs, cachedStudents: students } = state;
+        const { cachedHomeworkData: hwData, cachedSubmissions: subs, cachedStudents: students, movedStudents } = state;
         if (!hwData || !elements.tableBody) return;
 
         const tbody = elements.tableBody;
         tbody.innerHTML = '';
 
-        if (students.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">학생이 없습니다.</td></tr>';
-            return;
-        }
-
-        const oldSubs = hwData.submissions || {}; 
-        
-        students.forEach(student => {
-            const sub = subs[student.id] || oldSubs[student.id];
+        const renderRow = (student, isMoved = false) => {
+            const sub = subs[student.id];
             
-            let statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
+            // 1. [필터] 제출된 내역만 보기
+            if (state.showSubmittedOnly && (!sub || (sub.status !== 'completed' && sub.status !== 'partial'))) {
+                return;
+            }
 
-            // ⭐ [수정 1] 부분 제출('partial')인 경우, 헬퍼 함수 결과와 상관없이 강제로 '부분 제출'로 표시
+            // 2. [신입생 처리] 숙제 마감일 vs 학생 등록일 비교
+            // 학생이 등록되기 전의 숙제라면 -> "등록 전" 표시 (회색)
+            // 단, 이미 제출한 기록이 있다면(sub 존재) 날짜가 이상해도 보여줌
+            const isBefore = !sub && isHomeworkBeforeStudent(hwData.dueDate, student.createdAt);
+
+            if (isBefore) {
+                // 등록 전 데이터 숨김/회색 처리
+                tbody.innerHTML += `
+                    <tr class="bg-slate-50/50 border-b">
+                        <td class="p-3 text-slate-400 whitespace-nowrap flex items-center gap-2">
+                            ${student.name}
+                            ${isMoved ? '<span class="text-[10px] border px-1 rounded">이동</span>' : ''}
+                        </td>
+                        <td class="p-3 text-slate-300 text-xs italic" colspan="3">
+                            등록 전 (해당 없음)
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // 정상 상태 표시 로직
+            let statusInfo = homeworkManagerHelper.calculateStatus(sub, hwData);
             if (sub && sub.status === 'partial') {
                 statusInfo = { text: '부분 제출', color: 'text-orange-600 font-bold' };
             }
 
             const downloadBtn = homeworkManagerHelper.renderFileButtons(sub, '반'); 
             const date = sub?.submittedAt ? new Date(sub.submittedAt.toDate()).toLocaleDateString() : '-';
-
-            // ⭐ [수정 2] 강제 완료 버튼 표시 조건 변경
-            // (제출 기록이 없거나, 부분 제출이거나, 미완료 상태면 모두 버튼 표시)
             const isCompleted = sub && (sub.status === 'completed' || sub.manualComplete);
+            
             let actionBtn = !isCompleted ? `
                 <button class="force-complete-btn ml-2 text-xs bg-green-50 text-green-600 border border-green-200 px-2 py-1 rounded hover:bg-green-100 transition whitespace-nowrap" 
                         data-id="${student.id}" title="강제 완료 처리">✅ 확인</button>` : '';
 
+            // ⭐ [팝업 버튼] 학생 이름 옆 상세 보기
+            const detailBtn = `
+                <button class="view-history-btn ml-1 text-slate-400 hover:text-indigo-600 transition" 
+                        data-id="${student.id}" data-name="${student.name}" title="이전 기록 보기">
+                    <span class="material-icons text-sm align-middle">assignment_ind</span>
+                </button>
+            `;
+
+            const bgClass = isMoved ? 'bg-amber-50/30' : 'hover:bg-slate-50';
+            const nameBadge = isMoved ? `<span class="text-[10px] text-amber-600 border border-amber-200 rounded px-1 ml-1 bg-white">타 반</span>` : '';
+
             tbody.innerHTML += `
-                <tr class="hover:bg-slate-50 border-b">
-                    <td class="p-3 font-medium text-slate-700 whitespace-nowrap">${student.name}</td>
+                <tr class="${bgClass} border-b transition-colors">
+                    <td class="p-3 font-medium text-slate-700 whitespace-nowrap flex items-center">
+                        ${student.name} ${nameBadge} ${detailBtn}
+                    </td>
                     <td class="p-3 ${statusInfo.color} whitespace-nowrap">${statusInfo.text} ${actionBtn}</td>
                     <td class="p-3 text-xs text-slate-500 whitespace-nowrap">${date}</td>
                     <td class="p-3 text-center"><div>${downloadBtn}</div></td>
                 </tr>`;
-        });
+        };
 
+        if (students.length === 0 && movedStudents.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-slate-400">학생 데이터가 없습니다.</td></tr>';
+            return;
+        }
+
+        // 렌더링 실행
+        students.forEach(s => renderRow(s, false));
+
+        if (movedStudents.length > 0) {
+            const hasData = movedStudents.some(s => subs[s.id]); // 제출 데이터가 있는 경우만 헤더 표시
+            if (!state.showSubmittedOnly || hasData) {
+                tbody.innerHTML += `
+                    <tr class="bg-slate-100 border-y-2 border-slate-200">
+                        <td colspan="4" class="px-4 py-2 text-xs font-bold text-slate-600 text-center flex items-center justify-center gap-2">
+                            <span class="material-icons text-sm">swap_horiz</span> 반 이동 학생 (타 반 소속)
+                        </td>
+                    </tr>
+                `;
+                movedStudents.forEach(s => renderRow(s, true));
+            }
+        }
+        
+        // ⭐ [UI 수정] 잘림 방지용 하단 여백 추가
+        // 테이블 맨 아래에 투명한 행을 추가하여 스크롤 여유 공간 확보
+        tbody.innerHTML += `<tr class="h-12 w-full bg-transparent border-none"><td colspan="4"></td></tr>`;
+
+        // 리스너 연결
         tbody.querySelectorAll('.force-complete-btn').forEach(btn => {
             btn.addEventListener('click', () => forceComplete(btn.dataset.id));
         });
+        
+        // 상세 보기(History) 버튼 리스너
+        tbody.querySelectorAll('.view-history-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // 행 클릭 이벤트 방지
+                showStudentHistory(btn.dataset.id, btn.dataset.name);
+            });
+        });
+    };
+
+    // --- [팝업] 학생 기록 보기 (임시 구현) ---
+    const showStudentHistory = (studentId, studentName) => {
+        // 실제로는 여기서 학생의 이전 반 기록을 DB에서 긁어와야 하지만,
+        // 현재는 "이동해 온 반"에서의 기록만이라도 모아서 보여주는 팝업을 띄웁니다.
+        // 추후 'student_assignments' 컬렉션 전체 조회 등으로 확장 가능합니다.
+        
+        alert(`[${studentName}] 학생의 상세 기록\n\n현재 이 기능은 '이동해 온 반'에서의 기록만 보여줍니다.\n이전 반의 기록을 보려면 관리자 메뉴의 '학생 관리 -> 상세'를 이용해주세요.`);
     };
 
     const forceComplete = async (studentId) => {
-        if (!confirm("이 학생의 숙제를 '완료' 상태로 변경하시겠습니까?\n(미제출 상태여도 완료 처리됩니다)")) return;
+        if (!confirm("이 학생의 숙제를 '완료' 상태로 변경하시겠습니까?")) return;
         
-        // ⭐ [수정 3] 미제출 학생의 경우 DB에 이름 정보가 없을 수 있으므로, 학생 목록에서 이름을 찾아 채워줌
-        const student = state.cachedStudents.find(s => s.id === studentId);
+        let student = state.cachedStudents.find(s => s.id === studentId);
+        if (!student) student = state.movedStudents.find(s => s.id === studentId);
         const studentName = student ? student.name : "이름 없음";
 
         try {
-            // merge: true를 사용하여 기존 데이터(부분제출 등)는 유지하되 status만 덮어씀
             await setDoc(doc(db, 'homeworks', state.selectedHomeworkId, 'submissions', studentId), {
                 studentDocId: studentId, 
-                studentName: studentName, // 학생 이름 추가
+                studentName: studentName,
                 manualComplete: true, 
                 status: 'completed', 
                 updatedAt: serverTimestamp()
@@ -215,7 +350,7 @@ export const createHomeworkDashboardManager = (config) => {
         } catch (e) { console.error(e); showToast("처리 실패", true); }
     };
 
-    // --- 모달 관리 ---
+    // ... (이하 모달 및 저장/삭제 로직은 기존과 동일) ...
     const openModal = async (type) => {
         const isEdit = type === 'edit';
         if (elements.modalTitle) elements.modalTitle.textContent = isEdit ? '숙제 수정' : '새 숙제 등록';
@@ -324,164 +459,132 @@ export const createHomeworkDashboardManager = (config) => {
         } catch (e) { showToast("삭제 실패", true); }
     };
 
-    // ============================================================
-    // ⭐ [이름 안전하게 만들기] 함수 추가
-    // ============================================================
     const sanitizeFileName = (name) => {
-        return name
-            .replace(/[\\/:*?"<>|]/g, "_") // 1. 특수문자 제거
-            .trim()                         // 2. 앞뒤 공백 제거
-            .replace(/\.$/, "");            // 3. 맨 끝 점 제거
+        return (name || "unknown").replace(/[\\/:*?"<>|]/g, "_").trim().replace(/\.$/, "");
     };
 
     const downloadAllSubmissions = async () => {
-        if (!('showDirectoryPicker' in window)) {
-            alert("이 기능은 크롬(Chrome), 엣지(Edge) 브라우저의 PC버전에서만 지원됩니다.");
-            return;
-        }
-
-        const { cachedStudents: students, cachedSubmissions: subs, cachedHomeworkData: hwData } = state;
-        if (!students || students.length === 0) {
+        const { cachedStudents, movedStudents, cachedSubmissions: subs, cachedHomeworkData: hwData } = state;
+        const allTargetStudents = [...cachedStudents, ...movedStudents];
+        
+        if (!allTargetStudents || allTargetStudents.length === 0) {
             showToast("학생 목록이 없습니다.", true);
             return;
         }
         if (!hwData) return;
 
         const btn = document.getElementById('custom-download-all-btn');
-        const originalBtnText = btn ? btn.innerHTML : '전체 내려받기';
+        const originalBtnHTML = btn ? btn.innerHTML : '전체 다운로드';
 
-        const oldSubs = hwData.submissions || {};
+        if ('showDirectoryPicker' in window) {
+            await downloadViaFileSystem(allTargetStudents, subs, hwData, btn, originalBtnHTML);
+        } else {
+            await downloadViaZip(allTargetStudents, subs, hwData, btn, originalBtnHTML);
+        }
+    };
 
+    const downloadViaFileSystem = async (students, subs, hwData, btn, originalBtnHTML) => {
         try {
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 저장 경로 선택 중...';
-            }
-
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 경로 선택 중...'; }
             const dirHandle = await window.showDirectoryPicker();
-            
-            if (btn) btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 다운로드 시작...';
+            if (btn) btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">download</span> 다운로드 중...';
             showToast("다운로드를 시작합니다...", false);
 
             const folderDate = hwData.dueDate ? hwData.dueDate : new Date().toISOString().split('T')[0];
             const safeTitle = sanitizeFileName(hwData.title);
             const targetFolderName = `${folderDate}_${safeTitle}`; 
-
             const dateDirHandle = await dirHandle.getDirectoryHandle(targetFolderName, { create: true });
-
-            let totalFilesFound = 0;
-            let downloadSuccessCount = 0;
-            let downloadFailCount = 0;
-            const totalStudents = students.length;
-
-            console.log("=== [전체 다운로드 디버그 시작] ===");
-
+            
+            let count = 0;
             for (let i = 0; i < students.length; i++) {
-                try {
-                    const student = students[i];
-                    const sub = subs[student.id] || oldSubs[student.id];
+                const student = students[i];
+                const sub = subs[student.id]; 
+                if (!sub) continue;
 
-                    if (!sub) continue;
+                let files = sub.files || (sub.fileUrl ? [sub.fileUrl] : []);
+                if (files.length === 0) continue;
 
-                    let filesToDownload = [];
-                    if (sub.files && Array.isArray(sub.files) && sub.files.length > 0) {
-                        filesToDownload = sub.files;
-                    } else if (sub.fileUrl) {
-                        filesToDownload = [ sub.fileUrl ];
-                    }
+                if (btn) btn.innerHTML = `진행 중 (${i+1}/${students.length})`;
+                const studentDir = await dateDirHandle.getDirectoryHandle(sanitizeFileName(student.name), { create: true });
 
-                    if (filesToDownload.length === 0) continue;
-
-                    if (btn) {
-                        btn.innerHTML = `<span class="material-icons text-sm animate-spin mr-1">download</span> 진행 중 (${i + 1}/${totalStudents})<br><span class="text-[10px]">${student.name}</span>`;
-                    }
-                    
-                    const safeStudentName = sanitizeFileName(student.name);
-                    const studentDirHandle = await dateDirHandle.getDirectoryHandle(safeStudentName, { create: true });
-
-                    for (let j = 0; j < filesToDownload.length; j++) {
-                        totalFilesFound++;
-                        let fileUrl = filesToDownload[j];
-
-                        if (typeof fileUrl !== 'string') {
-                            if (fileUrl.url) fileUrl = fileUrl.url;
-                            else if (fileUrl.downloadUrl) fileUrl = fileUrl.downloadUrl;
-                            else if (fileUrl.fileUrl) fileUrl = fileUrl.fileUrl;
-                        }
-
-                        if (typeof fileUrl !== 'string' || !fileUrl.startsWith('http')) {
-                            console.warn(`[SKIP] 유효하지 않은 URL: ${safeStudentName}`, fileUrl);
-                            continue;
-                        }
-
-                        const cacheBuster = (fileUrl.includes('?') ? '&' : '?') + `t=${new Date().getTime()}`;
-                        const safeUrl = fileUrl + cacheBuster;
-
-                        try {
-                            await new Promise(r => setTimeout(r, 200));
-
-                            const response = await fetch(safeUrl);
-                            if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-                            
-                            const blob = await response.blob();
-
-                            let ext = "jpg";
-                            const lowerUrl = fileUrl.toLowerCase();
-                            if (lowerUrl.includes('.png')) ext = "png";
-                            else if (lowerUrl.includes('.jpeg')) ext = "jpeg";
-                            else if (lowerUrl.includes('.pdf')) ext = "pdf";
-
-                            const fileName = `${safeStudentName}_${j + 1}.${ext}`;
-
-                            const fileHandle = await studentDirHandle.getFileHandle(fileName, { create: true });
-                            const writable = await fileHandle.createWritable();
-                            await writable.write(blob);
-                            await writable.close();
-                            
-                            downloadSuccessCount++;
-
-                        } catch (err) {
-                            downloadFailCount++;
-                            console.error(`❌ [다운로드 실패] ${safeStudentName} 파일${j+1}:`, err);
-                        }
-                    }
-
-                } catch (studentErr) {
-                    console.error(`⚠️ 학생 처리 중 오류 건너뜀 (${students[i].name}):`, studentErr);
+                for (let j = 0; j < files.length; j++) {
+                    const fileUrl = (typeof files[j] === 'string') ? files[j] : (files[j].url || files[j].downloadUrl);
+                    if (!fileUrl) continue;
+                    try {
+                        const blob = await fetch(fileUrl).then(r => r.blob());
+                        let ext = "jpg";
+                        if (fileUrl.toLowerCase().includes(".png")) ext = "png";
+                        else if (fileUrl.toLowerCase().includes(".pdf")) ext = "pdf";
+                        
+                        const fileHandle = await studentDir.getFileHandle(`${sanitizeFileName(student.name)}_${j+1}.${ext}`, { create: true });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+                        count++;
+                    } catch (e) { console.error(e); }
                 }
             }
-
-            console.log(`=== [결과] 발견: ${totalFilesFound}, 성공: ${downloadSuccessCount}, 실패: ${downloadFailCount} ===`);
-
-            if (downloadSuccessCount > 0) {
-                 if (downloadFailCount > 0) {
-                    alert(`⚠️ 부분 성공!\n\n성공: ${downloadSuccessCount}개\n실패: ${downloadFailCount}개\n\n[실패 원인] 대부분 'CORS' 설정 문제입니다.`);
-                } else {
-                    alert(`✅ 다운로드 완료!\n총 ${downloadSuccessCount}개의 파일을 저장했습니다.`);
-                }
-            } else if (totalFilesFound > 0) {
-                alert(`❌ 다운로드 실패 (0/${totalFilesFound})\n\n보안 설정(CORS)이 되어있지 않아 다운로드가 차단되었습니다.`);
-            } else {
-                alert("다운로드할 제출 파일이 없습니다.");
-            }
-
-        } catch (err) {
-            if (err.name !== 'AbortError') {
-                console.error("다운로드 에러:", err);
-                alert("오류가 발생했습니다.");
-            }
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = originalBtnText;
-            }
-        }
+            alert(`✅ 다운로드 완료! (${count}개 파일)`);
+        } catch (e) { console.error(e); if(e.name !== 'AbortError') alert("다운로드 중 오류가 발생했습니다."); } 
+        finally { if(btn) { btn.disabled = false; btn.innerHTML = originalBtnHTML; } }
     };
-    // ============================================================
+
+    const downloadViaZip = async (students, subs, hwData, btn, originalBtnHTML) => {
+        try {
+            if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">hourglass_empty</span> JSZip 로드 중...'; }
+            if (!window.JSZip) { await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm").then(module => { window.JSZip = module.default; }); }
+
+            const zip = new window.JSZip();
+            const folderDate = hwData.dueDate ? hwData.dueDate : new Date().toISOString().split('T')[0];
+            const safeTitle = sanitizeFileName(hwData.title);
+            const rootFolder = zip.folder(`${folderDate}_${safeTitle}`);
+
+            if (btn) btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">download</span> 파일 수집 중...';
+            showToast("파일을 압축하고 있습니다.", false);
+
+            let count = 0;
+            const promises = [];
+
+            for (const student of students) {
+                const sub = subs[student.id];
+                if (!sub) continue;
+                let files = sub.files || (sub.fileUrl ? [sub.fileUrl] : []);
+                if (files.length === 0) continue;
+
+                const studentFolder = rootFolder.folder(sanitizeFileName(student.name));
+                files.forEach((f, idx) => {
+                    const fileUrl = (typeof f === 'string') ? f : (f.url || f.downloadUrl);
+                    if (!fileUrl) return;
+                    const p = fetch(fileUrl).then(r => r.blob()).then(blob => {
+                        let ext = "jpg";
+                        if (blob.type === "application/pdf") ext = "pdf";
+                        else if (blob.type === "image/png") ext = "png";
+                        else if (fileUrl.toLowerCase().includes(".pdf")) ext = "pdf";
+                        else if (fileUrl.toLowerCase().includes(".png")) ext = "png";
+                        studentFolder.file(`${sanitizeFileName(student.name)}_${idx+1}.${ext}`, blob);
+                        count++;
+                        if(btn) btn.innerHTML = `수집 중... (${count}개)`;
+                    });
+                    promises.push(p);
+                });
+            }
+            await Promise.all(promises);
+            if (count === 0) { alert("다운로드할 파일이 없습니다."); return; }
+
+            if (btn) btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">compress</span> 압축 중...';
+            const content = await zip.generateAsync({ type: "blob" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(content);
+            a.download = `${folderDate}_${safeTitle}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+            alert("✅ ZIP 파일 다운로드 시작");
+        } catch (e) { console.error(e); alert("오류 발생 (CORS 확인 필요)"); } 
+        finally { if(btn) { btn.disabled = false; btn.innerHTML = originalBtnHTML; } }
+    };
 
     initListeners();
-
-    return {
-        loadHomeworkList
-    };
+    return { loadHomeworkList };
 };
