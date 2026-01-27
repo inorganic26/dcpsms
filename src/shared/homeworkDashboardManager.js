@@ -47,6 +47,7 @@ export const createHomeworkDashboardManager = (config) => {
         if (mode === 'admin') {
             try {
                 const students = [];
+                // ⚠️ [참고] 학생 수가 많아지면 where 쿼리로 최적화하는 것이 좋습니다.
                 const q = query(collection(db, 'students'));
                 const snap = await getDocs(q);
                 
@@ -306,7 +307,6 @@ export const createHomeworkDashboardManager = (config) => {
         }
         
         // ⭐ [UI 수정] 잘림 방지용 하단 여백 추가 (투명 행)
-        // 이 코드가 있어야 스크롤 끝까지 내렸을 때 마지막 버튼이 잘리지 않습니다.
         tbody.innerHTML += `<tr class="h-24 w-full bg-transparent border-none pointer-events-none"><td colspan="4"></td></tr>`;
 
         // 리스너 연결
@@ -472,7 +472,7 @@ export const createHomeworkDashboardManager = (config) => {
         }
     };
 
-    // [Method A] 폴더 직접 저장 (크롬/엣지)
+    // [Method A] 폴더 직접 저장 (크롬/엣지) - 🚀 [수정됨: fileUrl 추가 & 딜레이/에러핸들링 추가]
     const downloadViaFileSystem = async (students, subs, hwData, btn, originalBtnHTML) => {
         try {
             if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">sync</span> 경로 선택 중...'; }
@@ -483,6 +483,8 @@ export const createHomeworkDashboardManager = (config) => {
             const folderDate = hwData.dueDate ? hwData.dueDate : new Date().toISOString().split('T')[0];
             const safeTitle = sanitizeFileName(hwData.title);
             const targetFolderName = `${folderDate}_${safeTitle}`; 
+            
+            // 메인 폴더 생성
             const dateDirHandle = await dirHandle.getDirectoryHandle(targetFolderName, { create: true });
             
             let count = 0;
@@ -495,13 +497,31 @@ export const createHomeworkDashboardManager = (config) => {
                 if (files.length === 0) continue;
 
                 if (btn) btn.innerHTML = `진행 중 (${i+1}/${students.length})`;
-                const studentDir = await dateDirHandle.getDirectoryHandle(sanitizeFileName(student.name), { create: true });
+                
+                // 🔹 [수정 1] 학생 개별 폴더 생성 실패 시(이름 오류 등) 건너뛰도록 보호
+                let studentDir;
+                try {
+                    studentDir = await dateDirHandle.getDirectoryHandle(sanitizeFileName(student.name), { create: true });
+                } catch (folderErr) {
+                    console.error(`폴더 생성 실패 [${student.name}]:`, folderErr);
+                    continue; 
+                }
 
                 for (let j = 0; j < files.length; j++) {
-                    const fileUrl = (typeof files[j] === 'string') ? files[j] : (files[j].url || files[j].downloadUrl);
-                    if (!fileUrl) continue;
+                    // 🔹 [수정 2] 개별 파일 에러 핸들링 (하나 실패해도 멈추지 않음)
                     try {
-                        const blob = await fetch(fileUrl).then(r => r.blob());
+                        // 🟢 [중요 수정] fileUrl 속성 체크 추가
+                        const fileUrl = (typeof files[j] === 'string') ? files[j] : (files[j].url || files[j].downloadUrl || files[j].fileUrl);
+                        
+                        if (!fileUrl) {
+                            console.warn("파일 URL 없음:", files[j]);
+                            continue;
+                        }
+
+                        const response = await fetch(fileUrl);
+                        if (!response.ok) throw new Error(`Fetch status: ${response.status}`);
+                        const blob = await response.blob();
+                        
                         let ext = "jpg";
                         if (fileUrl.toLowerCase().includes(".png")) ext = "png";
                         else if (fileUrl.toLowerCase().includes(".pdf")) ext = "pdf";
@@ -510,21 +530,31 @@ export const createHomeworkDashboardManager = (config) => {
                         const writable = await fileHandle.createWritable();
                         await writable.write(blob);
                         await writable.close();
+                        
+                        // 🔹 [수정 3] 핵심: 쓰기 후 200ms 대기 (락 충돌 방지)
+                        await new Promise(r => setTimeout(r, 200)); 
+                        
                         count++;
-                    } catch (e) { console.error(e); }
+                    } catch (fileErr) { 
+                        console.error(`${student.name} 파일 저장 실패:`, fileErr);
+                        // 실패해도 loop는 계속 돕니다.
+                    }
                 }
             }
-            alert(`✅ 다운로드 완료! (${count}개 파일)`);
-        } catch (e) { console.error(e); if(e.name !== 'AbortError') alert("다운로드 중 오류가 발생했습니다."); } 
+            alert(`✅ 다운로드 완료! (성공: ${count}개)`);
+        } catch (e) { 
+            console.error(e); 
+            if(e.name !== 'AbortError') alert("다운로드 중 치명적 오류가 발생했습니다."); 
+        } 
         finally { if(btn) { btn.disabled = false; btn.innerHTML = originalBtnHTML; } }
     };
 
-    // [Method B] ZIP 압축 (사파리/파이어폭스)
+    // [Method B] ZIP 압축 (사파리/파이어폭스/모바일) - 🚀 [수정됨: fileUrl 추가]
     const downloadViaZip = async (students, subs, hwData, btn, originalBtnHTML) => {
         try {
             if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons text-sm animate-spin mr-1">hourglass_empty</span> JSZip 로드 중...'; }
             
-            // CDN에서 JSZip 동적 로드
+            // CDN에서 JSZip 동적 로드 (여전히 CDN 사용 중이라면 유지)
             if (!window.JSZip) { await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm").then(module => { window.JSZip = module.default; }); }
 
             const zip = new window.JSZip();
@@ -546,8 +576,11 @@ export const createHomeworkDashboardManager = (config) => {
 
                 const studentFolder = rootFolder.folder(sanitizeFileName(student.name));
                 files.forEach((f, idx) => {
-                    const fileUrl = (typeof f === 'string') ? f : (f.url || f.downloadUrl);
+                    // 🟢 [중요 수정] ZIP 방식에도 fileUrl 속성 체크 추가
+                    const fileUrl = (typeof f === 'string') ? f : (f.url || f.downloadUrl || f.fileUrl);
+                    
                     if (!fileUrl) return;
+
                     const p = fetch(fileUrl).then(r => r.blob()).then(blob => {
                         let ext = "jpg";
                         if (blob.type === "application/pdf") ext = "pdf";
@@ -557,7 +590,7 @@ export const createHomeworkDashboardManager = (config) => {
                         studentFolder.file(`${sanitizeFileName(student.name)}_${idx+1}.${ext}`, blob);
                         count++;
                         if(btn) btn.innerHTML = `수집 중... (${count}개)`;
-                    });
+                    }).catch(err => console.error("Zip download error", err)); // ZIP 에러 핸들링 추가
                     promises.push(p);
                 });
             }

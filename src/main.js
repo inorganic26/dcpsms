@@ -18,6 +18,8 @@
                     console.log(`✅ [ServiceWorker] 등록 해제 완료: ${registration.scope}`);
                 }
                 console.log("✅ [ServiceWorker] 모든 서비스 워커가 제거되었습니다.");
+                // 워커 삭제 후 화면을 한 번 새로고침해서 확실하게 반영
+                // window.location.reload(); // 무한 루프 위험이 있어 주석 처리함. 필요시 수동 새로고침 권장.
             } else {
                 console.log("ℹ️ [ServiceWorker] 등록된 서비스 워커가 없습니다.");
             }
@@ -27,7 +29,6 @@
     }
 
     // 2. 캐시 스토리지(Cache Storage) 강제 삭제
-    // 구버전 파일(HTML, JS, CSS)들이 저장된 저장소를 비웁니다.
     if ('caches' in window) {
         try {
             const cacheNames = await caches.keys();
@@ -37,8 +38,6 @@
                     console.log(`✅ [Cache] 캐시 저장소 삭제 완료: ${name}`);
                 }
                 console.log("✅ [Cache] 모든 캐시가 삭제되었습니다.");
-            } else {
-                console.log("ℹ️ [Cache] 삭제할 캐시가 없습니다.");
             }
         } catch (error) {
             console.error("❌ [Cache] 캐시 삭제 실패:", error);
@@ -49,10 +48,9 @@
 })();
 
 // -----------------------------------------------------------------------------
-// 앱 스타일 및 로직 (기존 AppNavigator 등 불필요한 주석 제거됨)
+// 기존 애플리케이션 로직
 // -----------------------------------------------------------------------------
 
-// 전역 스타일시트 import
 import './shared/style.css';
 
 console.log("Portal main.js loaded. Navigation handled by browser (MPA Mode).");

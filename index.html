@@ -7,27 +7,24 @@
   <meta http-equiv="Expires" content="0" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DCPSMS 로딩중...</title>
+  <title>DCPSMS 학원 포털</title>
   
   <script>
     (function() {
       const hostname = window.location.hostname;
-      
-      // 1. 관리자 주소면 -> 관리자 앱 파일로 즉시 이동
+      // 각 앱으로 리다이렉트 (캐시 방지를 위해 꼬리표 추가)
+      const timestamp = new Date().getTime(); 
       if (hostname.includes('admin')) {
-        window.location.replace('/src/admin/index.html');
+        window.location.replace('/src/admin/index.html?t=' + timestamp);
       }
-      // 2. 학생 주소면 -> 학생 앱 파일로 즉시 이동
       else if (hostname.includes('st-dcprime') || hostname.includes('student')) {
-        window.location.replace('/src/student/index.html');
+        window.location.replace('/src/student/index.html?t=' + timestamp);
       }
-      // 3. 학부모 주소면 -> 학부모 앱 파일로 즉시 이동
       else if (hostname.includes('pa-dcprime') || hostname.includes('parent')) {
-        window.location.replace('/src/parent/index.html');
+        window.location.replace('/src/parent/index.html?t=' + timestamp);
       }
-      // 4. 선생님 주소면 -> 선생님 앱 파일로 즉시 이동
       else if (hostname.includes('t-dcprime') || hostname.includes('teacher')) {
-        window.location.replace('/src/teacher/index.html');
+        window.location.replace('/src/teacher/index.html?t=' + timestamp);
       }
     })();
   </script>
@@ -42,6 +39,8 @@
   <div class="bg-white p-8 rounded-3xl shadow-xl w-full max-w-4xl text-center">
     <h1 class="text-3xl font-bold text-slate-800 mb-2">DCPSMS 학원 포털</h1>
     <p class="text-slate-500 mb-10">접속하실 서비스를 선택해주세요</p>
+
+    <script type="module" src="/src/main.js?v=FIX_PWA_FINAL"></script>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <a href="/src/admin/index.html" class="block p-6 bg-indigo-50 rounded-2xl">관리자</a>
