@@ -5,14 +5,38 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DCPSMS 학원 포털</title>
   
   <script>
+    (async function() {
+      console.log("🧹 [Portal V3] 삼성 인터넷 캐시 해결 모드 작동...");
+      try {
+        if ('serviceWorker' in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          for (const registration of registrations) await registration.unregister();
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          for (const key of keys) await caches.delete(key);
+        }
+        
+        const KEY = 'pwa_cleanup_done_v3_samsung_fix';
+        if (!sessionStorage.getItem(KEY)) {
+          sessionStorage.setItem(KEY, 'true');
+          const newUrl = window.location.href.split('?')[0] + '?ver=' + new Date().getTime();
+          console.log("⚡ [Portal] 강제 주소 이동:", newUrl);
+          window.location.replace(newUrl);
+        }
+      } catch (e) {
+        console.error("❌ 오류 발생:", e);
+      }
+    })();
+  </script>
+
+  <script>
     (function() {
       const hostname = window.location.hostname;
-      // 각 앱으로 리다이렉트 (캐시 방지를 위해 꼬리표 추가)
       const timestamp = new Date().getTime(); 
       if (hostname.includes('admin')) {
         window.location.replace('/src/admin/index.html?t=' + timestamp);
@@ -28,7 +52,6 @@
       }
     })();
   </script>
-
   
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
@@ -40,7 +63,7 @@
     <h1 class="text-3xl font-bold text-slate-800 mb-2">DCPSMS 학원 포털</h1>
     <p class="text-slate-500 mb-10">접속하실 서비스를 선택해주세요</p>
 
-    <script type="module" src="/src/main.js?v=FIX_PWA_FINAL"></script>
+    <script type="module" src="/src/main.js?v=FIX_PWA_FINAL_V3"></script>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <a href="/src/admin/index.html" class="block p-6 bg-indigo-50 rounded-2xl">관리자</a>
