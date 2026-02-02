@@ -272,15 +272,15 @@
             <div id="admin-homework-management-buttons" class="mt-2 flex gap-2" style="display: none;"><button id="admin-edit-homework-btn" class="flex-1 bg-slate-100 text-slate-600 text-xs py-2 rounded font-bold">수정</button><button id="admin-delete-homework-btn" class="flex-1 bg-red-50 text-red-500 text-xs py-2 rounded font-bold">삭제</button></div>
           </div>
           
-          <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 p-6 max-h-[calc(100vh-220px)] h-fit overflow-hidden flex flex-col">
+          <div class="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col h-[calc(100vh-240px)]">
             <div id="admin-homework-content" style="display: none;" class="h-full flex flex-col">
-                <h3 id="admin-selected-homework-title" class="text-xl font-bold text-slate-800 mb-4 pb-4 border-b"></h3>
-                <div class="overflow-x-auto h-full overflow-y-auto custom-scrollbar">
-                    <table class="w-full text-sm text-left border-collapse">
+                <h3 id="admin-selected-homework-title" class="text-xl font-bold text-slate-800 mb-4 pb-4 border-b flex-shrink-0"></h3>
+                <div class="overflow-auto w-full border rounded-lg bg-white shadow-sm flex-1 min-h-0" style="max-height: 500px;">
+                    <table class="w-full text-sm text-left border-collapse" style="min-width: 600px;">
                         <thead class="bg-slate-50 text-slate-600 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th class="p-3 border-b font-bold bg-slate-50">이름</th>
-                                <th class="p-3 border-b font-bold bg-slate-50">상태</th>
+                                <th class="p-3 border-b font-bold bg-slate-50" style="white-space: nowrap;">이름</th>
+                                <th class="p-3 border-b font-bold bg-slate-50" style="white-space: nowrap;">상태</th>
                                 <th class="p-3 border-b font-bold bg-slate-50">제출일시</th>
                                 <th class="p-3 border-b font-bold text-center bg-slate-50">확인</th>
                             </tr>

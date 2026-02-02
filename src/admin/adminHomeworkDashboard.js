@@ -33,33 +33,13 @@ export const adminHomeworkDashboard = {
             cancelBtn: document.getElementById('admin-cancel-homework-btn'),
         };
 
-        // --- 1. 테이블 UI 최적화 ---
-        if (this.elements.tableBody) {
-            const table = this.elements.tableBody.closest('table');
-            const wrapper = table?.parentElement;
 
-            if (table && wrapper) {
-                table.style.minWidth = '600px'; 
-                const updateTableStyles = () => {
-                    const rows = table.querySelectorAll('tr');
-                    rows.forEach(row => {
-                        const cells = row.querySelectorAll('th, td');
-                        if(cells.length > 0) {
-                            cells[0].style.whiteSpace = 'nowrap';
-                            if(cells[1]) cells[1].style.whiteSpace = 'nowrap';
-                        }
-                    });
-                };
-                const observer = new MutationObserver(updateTableStyles);
-                observer.observe(this.elements.tableBody, { childList: true });
+        // --- 1. 테이블 UI 최적화 (HTML에서 처리됨) ---
+        // HTML에서 이미 overflow-auto, max-height: 500px, 
+        // white-space: nowrap 등이 적용되어 있으므로
+        // 여기서는 별도의 스타일 조작이 필요 없습니다.
 
-                wrapper.classList.remove('h-full');
-                wrapper.classList.add('overflow-auto', 'w-full', 'border', 'rounded-lg', 'bg-white', 'shadow-sm', 'flex-1', 'min-h-0');
-                wrapper.style.height = 'auto';       
-                wrapper.style.maxHeight = 'none';    
-            }
-        }
-
+        // --- 2. 매니저 초기화 ---
         // --- 2. 매니저 초기화 ---
         this.manager = createHomeworkDashboardManager({
             app: app,
