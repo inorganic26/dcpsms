@@ -8,19 +8,24 @@ service firebase.storage {
     }
 
     // [2] 숙제 제출 파일 규칙
-    // 경로는 반드시: homework_submissions / {숙제ID} / {학생ID} / {파일명} 이어야 함
     match /homework_submissions/{homeworkId}/{studentId}/{fileName} {
-      
-      // 읽기(Read): 선생님이거나, 파일 주인(학생) 본인이면 가능
       allow read: if isTeacher() || request.auth.uid == studentId;
-      
-      // 쓰기(Write - 업로드/수정/삭제): 선생님이거나, 파일 주인(학생) 본인이면 가능
-      // (이 규칙 때문에 학생 A는 학생 B의 폴더에 파일을 절대 못 올림)
       allow write: if isTeacher() || request.auth.uid == studentId;
     }
+    
+    // [3] 일일 테스트 이미지: 인증된 학생이 자신의 폴더에 업로드 가능
+    match /daily_test_images/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // [4] 주간 테스트 이미지: 인증된 학생이 자신의 폴더에 업로드 가능
+    match /weekly_test_images/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
 
-    // [3] 그 외 모든 파일 (교재 PDF, 공지 이미지 등)
-    // 나머지 모든 폴더는 선생님만 관리 가능 (학생은 업로드 불가)
+    // [5] 그 외 모든 파일 (교재 PDF, 공지 이미지 등)
     match /{allPaths=**} {
       allow read, write: if isTeacher();
     }

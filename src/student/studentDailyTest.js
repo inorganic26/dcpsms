@@ -19,11 +19,11 @@ export const studentDailyTest = {
     elements: {
         listContainer: 'student-daily-test-list',
         addButton: 'student-add-daily-test-btn',
-        subjectSelect: 'daily-test-subject-select', 
+        subjectSelect: 'daily-test-subject-select',
         dateInput: 'daily-test-date',
         scoreInput: 'daily-test-score',
         memoInput: 'daily-test-memo',
-        
+
         // 👇 [추가] 파일 업로드 관련 ID
         fileBtn: 'daily-test-file-btn',
         fileInput: 'daily-test-file-input',
@@ -32,13 +32,13 @@ export const studentDailyTest = {
 
     init(app) {
         this.app = app;
-        
+
         const dateInput = document.getElementById(this.elements.dateInput);
         if (dateInput && !dateInput.value) {
             dateInput.value = new Date().toISOString().split('T')[0];
         }
 
-        this.populateSubjects(); 
+        this.populateSubjects();
         this.bindEvents();
         this.fetchTests();
     },
@@ -49,7 +49,7 @@ export const studentDailyTest = {
 
         const subjects = this.app.state.subjects || [];
         select.innerHTML = '<option value="">과목을 선택해주세요</option>';
-        
+
         if (subjects.length === 0) {
             select.innerHTML += '<option disabled>배정된 과목이 없습니다</option>';
             return;
@@ -67,7 +67,7 @@ export const studentDailyTest = {
             const newBtn = addBtn.cloneNode(true);
             addBtn.parentNode.replaceChild(newBtn, addBtn);
             newBtn.addEventListener('click', (e) => {
-                if(e) e.preventDefault();
+                if (e) e.preventDefault();
                 this.handleAddTest(newBtn); // 버튼 전달
             });
         }
@@ -75,7 +75,7 @@ export const studentDailyTest = {
         // 👇 [추가] 파일 선택 버튼 연결
         const fileBtn = document.getElementById(this.elements.fileBtn);
         const fileInput = document.getElementById(this.elements.fileInput);
-        
+
         if (fileBtn && fileInput) {
             fileBtn.onclick = () => fileInput.click();
             fileInput.onchange = (e) => this.handleFileSelect(e);
@@ -86,12 +86,12 @@ export const studentDailyTest = {
     handleFileSelect(event) {
         const files = Array.from(event.target.files);
         this.state.selectedFiles = files; // 상태 저장
-        
+
         const previewContainer = document.getElementById(this.elements.filePreview);
         if (!previewContainer) return;
-        
+
         previewContainer.innerHTML = '';
-        
+
         files.forEach(file => {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -102,10 +102,10 @@ export const studentDailyTest = {
             };
             reader.readAsDataURL(file);
         });
-        
+
         // 버튼 텍스트 변경
         const btn = document.getElementById(this.elements.fileBtn);
-        if(btn) btn.innerHTML = `<span class="material-icons-round text-green-500">check_circle</span> ${files.length}장 선택됨`;
+        if (btn) btn.innerHTML = `<span class="material-icons-round text-green-500">check_circle</span> ${files.length}장 선택됨`;
     },
 
     async handleAddTest(btn) {
@@ -137,6 +137,7 @@ export const studentDailyTest = {
 
         try {
             // 👇 [추가] 이미지 압축 및 업로드 로직
+            console.log("[Debug] Selected files:", this.state.selectedFiles);
             let imageUrls = [];
             if (this.state.selectedFiles.length > 0) {
                 // 압축 옵션 (1MB 이하로 제한)
@@ -163,13 +164,16 @@ export const studentDailyTest = {
 
                 const results = await Promise.all(uploadPromises);
                 imageUrls = results.filter(url => url !== null);
+                console.log("[Debug] Uploaded Image URLs:", imageUrls);
+            } else {
+                console.log("[Debug] No files selected");
             }
 
             // DB 저장
             await addDoc(collection(db, "daily_tests"), {
                 studentId: studentId,
                 studentName: studentName,
-                classId: classId, 
+                classId: classId,
                 subjectId: subjectId,
                 subjectName: subjectName,
                 date: date,
@@ -180,7 +184,7 @@ export const studentDailyTest = {
             });
 
             showToast("등록되었습니다.", false);
-            
+
             // 초기화
             scoreEl.value = '';
             memoEl.value = '';
@@ -188,7 +192,7 @@ export const studentDailyTest = {
             this.state.selectedFiles = []; // 파일 초기화
             document.getElementById(this.elements.filePreview).innerHTML = ''; // 미리보기 초기화
             document.getElementById(this.elements.fileBtn).innerHTML = `<span class="material-icons-round">add_a_photo</span> 사진 선택 (여러 장 가능)`;
-            
+
             this.fetchTests();
         } catch (error) {
             console.error("저장 에러:", error);
@@ -202,7 +206,7 @@ export const studentDailyTest = {
     async fetchTests() {
         const studentId = this.app.state.studentDocId;
         if (!studentId) return;
-        
+
         this.renderLoading();
 
         try {
@@ -212,7 +216,7 @@ export const studentDailyTest = {
             );
             const querySnapshot = await getDocs(q);
             let tests = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
+
             tests.sort((a, b) => new Date(b.date) - new Date(a.date));
             this.state.tests = tests;
             this.renderList();
@@ -232,12 +236,12 @@ export const studentDailyTest = {
 
     renderLoading() {
         const container = document.getElementById(this.elements.listContainer);
-        if(container) container.innerHTML = `<div class="p-4 text-center text-slate-400">로딩 중...</div>`;
+        if (container) container.innerHTML = `<div class="p-4 text-center text-slate-400">로딩 중...</div>`;
     },
 
     renderError() {
         const container = document.getElementById(this.elements.listContainer);
-        if(container) container.innerHTML = `<div class="p-4 text-center text-red-500">데이터를 불러오지 못했습니다.</div>`;
+        if (container) container.innerHTML = `<div class="p-4 text-center text-red-500">데이터를 불러오지 못했습니다.</div>`;
     },
 
     renderList() {
@@ -252,8 +256,12 @@ export const studentDailyTest = {
         container.innerHTML = this.state.tests.map(test => {
             // 이미지가 있는지 확인해서 아이콘 표시
             const hasImage = test.imageUrls && test.imageUrls.length > 0;
-            const imageIcon = hasImage 
-                ? `<span class="material-icons-round text-xs text-indigo-500 ml-1" title="사진 있음">image</span>` 
+            const imageCount = hasImage ? test.imageUrls.length : 0;
+            const imageIcon = hasImage
+                ? `<span class="material-icons-round text-xs text-indigo-500 ml-1" title="사진 ${imageCount}장">image</span>`
+                : '';
+            const imageCountText = hasImage
+                ? `<span class="text-xs text-indigo-600 font-bold ml-1">(사진 ${imageCount}장)</span>`
                 : '';
 
             return `
@@ -261,7 +269,7 @@ export const studentDailyTest = {
                 <div>
                     <div class="text-xs text-slate-400 mb-1 flex items-center gap-1">${test.date} ${imageIcon}</div>
                     <div class="font-bold text-slate-700">${test.subjectName || '과목없음'}</div>
-                    <div class="text-sm text-slate-500 mt-1">${test.memo || '-'}</div>
+                    <div class="text-sm text-slate-500 mt-1">${test.memo || '-'} ${imageCountText}</div>
                 </div>
                 <div class="text-right">
                     <div class="text-lg font-bold text-blue-600 mb-1">${test.score}점</div>

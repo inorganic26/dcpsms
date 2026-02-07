@@ -3,6 +3,7 @@
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app } from "../shared/firebase.js"; // app import 필요
+import { openImagePreviewModal } from "../shared/utils.js"; // 👇 추가
 
 export const parentDailyTest = {
     db: null,
@@ -21,22 +22,22 @@ export const parentDailyTest = {
         this.page = 0;
         this.data = [];
         this.averages = {};
-        
-        if(this.unsubscribe) {
+
+        if (this.unsubscribe) {
             this.unsubscribe();
             this.unsubscribe = null;
         }
 
         // 1. 반 평균 비동기 로드 (서버 호출)
         this.loadAverages();
-        
+
         // 2. 내 점수 실시간 로드
         this.loadData();
 
         const prevBtn = document.getElementById('daily-prev-btn');
         const nextBtn = document.getElementById('daily-next-btn');
-        if(prevBtn) prevBtn.addEventListener('click', () => this.changePage(-1));
-        if(nextBtn) nextBtn.addEventListener('click', () => this.changePage(1));
+        if (prevBtn) prevBtn.addEventListener('click', () => this.changePage(-1));
+        if (nextBtn) nextBtn.addEventListener('click', () => this.changePage(1));
     },
 
     async loadAverages() {
@@ -53,48 +54,49 @@ export const parentDailyTest = {
     },
 
     loadData() {
-        if(!this.student || !this.student.id) return;
-        
+        if (!this.student || !this.student.id) return;
+
         const listEl = document.getElementById('daily-test-list');
-        if(listEl) listEl.innerHTML = '<div class="text-center py-10 text-slate-400">데이터를 불러오는 중...</div>';
+        if (listEl) listEl.innerHTML = '<div class="text-center py-10 text-slate-400">데이터를 불러오는 중...</div>';
 
         // 내 자녀 데이터만 쿼리 (보안 규칙 준수)
         const q = query(
-            collection(this.db, 'daily_tests'), 
+            collection(this.db, 'daily_tests'),
             where('studentId', '==', this.student.id),
             orderBy('date', 'desc')
         );
-        
+
         this.unsubscribe = onSnapshot(q, (snap) => {
             const grouped = {};
             snap.forEach(doc => {
                 const d = doc.data();
                 const key = `${d.date}_${d.subjectName}`;
-                
+
                 // 중복 데이터 방지
-                if(!grouped[key]) {
-                    grouped[key] = { 
-                        date: d.date, 
+                if (!grouped[key]) {
+                    grouped[key] = {
+                        date: d.date,
                         subjectName: d.subjectName,
                         myScore: Number(d.score),
+                        imageUrls: d.imageUrls || [],
                         key: key
                     };
                 }
             });
 
             this.data = Object.values(grouped)
-                .sort((a,b) => new Date(b.date) - new Date(a.date));
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
 
             this.render();
         }, (error) => {
             console.error("로드 에러:", error);
-            if(listEl) listEl.innerHTML = '<div class="text-center py-10 text-red-400">데이터를 불러올 권한이 없습니다.</div>';
+            if (listEl) listEl.innerHTML = '<div class="text-center py-10 text-red-400">데이터를 불러올 권한이 없습니다.</div>';
         });
     },
 
     render() {
         const listEl = document.getElementById('daily-test-list');
-        if(!listEl) return;
+        if (!listEl) return;
 
         const start = this.page * this.PER_PAGE;
         const end = start + this.PER_PAGE;
@@ -102,10 +104,10 @@ export const parentDailyTest = {
 
         const prevBtn = document.getElementById('daily-prev-btn');
         const nextBtn = document.getElementById('daily-next-btn');
-        if(prevBtn) prevBtn.disabled = this.page === 0;
-        if(nextBtn) nextBtn.disabled = end >= this.data.length;
+        if (prevBtn) prevBtn.disabled = this.page === 0;
+        if (nextBtn) nextBtn.disabled = end >= this.data.length;
 
-        if(!items.length) {
+        if (!items.length) {
             listEl.innerHTML = '<div class="text-center py-10 text-slate-400">기록이 없습니다.</div>';
             return;
         }
@@ -119,15 +121,21 @@ export const parentDailyTest = {
                 <span>최근 응시 평균: <span class="text-indigo-600">${myAvg}점</span></span>
             </div>
             ${items.map(item => {
-                // 서버에서 가져온 평균 매칭
-                const classAvg = this.averages[item.key] || '-';
-                
-                return `
+            // 서버에서 가져온 평균 매칭
+            const classAvg = this.averages[item.key] || '-';
+
+            return `
                 <div class="mobile-card mb-3 p-4 bg-white rounded-2xl shadow-sm border border-slate-100">
                     <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-50">
                         <div>
                             <span class="text-xs font-bold text-slate-400 block mb-0.5">${item.date}</span>
                             <h3 class="font-bold text-base text-slate-800">${item.subjectName || '테스트'}</h3>
+                            ${item.imageUrls.length > 0 ?
+                    `<button class="mt-1 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors flex items-center gap-1 view-images-btn" 
+                                         data-urls="${item.imageUrls.join(',')}">
+                                    <span class="material-icons-round text-sm">filter_none</span> 시험지 확인 (${item.imageUrls.length}장)
+                                 </button>`
+                    : ''}
                         </div>
                         <div class="text-right">
                              <span class="text-xs font-bold text-slate-400">반 평균</span>
@@ -142,6 +150,15 @@ export const parentDailyTest = {
                     </div>
                 </div>
             `}).join('')}`;
+
+        // 이미지 보기 버튼 이벤트 연결
+        listEl.querySelectorAll('.view-images-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const urls = btn.dataset.urls.split(',');
+                openImagePreviewModal(urls);
+            });
+        });
     },
 
     changePage(delta) {

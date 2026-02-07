@@ -52,7 +52,7 @@ service cloud.firestore {
       allow write: if isTeacher();
       allow create: if isStudent(request.resource.data.studentId);
       allow update: if isStudent(resource.data.studentId);
-      allow delete: if false;
+      allow delete: if isTeacher() || isStudent(resource.data.studentId);
       allow read: if isTeacher() ||
         (request.auth != null && resource.data.studentId == request.auth.uid) ||
         isParentOf(resource.data.studentId);
