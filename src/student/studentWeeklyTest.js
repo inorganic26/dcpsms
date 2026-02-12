@@ -1,12 +1,10 @@
 // src/student/studentWeeklyTest.js
 
-// 👇 [추가]
 import imageCompression from 'browser-image-compression';
-import { db, storage } from "../shared/firebase.js"; // storage 추가
+import { db, storage } from "../shared/firebase.js";
 import { doc, getDoc, setDoc, collection, query, where, orderBy, getDocs } from "firebase/firestore";
-// 👇 [추가]
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { showToast } from "../shared/utils.js"; // showToast 사용 권장
+import { showToast } from "../shared/utils.js";
 import { 
     getWeeklyTestTargetDate, 
     formatDateString, 
@@ -21,7 +19,8 @@ export const studentWeeklyTest = {
         record: null,
         history: [],
         loading: false,
-        selectedFiles: [] // 👇 [추가]
+        selectedFiles: [],
+        existingImages: [] // 👇 [추가] 기존 저장된 이미지 URL
     },
 
     elements: {
@@ -32,10 +31,7 @@ export const studentWeeklyTest = {
         scoreInput: 'weekly-test-score',
         saveBtn: 'weekly-test-save-btn',
         statusMsg: 'weekly-test-status',
-        backBtn: 'student-back-to-subjects-from-weekly-btn',
         historyList: 'weekly-test-history-list',
-        
-        // 👇 [추가] 파일 관련
         fileBtn: 'weekly-test-file-btn',
         fileInput: 'weekly-test-file-input',
         filePreview: 'weekly-test-file-preview'
@@ -44,6 +40,8 @@ export const studentWeeklyTest = {
     async init(studentId, studentName) {
         this.state.studentId = studentId;
         this.state.studentName = studentName;
+        this.state.selectedFiles = [];
+        this.state.existingImages = [];
         
         const dateInput = document.getElementById(this.elements.dateInput);
         if(dateInput) {
@@ -69,7 +67,6 @@ export const studentWeeklyTest = {
             newBtn.addEventListener('click', () => this.handleSave(newBtn));
         }
         
-        // 👇 [추가] 파일 선택 이벤트
         const fileBtn = document.getElementById(this.elements.fileBtn);
         const fileInput = document.getElementById(this.elements.fileInput);
         if(fileBtn && fileInput) {
@@ -78,37 +75,74 @@ export const studentWeeklyTest = {
         }
     },
 
-    // 👇 [추가] 파일 미리보기
-    handleFileSelect(event) {
-        const files = Array.from(event.target.files);
-        this.state.selectedFiles = files;
+    // 👇 [수정] 파일 미리보기 (기존 + 신규 통합)
+    renderFilePreview() {
+        const container = document.getElementById(this.elements.filePreview);
+        const btn = document.getElementById(this.elements.fileBtn);
+        if (!container) return;
         
-        const previewEl = document.getElementById(this.elements.filePreview);
-        if(!previewEl) return;
-        
-        previewEl.innerHTML = '';
-        files.forEach(file => {
+        container.innerHTML = '';
+
+        // 1. 기존 이미지
+        this.state.existingImages.forEach((url, index) => {
+            const div = document.createElement('div');
+            div.className = "relative inline-block m-1";
+            div.innerHTML = `
+                <img src="${url}" class="w-16 h-16 object-cover rounded-lg border border-indigo-200">
+                <button class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow hover:bg-red-600">
+                    <span class="material-icons-round text-xs block">close</span>
+                </button>`;
+            div.querySelector('button').onclick = () => {
+                this.state.existingImages.splice(index, 1);
+                this.renderFilePreview();
+            };
+            container.appendChild(div);
+        });
+
+        // 2. 신규 파일
+        this.state.selectedFiles.forEach((file, index) => {
             const reader = new FileReader();
             reader.onload = (e) => {
-                const img = document.createElement('img');
-                img.src = e.target.result;
-                img.className = 'w-full h-16 object-cover rounded-lg border border-slate-200';
-                previewEl.appendChild(img);
+                const div = document.createElement('div');
+                div.className = "relative inline-block m-1";
+                div.innerHTML = `
+                    <img src="${e.target.result}" class="w-16 h-16 object-cover rounded-lg border border-green-200 opacity-90">
+                    <button class="absolute -top-2 -right-2 bg-slate-500 text-white rounded-full p-0.5 shadow hover:bg-slate-600">
+                        <span class="material-icons-round text-xs block">close</span>
+                    </button>`;
+                div.querySelector('button').onclick = () => {
+                    this.state.selectedFiles.splice(index, 1);
+                    this.renderFilePreview();
+                };
+                container.appendChild(div);
             };
             reader.readAsDataURL(file);
         });
-        
-        const btn = document.getElementById(this.elements.fileBtn);
-        if(btn) btn.innerHTML = `<span class="material-icons-round text-green-500">check_circle</span> ${files.length}장 선택됨`;
+
+        // 버튼 텍스트 업데이트
+        const total = this.state.existingImages.length + this.state.selectedFiles.length;
+        if(btn) {
+            btn.innerHTML = total > 0 
+                ? `<span class="material-icons-round text-green-500">check_circle</span> 총 ${total}장`
+                : `<span class="material-icons-round">add_a_photo</span> 사진 선택`;
+        }
+    },
+
+    handleFileSelect(event) {
+        const files = Array.from(event.target.files);
+        this.state.selectedFiles = [...this.state.selectedFiles, ...files];
+        this.renderFilePreview();
+        event.target.value = '';
     },
 
     handleDateChange() {
-        // (기존 로직 동일)
         const dateInput = document.getElementById(this.elements.dateInput);
         const timeSelect = document.getElementById(this.elements.timeSelect);
         if (!dateInput || !timeSelect) return;
+        
         const dateVal = dateInput.value;
         if (!dateVal) return;
+        
         const day = new Date(dateVal).getDay();
         let options = [];
         if (day === 5) options = ['16:00', '17:00', '18:00', '19:00', '20:00'];
@@ -116,12 +150,19 @@ export const studentWeeklyTest = {
         
         timeSelect.innerHTML = '<option value="">시간 선택</option>';
         if (options.length === 0) {
-            const opt = document.createElement('option'); opt.text = "금/토/일만 가능"; opt.disabled = true; timeSelect.appendChild(opt);
+            const opt = document.createElement('option'); 
+            opt.text = "금/토/일만 가능"; 
+            opt.disabled = true; 
+            timeSelect.appendChild(opt);
         } else {
             options.forEach(t => {
-                const opt = document.createElement('option'); opt.value = t; opt.text = t; timeSelect.appendChild(opt);
+                const opt = document.createElement('option'); 
+                opt.value = t; 
+                opt.text = t; 
+                timeSelect.appendChild(opt);
             });
         }
+        
         const targetDate = getWeeklyTestTargetDate(dateVal);
         const label = getWeekLabel(targetDate);
         const titleEl = document.getElementById(this.elements.title);
@@ -133,19 +174,26 @@ export const studentWeeklyTest = {
         const targetDate = getWeeklyTestTargetDate(new Date());
         const targetDateStr = formatDateString(targetDate);
         const docId = `${this.state.studentId}_${targetDateStr}`;
+        
         try {
             const docRef = doc(db, 'weekly_tests', docId);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
-                this.state.record = docSnap.data();
-                this.renderCurrentData(docSnap.data());
+                const data = docSnap.data();
+                this.state.record = data;
+                // 👇 [추가] 기존 이미지 불러오기
+                this.state.existingImages = data.imageUrls || [];
+                this.renderCurrentData(data);
+                this.renderFilePreview(); // 미리보기 초기화
             } else {
                 this.state.record = null;
+                this.state.existingImages = [];
                 this.renderStatus("아직 예약 내역이 없습니다.");
+                this.renderFilePreview();
             }
         } catch (error) {
+            console.error(error);
             this.state.record = null;
-            this.renderStatus("아직 예약 내역이 없습니다.");
         }
     },
 
@@ -187,18 +235,19 @@ export const studentWeeklyTest = {
     renderHistory() {
         const container = document.getElementById(this.elements.historyList);
         if (!container) return;
+        
         if (this.state.history.length === 0) {
             container.innerHTML = '<p class="text-center text-slate-400 py-4 text-sm">아직 기록이 없습니다.</p>';
             return;
         }
+        
         container.innerHTML = this.state.history.map(item => {
             const scoreDisplay = item.score !== null 
                 ? `<span class="text-lg font-bold ${item.score >= 90 ? 'text-blue-600' : (item.score < 70 ? 'text-red-500' : 'text-slate-700')}">${item.score}점</span>`
                 : `<span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">미응시</span>`;
             
-            // 이미지 아이콘 추가
             const hasImage = item.imageUrls && item.imageUrls.length > 0;
-            const icon = hasImage ? '<span class="material-icons-round text-xs text-indigo-500 ml-1">image</span>' : '';
+            const icon = hasImage ? `<span class="material-icons-round text-xs text-indigo-500 ml-1" title="사진 ${item.imageUrls.length}장">image</span>` : '';
 
             return `
                 <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center">
@@ -227,7 +276,6 @@ export const studentWeeklyTest = {
 
         if (!examDate || !examTime) return alert("날짜와 시간을 선택해주세요.");
         
-        // 시간 점검
         const day = new Date(examDate).getDay();
         if (day !== 5 && day !== 6 && day !== 0) return alert("주간테스트는 금, 토, 일요일에만 가능합니다.");
 
@@ -242,12 +290,10 @@ export const studentWeeklyTest = {
         btn.textContent = "저장 중...";
 
         try {
-            // 👇 [추가] 이미지 압축 및 업로드
-            let imageUrls = [];
-            // 기존 이미지가 있다면 유지할 수도 있지만, 여기선 새로 올린 것만 추가하거나 덮어쓰는 로직 (현재는 추가)
+            // 1. 신규 이미지 업로드
+            let newImageUrls = [];
             if (this.state.selectedFiles.length > 0) {
                 const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true };
-                
                 const uploadPromises = this.state.selectedFiles.map(async (file) => {
                     try {
                         const compressed = await imageCompression(file, options);
@@ -257,10 +303,12 @@ export const studentWeeklyTest = {
                         return await getDownloadURL(storageRef);
                     } catch (e) { console.error(e); return null; }
                 });
-                
                 const results = await Promise.all(uploadPromises);
-                imageUrls = results.filter(u => u !== null);
+                newImageUrls = results.filter(u => u !== null);
             }
+
+            // 2. 최종 URL 리스트 생성 (기존 유지 + 신규)
+            const finalImageUrls = [...this.state.existingImages, ...newImageUrls];
 
             const targetDate = getWeeklyTestTargetDate(examDate);
             const targetDateStr = formatDateString(targetDate);
@@ -276,32 +324,26 @@ export const studentWeeklyTest = {
                 score: score ? Number(score) : null,
                 status: score ? 'completed' : 'reserved',
                 updatedAt: new Date(),
-                uid: this.state.studentId 
+                uid: this.state.studentId,
+                imageUrls: finalImageUrls // 👇 업데이트된 이미지 목록 저장
             };
             
-            // 이미지가 있을 때만 필드 업데이트 (merge이므로 기존 이미지 날아가지 않게 주의 - 여기서는 덮어쓰기 or 병합 선택)
-            // 간단하게: 새 이미지가 있으면 덮어쓰기, 없으면 기존 유지하려면 로직이 더 필요하지만
-            // 여기선 "새로 올린게 있으면 저장"으로 처리합니다.
-            if (imageUrls.length > 0) {
-                payload.imageUrls = imageUrls;
-            }
-
             await setDoc(doc(db, 'weekly_tests', docId), payload, { merge: true });
             
             // 상태 갱신
             this.state.record = { ...this.state.record, ...payload };
+            this.state.existingImages = finalImageUrls; // 상태 동기화
+            this.state.selectedFiles = []; // 선택 파일 초기화
+            
             this.renderCurrentData(this.state.record);
+            this.renderFilePreview();
             await this.fetchHistory();
             
-            // 초기화
-            this.state.selectedFiles = [];
-            document.getElementById(this.elements.filePreview).innerHTML = '';
-            document.getElementById(this.elements.fileBtn).innerHTML = `<span class="material-icons-round">add_a_photo</span> 사진 선택 (여러 장 가능)`;
+            showToast("저장되었습니다.", false);
 
-            alert("저장되었습니다.");
         } catch (e) {
             console.error(e);
-            alert("저장 실패: 오류가 발생했습니다.");
+            showToast("저장 실패", true);
         } finally {
             btn.disabled = false;
             btn.innerHTML = `<span class="material-icons-round">save</span> 예약 / 점수 제출`;
