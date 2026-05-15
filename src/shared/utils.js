@@ -33,8 +33,8 @@ export const hideLoading = () => {
     }
 };
 
-// 👇 [최종] 모바일 다운로드 호환 + 스크롤 뷰어 통합 버전
-export const openImagePreviewModal = (imageUrls) => {
+// 👇 [수정] 다운로드 파일명 지정을 위해 studentName, date 파라미터 추가
+export const openImagePreviewModal = (imageUrls, studentName = '이름미상', date = '날짜미상') => {
     if (!imageUrls || imageUrls.length === 0) return;
 
     let modal = document.getElementById('image-preview-modal');
@@ -97,7 +97,7 @@ export const openImagePreviewModal = (imageUrls) => {
             </button>
         `;
 
-        // 👇 [핵심] 모바일 호환 다운로드 로직 (Blob 사용)
+        // 다운로드 로직
         const downloadBtn = infoBar.querySelector('.download-btn');
         downloadBtn.onclick = async (e) => {
             e.stopPropagation();
@@ -106,17 +106,16 @@ export const openImagePreviewModal = (imageUrls) => {
             downloadBtn.disabled = true;
 
             try {
-                // 1. 이미지를 데이터로 가져옴 (CORS 우회)
                 const response = await fetch(url, { mode: 'cors' });
                 if (!response.ok) throw new Error('Network response was not ok');
                 
                 const blob = await response.blob();
                 const blobUrl = window.URL.createObjectURL(blob);
 
-                // 2. 가상의 a 태그로 다운로드 트리거
                 const a = document.createElement('a');
                 a.href = blobUrl;
-                a.download = `test_image_${Date.now()}_${index + 1}.jpg`; 
+                // 👇 [핵심] 다운로드 파일명 형식 적용: 학생이름_날짜_일일테스트_번호.jpg
+                a.download = `${studentName}_${date}_일일테스트_${index + 1}.jpg`; 
                 document.body.appendChild(a);
                 a.click();
                 
@@ -126,7 +125,6 @@ export const openImagePreviewModal = (imageUrls) => {
                 showToast("저장되었습니다.", false);
             } catch (err) {
                 console.error("Download failed:", err);
-                // 실패 시 새 탭으로 열기
                 window.open(url, '_blank');
                 showToast("오류: 이미지를 길게 눌러 저장하세요.", true);
             } finally {

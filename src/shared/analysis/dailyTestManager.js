@@ -2,35 +2,32 @@
 
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase.js";
-import { showToast, openImagePreviewModal } from "../utils.js"; // 👇 추가
+import { showToast, openImagePreviewModal } from "../utils.js";
 
 export const createDailyTestManager = (config) => {
     const { elements, role } = config;
 
-    // 상태 관리
     let state = {
         records: [], dates: [], page: 0, unsubscribe: null,
         classId: null, subjectId: null, students: []
     };
     const ITEMS_PER_PAGE = 5;
 
-    // --- UI 헬퍼 함수 ---
-    const createCell = (studentId, date, record) => {
-        // 1. 미응시 상태 (점수 없음)
+    // 👇 [수정] 학생 이름(student) 파라미터가 들어오도록 변경
+    const createCell = (student, date, record) => {
         if (!record) {
             return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-daily" 
-                        data-sid="${studentId}" data-date="${date}" data-ex="false">
+                        data-sid="${student.id}" data-date="${date}" data-ex="false">
                         <span class="text-xs text-red-300 font-bold">-</span>
                     </td>`;
         }
 
-        // 2. 응시 완료 상태 (점수 있음)
         const score = Number(record.score);
         let cls = score >= 90 ? "text-blue-700 bg-blue-50 font-bold" : (score < 70 ? "text-red-600 bg-red-50 font-bold" : "font-bold text-slate-700");
 
-        // 점수와 삭제 버튼(x)을 함께 렌더링
+        // 👇 [수정] daily-image-btn 에 data-name, data-date 속성 추가
         return `<td class="p-2 border ${cls} cell-daily relative group hover:bg-slate-50 transition-colors" 
-                    title="${record.memo || ''}" data-sid="${studentId}" data-date="${date}" data-ex="true" 
+                    title="${record.memo || ''}" data-sid="${student.id}" data-date="${date}" data-ex="true" 
                     data-doc="${record.id}" data-scr="${score}" data-memo="${record.memo || ''}">
                     
                     <div class="flex items-center justify-center gap-1 w-full h-full relative">
@@ -38,7 +35,7 @@ export const createDailyTestManager = (config) => {
                         
                         ${record.imageUrls && record.imageUrls.length > 0 ?
                 `<button class="daily-image-btn w-5 h-5 flex items-center justify-center rounded-full text-indigo-400 hover:bg-indigo-100 hover:text-indigo-600 transition-all absolute left-1 top-1/2 -translate-y-1/2" 
-                                     title="답안지 보기" data-urls="${record.imageUrls.join(',')}">
+                                     title="답안지 보기" data-urls="${record.imageUrls.join(',')}" data-name="${student.name}" data-date="${date}">
                                 <span class="material-icons-round text-[14px]">image</span>
                             </button>`
                 : ''}
@@ -62,12 +59,12 @@ export const createDailyTestManager = (config) => {
         visibleDates.forEach(date => {
             const candidates = studentRecords.filter(r => r.date === date);
             const finalRecord = candidates.find(r => r.imageUrls && r.imageUrls.length > 0) || candidates[0];
-            html += createCell(student.id, date, finalRecord);
+            // 👇 [수정] student 전체 객체 전달
+            html += createCell(student, date, finalRecord);
         });
         return html + `</tr>`;
     };
 
-    // --- 메인 로직 ---
     const loadDailyTests = (classId, subjectId, students) => {
         const container = elements.dailyTestResultTable;
         state = { ...state, classId, subjectId, students, page: 0 };
@@ -81,13 +78,11 @@ export const createDailyTestManager = (config) => {
         }
         if (container) container.innerHTML = '<div class="loader-small mx-auto"></div>';
 
-        // [수정] classId 필터 제거 및 학생 ID로 메모리 필터링
         const q = query(collection(db, "daily_tests"), where("subjectId", "==", subjectId), orderBy("date", "desc"));
         state.unsubscribe = onSnapshot(q, (snap) => {
             const allRecords = [];
             snap.forEach(d => allRecords.push({ id: d.id, ...d.data() }));
 
-            // 현재 반 학생들만 필터링
             const studentIds = new Set(students.map(s => s.id));
             const records = allRecords.filter(r => studentIds.has(r.studentId));
 
@@ -126,61 +121,45 @@ export const createDailyTestManager = (config) => {
 
         container.innerHTML = html + `</tbody></table>`;
 
-        // --- 이벤트 연결 ---
-
-        // 1. 셀 클릭 (점수 수정/입력)
         container.querySelectorAll('.cell-daily').forEach(c => {
             c.onclick = (e) => {
-                // 삭제 버튼이나 이미지 버튼을 눌렀다면 수정 팝업 띄우지 않음
                 if (e.target.closest('.daily-delete-btn') || e.target.closest('.daily-image-btn')) return;
                 handleScoreClick(c);
             };
         });
 
-        // 2. 삭제 버튼 클릭 (삭제 실행)
         container.querySelectorAll('.daily-delete-btn').forEach(btn => {
             btn.onclick = (e) => {
-                e.stopPropagation(); // 부모(수정) 이벤트 전파 중단
+                e.stopPropagation(); 
                 handleDelete(btn.dataset.doc);
             };
         });
 
-        // 3. 이미지 버튼 클릭 (이미지 보기)
+        // 👇 [수정] 모달 호출 시 data 속성에서 꺼낸 이름과 날짜를 전달
         container.querySelectorAll('.daily-image-btn').forEach(btn => {
             btn.onclick = (e) => {
                 e.stopPropagation();
                 const urls = btn.dataset.urls.split(',');
-                openImagePreviewModal(urls);
+                const name = btn.dataset.name;
+                const date = btn.dataset.date;
+                openImagePreviewModal(urls, name, date);
             };
         });
     };
 
-    // [삭제] 기능
     const handleDelete = async (docId) => {
-        console.log("[Admin Delete] Attempting to delete record:", docId);
-        if (!docId) {
-            console.error("[Admin Delete] No docId provided");
-            return;
-        }
-        if (!confirm("정말 이 점수 기록을 삭제하시겠습니까?")) {
-            console.log("[Admin Delete] User canceled");
-            return;
-        }
+        if (!docId) return;
+        if (!confirm("정말 이 점수 기록을 삭제하시겠습니까?")) return;
 
         try {
-            console.log("[Admin Delete] Deleting from Firestore...");
             await deleteDoc(doc(db, "daily_tests", docId));
-            console.log("[Admin Delete] Successfully deleted");
             showToast("기록 삭제됨");
         } catch (e) {
-            console.error("[Admin Delete] Error occurred:", e);
-            console.error("[Admin Delete] Error code:", e.code);
-            console.error("[Admin Delete] Error message:", e.message);
+            console.error(e);
             showToast("삭제 실패", true);
         }
     };
 
-    // [수정] 점수 수정 함수
     const handleScoreClick = async (cell) => {
         const { sid, date, ex, doc: did, scr, memo } = cell.dataset;
         const s = state.students.find(x => x.id === sid);
@@ -195,14 +174,12 @@ export const createDailyTestManager = (config) => {
 
         try {
             if (ex === 'true' && did) {
-                // 수정
                 await updateDoc(doc(db, "daily_tests", did), {
                     score,
                     memo: mem || "",
                     updatedAt: serverTimestamp()
                 });
             } else {
-                // 신규 등록
                 const subName = elements.dailyTestSubjectSelect?.options[elements.dailyTestSubjectSelect.selectedIndex].text || "과목";
                 await addDoc(collection(db, "daily_tests"), {
                     studentId: sid,

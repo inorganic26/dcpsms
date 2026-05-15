@@ -1,18 +1,18 @@
-// src/parent/parentDailyTest.js 전체 교체 추천
+// src/parent/parentDailyTest.js
 
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { app } from "../shared/firebase.js"; // app import 필요
-import { openImagePreviewModal } from "../shared/utils.js"; // 👇 추가
+import { app } from "../shared/firebase.js"; 
+import { openImagePreviewModal } from "../shared/utils.js"; 
 
 export const parentDailyTest = {
     db: null,
     student: null,
     classId: null,
     data: [],
-    averages: {}, // 반 평균 저장용
+    averages: {}, 
     page: 0,
-    PER_PAGE: 5, // 모바일이니까 5개 정도
+    PER_PAGE: 5, 
     unsubscribe: null,
 
     init(db, student, classData) {
@@ -28,10 +28,7 @@ export const parentDailyTest = {
             this.unsubscribe = null;
         }
 
-        // 1. 반 평균 비동기 로드 (서버 호출)
         this.loadAverages();
-
-        // 2. 내 점수 실시간 로드
         this.loadData();
 
         const prevBtn = document.getElementById('daily-prev-btn');
@@ -47,7 +44,7 @@ export const parentDailyTest = {
             const getAvgFn = httpsCallable(functions, 'getDailyTestAverages');
             const result = await getAvgFn({ classId: this.classId });
             this.averages = result.data || {};
-            this.render(); // 평균 도착하면 다시 그리기
+            this.render(); 
         } catch (e) {
             console.error("평균 로드 실패:", e);
         }
@@ -59,7 +56,6 @@ export const parentDailyTest = {
         const listEl = document.getElementById('daily-test-list');
         if (listEl) listEl.innerHTML = '<div class="text-center py-10 text-slate-400">데이터를 불러오는 중...</div>';
 
-        // 내 자녀 데이터만 쿼리 (보안 규칙 준수)
         const q = query(
             collection(this.db, 'daily_tests'),
             where('studentId', '==', this.student.id),
@@ -72,7 +68,6 @@ export const parentDailyTest = {
                 const d = doc.data();
                 const key = `${d.date}_${d.subjectName}`;
 
-                // 중복 데이터 방지
                 if (!grouped[key]) {
                     grouped[key] = {
                         date: d.date,
@@ -112,16 +107,15 @@ export const parentDailyTest = {
             return;
         }
 
-        // 학생 전체 평균 계산 (현재 페이지에 보이는 항목들 기준)
         const myTotal = items.reduce((sum, item) => sum + (item.myScore || 0), 0);
         const myAvg = items.length ? (myTotal / items.length).toFixed(1) : 0;
 
+        // 👇 [수정] view-images-btn에 data-name, data-date 속성 추가
         listEl.innerHTML = `
             <div class="mb-4 px-2 flex justify-between text-sm font-bold text-slate-600">
                 <span>최근 응시 평균: <span class="text-indigo-600">${myAvg}점</span></span>
             </div>
             ${items.map(item => {
-            // 서버에서 가져온 평균 매칭
             const classAvg = this.averages[item.key] || '-';
 
             return `
@@ -132,7 +126,7 @@ export const parentDailyTest = {
                             <h3 class="font-bold text-base text-slate-800">${item.subjectName || '테스트'}</h3>
                             ${item.imageUrls.length > 0 ?
                     `<button class="mt-1 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors flex items-center gap-1 view-images-btn" 
-                                         data-urls="${item.imageUrls.join(',')}">
+                                         data-urls="${item.imageUrls.join(',')}" data-name="${this.student.name}" data-date="${item.date}">
                                     <span class="material-icons-round text-sm">filter_none</span> 시험지 확인 (${item.imageUrls.length}장)
                                  </button>`
                     : ''}
@@ -151,12 +145,14 @@ export const parentDailyTest = {
                 </div>
             `}).join('')}`;
 
-        // 이미지 보기 버튼 이벤트 연결
+        // 👇 [수정] openImagePreviewModal 호출 시 name, date 함께 전달
         listEl.querySelectorAll('.view-images-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const urls = btn.dataset.urls.split(',');
-                openImagePreviewModal(urls);
+                const name = btn.dataset.name;
+                const date = btn.dataset.date;
+                openImagePreviewModal(urls, name, date);
             });
         });
     },
