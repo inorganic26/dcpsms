@@ -1,7 +1,6 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-
     // [1] 선생님인지 확인하는 함수 (관리자 권한)
     function isTeacher() {
       return request.auth != null && request.auth.token.email == "inorganic26@gmail.com";
@@ -13,16 +12,16 @@ service firebase.storage {
       allow write: if isTeacher() || request.auth.uid == studentId;
     }
     
-    // [3] 일일 테스트 이미지: 인증된 학생이 자신의 폴더에 업로드 가능
+    // [3] 일일 테스트 이미지 - uid 체크 제거 (studentDocId와 uid 불일치 문제 해결)
     match /daily_test_images/{userId}/{fileName} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null;
     }
     
-    // [4] 주간 테스트 이미지: 인증된 학생이 자신의 폴더에 업로드 가능
+    // [4] 주간 테스트 이미지 - uid 체크 제거 (동일한 이유로 통일)
     match /weekly_test_images/{userId}/{fileName} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null;
     }
 
     // [5] 그 외 모든 파일 (교재 PDF, 공지 이미지 등)

@@ -1,5 +1,6 @@
 // src/student/studentDailyTest.js
 
+import imageCompression from 'browser-image-compression';
 import { db, storage } from "../shared/firebase.js";
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -13,7 +14,7 @@ export const studentDailyTest = {
         selectedFiles: [],
         isEditing: false,
         editingId: null,
-        existingImages: []
+        existingImages: [] 
     },
 
     elements: {
@@ -26,14 +27,14 @@ export const studentDailyTest = {
         fileBtn: 'daily-test-file-btn',
         fileInput: 'daily-test-file-input',
         filePreview: 'daily-test-file-preview',
-        formTitle: 'daily-test-form-title'
+        formTitle: 'daily-test-form-title' 
     },
 
     init(app) {
         this.app = app;
+        this.resetForm(); // null 체크가 추가되어 언제 호출해도 안전합니다.
         this.populateSubjects();
         this.bindEvents();
-        this.resetForm();   // DOM이 준비된 후 (populateSubjects, bindEvents 이후) 호출
         this.fetchTests();
     },
 
@@ -68,15 +69,8 @@ export const studentDailyTest = {
         const fileInput = document.getElementById(this.elements.fileInput);
 
         if (fileBtn && fileInput) {
-            // cloneNode로 기존 이벤트 제거 후 재등록 (숙제 파일과 동일한 방식)
-            const newFileBtn = fileBtn.cloneNode(true);
-            fileBtn.parentNode.replaceChild(newFileBtn, fileBtn);
-
-            const newFileInput = fileInput.cloneNode(true);
-            fileInput.parentNode.replaceChild(newFileInput, fileInput);
-
-            newFileBtn.addEventListener('click', () => newFileInput.click());
-            newFileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+            fileBtn.onclick = () => fileInput.click();
+            fileInput.onchange = (e) => this.handleFileSelect(e);
         }
     },
 
@@ -99,14 +93,14 @@ export const studentDailyTest = {
         if (subjectSelect) subjectSelect.value = '';
 
         const fileInput = document.getElementById(this.elements.fileInput);
-        if (fileInput) fileInput.value = '';
-
+        if (fileInput) fileInput.value = ''; 
+        
         const btn = document.getElementById(this.elements.addButton);
-        if (btn) btn.textContent = "등록하기";
-
+        if(btn) btn.textContent = "등록하기";
+        
         const fileBtn = document.getElementById(this.elements.fileBtn);
-        if (fileBtn) fileBtn.innerHTML = `<span class="material-icons-round">add_a_photo</span> 사진 선택 (여러 장 가능)`;
-
+        if(fileBtn) fileBtn.innerHTML = `<span class="material-icons-round">add_a_photo</span> 사진 선택 (여러 장 가능)`;
+        
         this.renderFilePreview();
     },
 
@@ -118,17 +112,17 @@ export const studentDailyTest = {
         this.state.existingImages.forEach((url, index) => {
             const wrapper = document.createElement('div');
             wrapper.className = 'relative inline-block m-1';
-
+            
             wrapper.innerHTML = `
                 <img src="${url}" class="w-16 h-16 object-cover rounded-lg border border-indigo-200">
                 <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 shadow-md hover:bg-red-600 transition-colors" title="삭제">
                     <span class="material-icons-round text-xs block">close</span>
                 </button>
             `;
-
+            
             wrapper.querySelector('button').onclick = () => {
                 this.state.existingImages.splice(index, 1);
-                this.renderFilePreview();
+                this.renderFilePreview(); 
             };
             container.appendChild(wrapper);
         });
@@ -153,7 +147,7 @@ export const studentDailyTest = {
             };
             reader.readAsDataURL(file);
         });
-
+        
         this.updateFileButtonText();
     },
 
@@ -171,55 +165,83 @@ export const studentDailyTest = {
 
     handleFileSelect(event) {
         const files = Array.from(event.target.files);
-        this.state.selectedFiles = [...this.state.selectedFiles, ...files];
+        this.state.selectedFiles = [...this.state.selectedFiles, ...files]; 
         this.renderFilePreview();
-        event.target.value = '';
+        event.target.value = ''; 
     },
 
     async handleSave(btn) {
-        const date = document.getElementById(this.elements.dateInput)?.value;
-        const score = document.getElementById(this.elements.scoreInput)?.value;
-        const memo = document.getElementById(this.elements.memoInput)?.value;
+        const dateInput = document.getElementById(this.elements.dateInput);
+        const date = dateInput ? dateInput.value : '';
+        
+        const scoreInput = document.getElementById(this.elements.scoreInput);
+        const score = scoreInput ? scoreInput.value : '';
+        
+        const memoInput = document.getElementById(this.elements.memoInput);
+        const memo = memoInput ? memoInput.value : '';
+        
         const subjEl = document.getElementById(this.elements.subjectSelect);
-        const subjectId = subjEl?.value;
+        const subjectId = subjEl ? subjEl.value : '';
 
         if (!subjectId) return showToast("과목을 선택해주세요.", true);
-
-        // score가 빈 문자열인지만 체크 (0점도 유효한 점수이므로 === '' 로 비교)
-        if (score === '' || score === null || score === undefined) return showToast("점수를 입력해주세요.", true);
+        
+        // 0점 등록이 가능하도록 유효성 검사 완화
+        if (score === '' || score === null) return showToast("점수를 입력해주세요.", true);
 
         const subjectName = subjEl.options[subjEl.selectedIndex].text;
         const studentId = this.app.state.studentDocId;
-
+        
         const actionText = this.state.isEditing ? "수정" : "등록";
         if (!confirm(`${subjectName} - ${score}점\n${actionText}하시겠습니까?`)) return;
 
         btn.disabled = true;
-        btn.textContent = "업로드 중...";
+        btn.textContent = "처리 중...";
 
         try {
             let newImageUrls = [];
-
+            
             if (this.state.selectedFiles.length > 0) {
+                const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true };
+                
                 const uploadPromises = this.state.selectedFiles.map(async (file) => {
                     try {
-   const uid = this.app.firebase.auth.currentUser?.uid || studentId;
-const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
-                        const storageRef = ref(storage, path);
-                        await uploadBytes(storageRef, file);
-                        return await getDownloadURL(storageRef);
+                        let fileToUpload = file;
+                        try {
+                            // 1. 요청하신 대로 이미지 압축 먼저 시도
+                            fileToUpload = await imageCompression(file, options);
+                        } catch (compressErr) {
+                            console.warn("압축 실패, 원본으로 우회합니다:", compressErr);
+                        }
+
+                        const path = `daily_test_images/${studentId}/${Date.now()}_${file.name}`;
+                        let downloadUrl = "";
+                        
+                        // 🔥 2. 결정적 해결책: 파이어베이스 버전 충돌 방지 (숙제 앱 방식 적용)
+                        if (storage && typeof storage.ref === 'function') {
+                            // 학원 프로젝트의 구버전(Compat) 로직을 안전하게 실행
+                            const fileRef = storage.ref().child(path);
+                            await fileRef.put(fileToUpload);
+                            downloadUrl = await fileRef.getDownloadURL();
+                        } else {
+                            // 최신버전(Modular) 로직 실행
+                            const storageRef = ref(storage, path);
+                            await uploadBytes(storageRef, fileToUpload);
+                            downloadUrl = await getDownloadURL(storageRef);
+                        }
+                        
+                        return downloadUrl;
                     } catch (err) {
                         console.error("Upload error:", err);
-                        return "ERROR";
+                        return "ERROR"; 
                     }
                 });
-
+                
                 const results = await Promise.all(uploadPromises);
-
+                
                 if (results.includes("ERROR")) {
-                    throw new Error("이미지 업로드에 실패했습니다. 네트워크 상태를 확인해주세요.");
+                    throw new Error("이미지 업로드에 실패했습니다. 다시 시도해주세요.");
                 }
-
+                
                 newImageUrls = results;
             }
 
@@ -227,7 +249,7 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
 
             const payload = {
                 date: date,
-                score: Number(score),
+                score: Number(score), // 0점도 안전하게 숫자로 변환
                 memo: memo || "",
                 subjectId: subjectId,
                 subjectName: subjectName,
@@ -256,7 +278,7 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
             showToast("등록 실패", true);
         } finally {
             btn.disabled = false;
-            btn.textContent = this.state.isEditing ? "수정하기" : "등록하기";
+            btn.textContent = "등록하기";
         }
     },
 
@@ -264,7 +286,7 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
         this.state.isEditing = true;
         this.state.editingId = test.id;
         this.state.existingImages = test.imageUrls || [];
-        this.state.selectedFiles = [];
+        this.state.selectedFiles = []; 
 
         const dateInput = document.getElementById(this.elements.dateInput);
         if (dateInput) dateInput.value = test.date;
@@ -280,9 +302,9 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
 
         const addBtn = document.getElementById(this.elements.addButton);
         if (addBtn) addBtn.textContent = "수정하기";
-
+        
         this.renderFilePreview();
-
+        
         document.getElementById('daily-test-form-container')?.scrollIntoView({ behavior: 'smooth' });
         showToast("수정 모드입니다.", false);
     },
@@ -324,7 +346,7 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
         const container = document.getElementById(this.elements.listContainer);
         if (container) container.innerHTML = `<div class="p-4 text-center text-slate-400">로딩 중...</div>`;
     },
-
+    
     renderError() {
         const container = document.getElementById(this.elements.listContainer);
         if (container) container.innerHTML = `<div class="p-4 text-center text-red-500">데이터를 불러오지 못했습니다.</div>`;
@@ -345,7 +367,7 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
             const imageIcon = hasImage
                 ? `<span class="material-icons-round text-xs text-indigo-500 ml-1">image</span>`
                 : '';
-
+            
             return `
             <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex justify-between items-center hover:border-indigo-100 transition-colors">
                 <div class="flex-1">
@@ -370,7 +392,7 @@ const path = `daily_test_images/${uid}/${Date.now()}_${file.name}`;
         container.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', (e) => this.handleDelete(e.currentTarget.dataset.id));
         });
-
+        
         container.querySelectorAll('.edit-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = e.currentTarget.dataset.id;
