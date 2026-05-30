@@ -1,9 +1,10 @@
 // src/student/studentDailyTest.js
 
-import imageCompression from 'browser-image-compression';
+// 🔥 [수정됨] 메모리를 갉아먹는 압축 라이브러리(browser-image-compression) 완전 제거
 import { db, storage } from "../shared/firebase.js";
 import { collection, addDoc, query, where, getDocs, deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getAuth } from "firebase/auth"; 
 import { showToast } from "../shared/utils.js";
 
 export const studentDailyTest = {
@@ -32,7 +33,7 @@ export const studentDailyTest = {
 
     init(app) {
         this.app = app;
-        this.resetForm(); // null 체크가 추가되어 언제 호출해도 안전합니다.
+        this.resetForm(); 
         this.populateSubjects();
         this.bindEvents();
         this.fetchTests();
@@ -57,12 +58,11 @@ export const studentDailyTest = {
     bindEvents() {
         const addBtn = document.getElementById(this.elements.addButton);
         if (addBtn) {
-            const newBtn = addBtn.cloneNode(true);
-            addBtn.parentNode.replaceChild(newBtn, addBtn);
-            newBtn.addEventListener('click', (e) => {
+            // 🔥 [수정됨] cloneNode 방식 제거. 확실하게 onclick으로 덮어씌워 이벤트 유실 원천 차단.
+            addBtn.onclick = (e) => {
                 if (e) e.preventDefault();
-                this.handleSave(newBtn);
-            });
+                this.handleSave(addBtn);
+            };
         }
 
         const fileBtn = document.getElementById(this.elements.fileBtn);
@@ -96,7 +96,11 @@ export const studentDailyTest = {
         if (fileInput) fileInput.value = ''; 
         
         const btn = document.getElementById(this.elements.addButton);
-        if(btn) btn.textContent = "등록하기";
+        if(btn) {
+            // 🔥 [수정됨] 폼이 리셋될 때 버튼 잠금도 무조건 풀어주어 '무반응' 버그 방지
+            btn.disabled = false;
+            btn.textContent = "등록하기";
+        }
         
         const fileBtn = document.getElementById(this.elements.fileBtn);
         if(fileBtn) fileBtn.innerHTML = `<span class="material-icons-round">add_a_photo</span> 사진 선택 (여러 장 가능)`;
@@ -184,8 +188,6 @@ export const studentDailyTest = {
         const subjectId = subjEl ? subjEl.value : '';
 
         if (!subjectId) return showToast("과목을 선택해주세요.", true);
-        
-        // 0점 등록이 가능하도록 유효성 검사 완화
         if (score === '' || score === null) return showToast("점수를 입력해주세요.", true);
 
         const subjectName = subjEl.options[subjEl.selectedIndex].text;
@@ -195,39 +197,24 @@ export const studentDailyTest = {
         if (!confirm(`${subjectName} - ${score}점\n${actionText}하시겠습니까?`)) return;
 
         btn.disabled = true;
-        btn.textContent = "처리 중...";
+        btn.textContent = "업로드 중...";
 
         try {
+            const auth = getAuth();
+            const currentUser = auth.currentUser;
+            const userUid = currentUser ? currentUser.uid : studentId; 
+
             let newImageUrls = [];
             
             if (this.state.selectedFiles.length > 0) {
-                const options = { maxSizeMB: 1, maxWidthOrHeight: 1920, useWebWorker: true };
-                
                 const uploadPromises = this.state.selectedFiles.map(async (file) => {
                     try {
-                        let fileToUpload = file;
-                        try {
-                            // 1. 요청하신 대로 이미지 압축 먼저 시도
-                            fileToUpload = await imageCompression(file, options);
-                        } catch (compressErr) {
-                            console.warn("압축 실패, 원본으로 우회합니다:", compressErr);
-                        }
-
-                        const path = `daily_test_images/${studentId}/${Date.now()}_${file.name}`;
-                        let downloadUrl = "";
+                        // 🔥 [수정됨] 압축 로직 완전히 제거. 원본 파일(file) 다이렉트 업로드.
+                        const path = `daily_test_images/${userUid}/${Date.now()}_${file.name}`;
+                        const storageRef = ref(storage, path);
                         
-                        // 🔥 2. 결정적 해결책: 파이어베이스 버전 충돌 방지 (숙제 앱 방식 적용)
-                        if (storage && typeof storage.ref === 'function') {
-                            // 학원 프로젝트의 구버전(Compat) 로직을 안전하게 실행
-                            const fileRef = storage.ref().child(path);
-                            await fileRef.put(fileToUpload);
-                            downloadUrl = await fileRef.getDownloadURL();
-                        } else {
-                            // 최신버전(Modular) 로직 실행
-                            const storageRef = ref(storage, path);
-                            await uploadBytes(storageRef, fileToUpload);
-                            downloadUrl = await getDownloadURL(storageRef);
-                        }
+                        await uploadBytes(storageRef, file);
+                        const downloadUrl = await getDownloadURL(storageRef);
                         
                         return downloadUrl;
                     } catch (err) {
@@ -249,11 +236,11 @@ export const studentDailyTest = {
 
             const payload = {
                 date: date,
-                score: Number(score), // 0점도 안전하게 숫자로 변환
+                score: Number(score),
                 memo: memo || "",
                 subjectId: subjectId,
                 subjectName: subjectName,
-                imageUrls: finalImageUrls,
+                imageUrls: finalImageUrls, 
                 updatedAt: serverTimestamp()
             };
 
@@ -276,9 +263,14 @@ export const studentDailyTest = {
             console.error("Save Error:", error);
             alert(error.message || "오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
             showToast("등록 실패", true);
+            // 오류 발생 시 폼 전체 리셋을 통해 버튼 상태 확실히 복구
+            this.resetForm(); 
         } finally {
-            btn.disabled = false;
-            btn.textContent = "등록하기";
+            // catch 후 화면 이탈 등 예외 방지를 위해 버튼 복구 로직 강화
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = this.state.isEditing ? "수정하기" : "등록하기";
+            }
         }
     },
 
