@@ -1,4 +1,5 @@
-// src/shared/analysis/weeklyTestManager.js
+
+ // src/shared/analysis/weeklyTestManager.js
 
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase.js";
@@ -75,11 +76,14 @@ export const createWeeklyTestManager = (config) => {
     };
 
     // --- UI 헬퍼 함수 ---
-    const createCell = (studentId, label, record) => {
+    const createCell = (studentId, week, record) => {
+        const label = week.label;
+        const targetDate = week.targetDate;
+
         // 1. 데이터 없음
         if (!record) {
             return `<td class="p-3 border text-slate-300 cursor-pointer hover:bg-slate-100 cell-weekly transition-colors" 
-                        data-sid="${studentId}" data-lbl="${label}" data-ex="false">
+                        data-sid="${studentId}" data-lbl="${label}" data-target="${targetDate}" data-ex="false">
                         <span class="text-xs text-red-300">미응시</span>
                     </td>`;
         }
@@ -127,7 +131,7 @@ export const createWeeklyTestManager = (config) => {
             </button>`;
 
         return `<td class="p-2 border ${cls} relative group cell-weekly align-middle transition-colors cursor-pointer" 
-                    data-sid="${studentId}" data-lbl="${label}" data-ex="true" 
+                    data-sid="${studentId}" data-lbl="${label}" data-target="${targetDate}" data-ex="true" 
                     data-doc="${record.id}" data-scr="${(sc !== null && sc !== undefined) ? sc : ''}"
                     data-date="${record.examDate || ''}" data-time="${record.examTime || ''}">
                     <div class="flex items-center justify-center gap-1 w-full h-full relative min-h-[40px]">
@@ -147,9 +151,9 @@ export const createWeeklyTestManager = (config) => {
 
     const createAvgRow = (weeks, students, records) => {
         let html = `<tr class="bg-indigo-100 font-bold border-b border-indigo-200"><td class="p-3 border sticky left-0 bg-indigo-100 z-10 text-indigo-900 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">반평균</td>`;
-        weeks.forEach(lbl => {
+        weeks.forEach(week => {
             const scores = students.map(s => {
-                const r = records.find(rec => rec.uid === s.id && (rec.weekLabel === lbl || rec.targetDate === lbl));
+                const r = records.find(rec => String(rec.uid) === String(s.id) && rec.targetDate === week.targetDate);
                 return (r && r.score !== null && r.score !== undefined && r.score !== '') ? Number(r.score) : null;
             }).filter(v => v !== null);
             html += `<td class="p-3 border text-indigo-800">${scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : '-'}</td>`;
@@ -177,10 +181,22 @@ export const createWeeklyTestManager = (config) => {
 
             state.records = recs;
             console.log("Loaded Weekly Tests:", recs); // 🔍 디버깅용 로그
-            const w = [...new Set(recs.map(r => r.weekLabel || r.targetDate))].sort().reverse();
-            const thisW = getWeekLabel(getWeeklyTestTargetDate(new Date()));
-            if (!w.includes(thisW)) w.unshift(thisW);
-            state.weeks = w;
+
+            // 주차 이름(예: 10월 4주차)이 아니라 실제 targetDate로 주차를 구분합니다.
+            // 같은 주차 이름이 다른 연도에 반복되어 기록이 잘못 연결되는 것을 방지합니다.
+            const targetDates = new Set(
+                recs.map(r => r.targetDate).filter(v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")))
+            );
+            const thisTargetDate = formatDateString(getWeeklyTestTargetDate(new Date()));
+            targetDates.add(thisTargetDate);
+
+            state.weeks = Array.from(targetDates)
+                .sort((a, b) => b.localeCompare(a))
+                .map(targetDate => ({
+                    targetDate,
+                    label: getWeekLabel(new Date(targetDate + "T12:00:00"))
+                }));
+
             render();
         });
     };
@@ -202,14 +218,18 @@ export const createWeeklyTestManager = (config) => {
         }
 
         let html = `<table class="w-full text-sm text-center border-collapse whitespace-nowrap"><thead class="bg-indigo-50 text-indigo-900 sticky top-0 z-10 shadow-sm"><tr><th class="p-3 border sticky left-0 bg-indigo-50 z-20 min-w-[80px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">이름</th>`;
-        viewWeeks.forEach(l => html += `<th class="p-3 border font-bold">${l}</th>`);
+        viewWeeks.forEach(week => html += `<th class="p-3 border font-bold">${week.label}</th>`);
         html += `</tr></thead><tbody>`;
 
         if (students.length) {
             html += createAvgRow(viewWeeks, students, records);
             students.forEach(s => {
                 html += `<tr class="border-b hover:bg-slate-50 transition"><td class="p-3 border font-bold sticky left-0 bg-white z-10 text-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">${s.name}</td>`;
-                viewWeeks.forEach(l => html += createCell(s.id, l, records.find(x => x.uid === s.id && (x.weekLabel === l || x.targetDate === l))));
+                viewWeeks.forEach(week => html += createCell(
+                    s.id,
+                    week,
+                    records.find(x => String(x.uid) === String(s.id) && x.targetDate === week.targetDate)
+                ));
                 html += `</tr>`;
             });
         } else { html += `<tr><td colspan="${viewWeeks.length + 1}" class="p-4 text-slate-400">학생 없음</td></tr>`; }
@@ -251,7 +271,7 @@ export const createWeeklyTestManager = (config) => {
 
     // [셀 클릭] 수정 모달 열기
     const openEditModal = (cell) => {
-        const { sid, lbl, ex, doc: did, scr, date, time } = cell.dataset;
+        const { sid, lbl, ex, doc: did, scr, date, time, target } = cell.dataset;
 
         const timeSelect = ensureTimeSelect();
 
@@ -261,12 +281,14 @@ export const createWeeklyTestManager = (config) => {
             const opt = document.createElement('option');
             opt.value = s.id;
             opt.textContent = s.name;
-            if (s.id === sid) opt.selected = true;
+            if (String(s.id) === String(sid)) opt.selected = true;
             elements.weeklyModalStudent.appendChild(opt);
         });
 
         // 날짜 설정 및 시간 옵션 초기화
-        const initialDate = (date && date !== 'undefined') ? date : formatDateString(new Date());
+        const initialDate = (date && date !== 'undefined')
+            ? date
+            : ((target && target !== 'undefined') ? target : formatDateString(new Date()));
         elements.weeklyModalDate.value = initialDate;
 
         // 날짜에 맞춰 시간 옵션 생성
@@ -330,7 +352,8 @@ export const createWeeklyTestManager = (config) => {
             status = 'completed';
         }
 
-        const s = state.students.find(x => x.id === sid);
+        const s = state.students.find(x => String(x.id) === String(sid));
+        if (!s) return alert("선택한 학생 정보를 찾을 수 없습니다.");
 
         const t = getWeeklyTestTargetDate(dVal);
         const tStr = formatDateString(t);
